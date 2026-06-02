@@ -33,8 +33,8 @@ export class InstallPrompt {
     root.setAttribute("aria-live", "polite");
     root.innerHTML = `
       <div class="install-prompt__content">
-        <strong class="install-prompt__title">Install EugeneousXR</strong>
-        <p class="install-prompt__text">Use this calendar as an app with offline support.</p>
+        <strong class="install-prompt__title">Install Inkling</strong>
+        <p class="install-prompt__text">Use Inkling as an app with offline support.</p>
         <div class="install-prompt__actions">
           <button type="button" class="install-prompt__btn install-prompt__btn--primary" data-action="install">Install</button>
           <button type="button" class="install-prompt__btn" data-action="dismiss">Not now</button>

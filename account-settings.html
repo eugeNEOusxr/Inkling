@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Account — Inkling</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style-enhancements.css" />
+  <link rel="stylesheet" href="style-enhancements-inkling-nav.css" />
+</head>
+<body class="auth-page account-settings-page">
+  <main class="auth-screen auth-screen--page account-settings">
+    <div class="auth-card panel-card account-settings-card">
+      <header class="account-settings__head">
+        <h1>Account &amp; settings</h1>
+        <a href="/index.html" class="btn-ghost btn-ghost--sm">← Calendar</a>
+      </header>
+
+      <section class="account-settings__section">
+        <h2>Profile</h2>
+        <p id="account-email" class="account-settings__meta"></p>
+        <label for="account-username">Username</label>
+        <input type="text" id="account-username" pattern="[a-zA-Z0-9_]{3,24}" placeholder="Optional, unique" />
+        <label for="account-display">Display name</label>
+        <input type="text" id="account-display" />
+        <button type="button" id="btn-save-profile" class="btn-primary">Save profile</button>
+      </section>
+
+      <section class="account-settings__section">
+        <h2>Notifications</h2>
+        <label class="account-settings__check">
+          <input type="checkbox" id="set-notify-enabled" /> Enable notifications
+        </label>
+        <label class="account-settings__check">
+          <input type="checkbox" id="set-notify-sound" /> Sound
+        </label>
+        <label for="set-notify-priority">Priority</label>
+        <select id="set-notify-priority">
+          <option value="low">Low</option>
+          <option value="normal" selected>Normal</option>
+          <option value="high">High</option>
+        </select>
+        <label for="set-quiet-start">Quiet hours start</label>
+        <input type="time" id="set-quiet-start" />
+        <label for="set-quiet-end">Quiet hours end</label>
+        <input type="time" id="set-quiet-end" />
+        <button type="button" id="btn-save-notifications" class="btn-secondary">Save notification prefs</button>
+        <button type="button" id="btn-test-notify" class="btn-ghost btn-ghost--sm">Test notification</button>
+      </section>
+
+      <section class="account-settings__section">
+        <h2>Theme &amp; AI</h2>
+        <label for="set-theme">Theme</label>
+        <select id="set-theme">
+          <option value="dark">Dark</option>
+          <option value="light">Light</option>
+        </select>
+        <label class="account-settings__check">
+          <input type="checkbox" id="set-ai-proactive" /> Inkling proactive tips
+        </label>
+        <button type="button" id="btn-save-theme-ai" class="btn-secondary">Save preferences</button>
+      </section>
+
+      <section class="account-settings__section">
+        <h2>AI feedback</h2>
+        <p class="auth-card__lead">Help improve Inkling — ratings are saved to your account.</p>
+        <div id="feedback-summary" class="feedback-summary"></div>
+        <a href="/index.html#inkling" class="btn-ghost btn-ghost--sm">Open Inkling to rate replies</a>
+      </section>
+
+      <p id="account-status" class="auth-sync-status" aria-live="polite"></p>
+      <p id="account-error" class="auth-error hidden" role="alert"></p>
+      <button type="button" id="btn-sign-out-account" class="btn-ghost">Sign out</button>
+    </div>
+  </main>
+  <script type="module">
+    import { requireAuth, signOut } from "./src/auth/requireAuth.js";
+    import { fetchMe, updateProfile, updateSettings, fetchFeedbackSummary, displayNameForUser } from "./src/auth/userAccount.js";
+    import { getSession } from "./src/auth/session.js";
+
+    if (!requireAuth()) throw new Error("auth");
+
+    const statusEl = document.getElementById("account-status");
+    const errEl = document.getElementById("account-error");
+
+    function showErr(msg) {
+      errEl.textContent = msg;
+      errEl.classList.remove("hidden");
+    }
+
+    async function load() {
+      const user = await fetchMe();
+      document.getElementById("account-email").textContent = user.email;
+      document.getElementById("account-username").value = user.username || "";
+      document.getElementById("account-display").value = user.displayName || displayNameForUser(user);
+      const n = user.settings?.notifications || {};
+      document.getElementById("set-notify-enabled").checked = n.enabled !== false;
+      document.getElementById("set-notify-sound").checked = n.sound !== false;
+      document.getElementById("set-notify-priority").value = n.priority || "normal";
+      if (n.quietHours) {
+        document.getElementById("set-quiet-start").value = n.quietHours.start || "";
+        document.getElementById("set-quiet-end").value = n.quietHours.end || "";
+      }
+      document.getElementById("set-theme").value = user.settings?.theme?.mode || "dark";
+      document.getElementById("set-ai-proactive").checked = user.settings?.ai?.proactive !== false;
+      const { summary } = await fetchFeedbackSummary();
+      document.getElementById("feedback-summary").innerHTML = `
+        <ul class="feedback-summary__list">
+          <li>Total feedback: ${summary.total}</li>
+          <li>Helpful: ${summary.thumbsUp}</li>
+          <li>Needs work: ${summary.thumbsDown}</li>
+        </ul>`;
+    }
+
+    document.getElementById("btn-save-profile")?.addEventListener("click", async () => {
+      errEl.classList.add("hidden");
+      statusEl.textContent = "Saving profile…";
+      try {
+        await updateProfile({
+          username: document.getElementById("account-username").value.trim() || null,
+          displayName: document.getElementById("account-display").value.trim()
+        });
+        statusEl.textContent = "Profile saved.";
+      } catch (e) {
+        showErr(e.message);
+        statusEl.textContent = "";
+      }
+    });
+
+    document.getElementById("btn-save-notifications")?.addEventListener("click", async () => {
+      statusEl.textContent = "Saving…";
+      try {
+        await updateSettings({
+          notifications: {
+            enabled: document.getElementById("set-notify-enabled").checked,
+            sound: document.getElementById("set-notify-sound").checked,
+            priority: document.getElementById("set-notify-priority").value,
+            quietHours: {
+              start: document.getElementById("set-quiet-start").value || null,
+              end: document.getElementById("set-quiet-end").value || null
+            }
+          }
+        });
+        statusEl.textContent = "Notification preferences saved.";
+      } catch (e) {
+        showErr(e.message);
+        statusEl.textContent = "";
+      }
+    });
+
+    document.getElementById("btn-save-theme-ai")?.addEventListener("click", async () => {
+      statusEl.textContent = "Saving…";
+      try {
+        await updateSettings({
+          theme: { mode: document.getElementById("set-theme").value },
+          ai: { proactive: document.getElementById("set-ai-proactive").checked }
+        });
+        statusEl.textContent = "Preferences saved.";
+      } catch (e) {
+        showErr(e.message);
+        statusEl.textContent = "";
+      }
+    });
+
+    document.getElementById("btn-test-notify")?.addEventListener("click", () => {
+      if (!("Notification" in window)) {
+        statusEl.textContent = "Browser notifications not supported.";
+        return;
+      }
+      Notification.requestPermission().then((p) => {
+        if (p === "granted") {
+          new Notification("Inkling test", { body: "Notifications are working." });
+          statusEl.textContent = "Test notification sent.";
+        } else {
+          statusEl.textContent = "Permission denied.";
+        }
+      });
+    });
+
+    document.getElementById("btn-sign-out-account")?.addEventListener("click", () => signOut());
+
+    void load();
+  </script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#111217" />
+  <title>Sign in — Inkling</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style-enhancements.css" />
+</head>
+<body class="auth-page">
+  <main class="auth-screen auth-screen--page">
+    <form id="auth-form" class="auth-card panel-card">
+      <h1 class="auth-card__title">Inkling</h1>
+      <p class="auth-card__lead">Sign in with your email to keep notes, appointments, and notification settings after every restart.</p>
+
+      <div class="auth-tabs" role="tablist">
+        <button type="button" class="auth-tab is-active" data-auth-tab="signin" role="tab">Sign in</button>
+        <button type="button" class="auth-tab" data-auth-tab="register" role="tab">Create account</button>
+      </div>
+
+      <label for="auth-email">Email</label>
+      <input type="email" id="auth-email" name="email" autocomplete="email" required placeholder="you@example.com" />
+
+      <label for="auth-password">Password</label>
+      <input type="password" id="auth-password" name="password" autocomplete="current-password" required placeholder="At least 6 characters" minlength="6" />
+
+      <div id="auth-username-wrap" class="auth-username-wrap hidden">
+        <label for="auth-username">Username <span class="label-secondary">(optional)</span></label>
+        <input type="text" id="auth-username" name="username" autocomplete="username" placeholder="letters, numbers, underscore" pattern="[a-zA-Z0-9_]{3,24}" />
+      </div>
+
+      <p class="auth-forgot"><a href="/forgot-password.html">Forgot password?</a></p>
+
+      <p id="auth-error" class="auth-error hidden" role="alert"></p>
+      <p id="auth-sync-status" class="auth-sync-status" aria-live="polite"></p>
+
+      <button type="submit" id="auth-submit" class="btn-primary btn-enter auth-submit">
+        <span>Sign in</span>
+        <kbd>↵</kbd>
+      </button>
+
+      <p class="auth-hint">Your data is saved to this app server under your account. Use the same email on any device after signing in.</p>
+    </form>
+  </main>
+
+  <script type="module">
+    import { setSession } from "./src/auth/session.js";
+    import { apiFetch, pullCloudBundle } from "./src/auth/cloudSync.js";
+    import { applyServerUserToClient } from "./src/auth/userSettingsSync.js";
+
+    const form = document.getElementById("auth-form");
+    const emailInput = document.getElementById("auth-email");
+    const passwordInput = document.getElementById("auth-password");
+    const errorEl = document.getElementById("auth-error");
+    const submitBtn = document.getElementById("auth-submit");
+    const statusEl = document.getElementById("auth-sync-status");
+    const tabSignIn = document.querySelector('[data-auth-tab="signin"]');
+    const tabRegister = document.querySelector('[data-auth-tab="register"]');
+    const usernameWrap = document.getElementById("auth-username-wrap");
+    const usernameInput = document.getElementById("auth-username");
+
+    let mode = "signin";
+
+    const setMode = (next) => {
+      mode = next;
+      tabSignIn?.classList.toggle("is-active", mode === "signin");
+      tabRegister?.classList.toggle("is-active", mode === "register");
+      usernameWrap?.classList.toggle("hidden", mode !== "register");
+      if (submitBtn) submitBtn.querySelector("span").textContent =
+        mode === "signin" ? "Sign in" : "Create account";
+      errorEl?.classList.add("hidden");
+    };
+
+    tabSignIn?.addEventListener("click", () => setMode("signin"));
+    tabRegister?.addEventListener("click", () => setMode("register"));
+
+    form?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = emailInput?.value?.trim().toLowerCase() ?? "";
+      const password = passwordInput?.value ?? "";
+      if (!email.includes("@") || password.length < 6) {
+        errorEl.textContent = "Enter a valid email and password (6+ characters).";
+        errorEl.classList.remove("hidden");
+        return;
+      }
+      submitBtn.disabled = true;
+      errorEl.classList.add("hidden");
+      statusEl.textContent = mode === "signin" ? "Signing in…" : "Creating account…";
+
+      try {
+        const path = mode === "signin" ? "/api/auth/login" : "/api/auth/register";
+        const payload = { email, password };
+        if (mode === "register" && usernameInput?.value?.trim()) {
+          payload.username = usernameInput.value.trim();
+        }
+        const result = await apiFetch(path, {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        setSession({ token: result.token, email: result.email, user: result.user });
+        applyServerUserToClient(result.user);
+        statusEl.textContent = "Loading your calendar…";
+        await pullCloudBundle();
+        window.location.href = "/index.html";
+      } catch (err) {
+        errorEl.textContent = err.message || "Could not sign in.";
+        errorEl.classList.remove("hidden");
+        statusEl.textContent = "";
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

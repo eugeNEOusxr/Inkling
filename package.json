@@ -1,13 +1,17 @@
 {
-  "name": "eugeneousxr",
+  "name": "inkling",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "build:web": "echo \"Static app: no bundler configured yet\"",
+    "build:web": "node scripts/build-web.mjs",
+    "dev": "node server/index.mjs",
+    "test": "node --test server/tests/*.test.mjs",
     "serve:pwa": "serve -s .",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "visual:smoke": "bash scripts/visual-smoke-test.sh",
+    "visual:dev": "npm run serve:pwa"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.2",

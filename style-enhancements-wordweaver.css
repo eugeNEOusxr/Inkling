@@ -1,0 +1,347 @@
+/* WordWeaver immersive experience + daily view */
+
+body.wordweaver-immersive #top-chrome .top-chrome__bar,
+body.wordweaver-immersive #calendar-nav,
+body.wordweaver-immersive #wall-toggle,
+body.inkling-tab-wordweaver #top-chrome .top-chrome__bar,
+body.inkling-tab-wordweaver #calendar-nav,
+body.inkling-tab-wordweaver #wall-toggle {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+body.wordweaver-immersive #calendar-sidebar,
+body.inkling-tab-wordweaver #calendar-sidebar {
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+/* Stage mode: reparented to body so z-index is above backdrop (10180), not trapped in top-chrome (10070) */
+.wordweaver-embed.wordweaver-embed--stage,
+body.inkling-tab-wordweaver #wordweaver-embed.wordweaver-embed--stage,
+body.wordweaver-immersive #wordweaver-embed.wordweaver-embed--stage {
+  position: fixed !important;
+  left: 8px !important;
+  right: 8px !important;
+  top: calc(var(--inkling-chrome-h, 56px) + 8px + env(safe-area-inset-top, 0px)) !important;
+  bottom: calc(var(--inkling-bottom-nav-h, 62px) + 8px + env(safe-area-inset-bottom, 0px)) !important;
+  z-index: 10260 !important;
+  width: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  pointer-events: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  animation: wordweaver-enter 0.55s ease-out;
+}
+
+.wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__mount,
+body.inkling-tab-wordweaver #wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__mount {
+  display: block !important;
+  flex: 1 1 auto !important;
+  min-height: min(42vh, 380px) !important;
+  height: auto !important;
+  width: 100% !important;
+  position: relative !important;
+  visibility: visible !important;
+}
+
+.wordweaver-embed.wordweaver-embed--stage .wordweaver-canvas,
+body.inkling-tab-wordweaver #wordweaver-embed .wordweaver-canvas {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 200px !important;
+}
+
+.wordweaver-embed.wordweaver-embed--stage.is-minimized .wordweaver-embed__mount {
+  display: block !important;
+  min-height: min(42vh, 380px) !important;
+  height: auto !important;
+}
+
+@keyframes wordweaver-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.wordweaver-embed__date-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wordweaver-embed__date-btn {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(78, 230, 230, 0.3);
+  background: rgba(26, 31, 40, 0.9);
+  color: #a8f7f7;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wordweaver-embed__date-btn--today {
+  color: #fde68a;
+  border-color: rgba(212, 175, 55, 0.45);
+}
+
+.wordweaver-embed__layout-label {
+  display: flex;
+  align-items: center;
+}
+
+.wordweaver-embed__layout-select {
+  max-width: 130px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(78, 230, 230, 0.35);
+  background: rgba(18, 22, 30, 0.95);
+  color: #e2e8f0;
+  font-size: 11px;
+}
+
+.wordweaver-remarks {
+  padding: 6px 12px 0;
+  max-height: 72px;
+  overflow-y: auto;
+  font-size: 11px;
+  color: #c4b5fd;
+  border-bottom: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+.wordweaver-remarks .ww-remarks__item {
+  margin: 0 0 4px;
+  line-height: 1.35;
+}
+
+.wordweaver-remarks .ww-remarks__empty {
+  margin: 0;
+  color: #64748b;
+  font-style: italic;
+}
+
+.wordweaver-remarks .ww-remarks__loading {
+  margin: 0;
+  color: #a8f7f7;
+  animation: ww-remarks-pulse 1.2s ease-in-out infinite;
+}
+
+.wordweaver-remarks .ww-remarks__source {
+  margin: 0 0 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7c3aed;
+}
+
+@keyframes ww-remarks-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.wordweaver-embed__layout-edit-btn {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  background: rgba(26, 31, 40, 0.92);
+  color: #fde68a;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wordweaver-layout-editor {
+  margin: 0 8px 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(78, 230, 230, 0.35);
+  background: rgba(12, 16, 24, 0.96);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.wordweaver-layout-editor.hidden {
+  display: none;
+}
+
+.ww-layout-editor__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.ww-layout-editor__head h3 {
+  margin: 0;
+  font-size: 13px;
+  color: #a8f7f7;
+}
+
+.ww-layout-editor__close {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.ww-layout-editor__lead {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.ww-layout-editor__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px 8px;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.ww-layout-editor__row input[type="range"] {
+  width: 100%;
+}
+
+.ww-layout-editor__name {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.ww-layout-editor__name input {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(78, 230, 230, 0.25);
+  background: rgba(18, 22, 30, 0.95);
+  color: #e2e8f0;
+}
+
+.ww-layout-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ww-layout-editor__sync {
+  margin: 4px 0 8px;
+  font-size: 10px;
+  color: #4ee6e6;
+  min-height: 14px;
+}
+
+body.wordweaver-layout-editing #wordweaver-embed-mount {
+  box-shadow: inset 0 0 0 2px rgba(78, 230, 230, 0.45);
+  border-radius: 10px;
+}
+
+body.wordweaver-layout-editing .wordweaver-canvas {
+  outline: 1px solid rgba(124, 58, 237, 0.35);
+}
+
+.wordweaver-daily-panel {
+  flex-shrink: 0;
+  padding: 8px 12px 10px;
+  border-top: 1px solid rgba(78, 230, 230, 0.15);
+  background: rgba(8, 12, 20, 0.85);
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.ww-daily__cols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ww-daily__col {
+  flex: 1;
+  min-width: 120px;
+}
+
+.ww-daily__col h4 {
+  margin: 0 0 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+}
+
+.ww-daily__col ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ww-daily__col li {
+  font-size: 11px;
+  color: #e2e8f0;
+  padding: 2px 0;
+}
+
+.ww-daily__time {
+  color: #fde68a;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.ww-daily__empty {
+  color: #64748b;
+  font-style: italic;
+}
+
+.ww-daily__meta {
+  margin: 6px 0 0;
+  font-size: 10px;
+  color: #64748b;
+}
+
+body.inkling-tab-wordweaver #wordweaver-embed .wordweaver-daily-panel {
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__mount {
+    min-height: min(38vh, 320px) !important;
+    height: auto !important;
+  }
+
+  body.inkling-notebook-layout .wordweaver-embed.wordweaver-embed--stage.is-expanded .wordweaver-embed__mount {
+    min-height: min(38vh, 320px) !important;
+    height: auto !important;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

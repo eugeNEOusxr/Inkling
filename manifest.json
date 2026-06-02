@@ -1,11 +1,11 @@
 {
-  "name": "EugeneousXR",
-  "short_name": "Eugeneous",
+  "name": "Inkling",
+  "short_name": "Inkling",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#05060a",
   "theme_color": "#111217",
-  "description": "3D notebook calendar experience with notifications and scheduling.",
+  "description": "Inkling — 3D calendar, notes, appointments, and WordWeaver thought-weaving.",
   "icons": [
     {
       "src": "/icons/icon-192.png",
@@ -18,6 +18,15 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "WordWeaver",
+      "short_name": "WordWeaver",
+      "description": "Enter your 3D thought-weaving space",
+      "url": "/index.html?tab=wordweaver",
+      "icons": [{ "src": "/icons/wordweaver.svg", "sizes": "96x96" }]
     }
   ]
 }

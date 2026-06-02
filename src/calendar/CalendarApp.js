@@ -8,18 +8,21 @@ import {
   persistCalendarState,
   extractDayDataByDate,
   getDayById,
-  parseDate
+  parseDate,
+  SPACING_Y,
+  isToday,
+  addAppointment,
+  deleteAppointment,
+  computeTriggerAt
 } from "./calendarState.js";
 import { CalendarWall } from "./CalendarWall.js";
-import { AppointmentWall } from "./AppointmentWall.js";
 import { DayDetailView } from "./DayDetailView.js";
 import { ThreadPanel } from "./ui/ThreadPanel.js";
-import { AppointmentPanel } from "./ui/AppointmentPanel.js";
 import { UIOverlay } from "./UIOverlay.js";
+import { LayerManager } from "../layers/LayerManager.js";
 import { ScheduleModal } from "./ui/ScheduleModal.js";
 import { AppointmentModal } from "./ui/AppointmentModal.js";
 import { MonthTransitionController } from "./MonthTransitionController.js";
-import { WallTransitionController } from "./WallTransitionController.js";
 import { CalendarInteraction } from "./CalendarInteraction.js";
 import { CameraController } from "./CameraController.js";
 import { NotificationService } from "./notifications/NotificationService.js";
@@ -29,6 +32,18 @@ import { NotificationSettings } from "./ui/NotificationSettings.js";
 import { InstallPrompt } from "./ui/InstallPrompt.js";
 import { loadNotificationSettings } from "./notifications/notificationSettings.js";
 import { iconDay, iconHour, iconBell, iconSettings } from "./ui/IconLibrary.js";
+import { WindowManager } from "./ui/WindowManager.js";
+import { AppLauncher } from "./ui/AppLauncher.js";
+import { DayWindow } from "./ui/DayWindow.js";
+import { NotebookWriterPanel } from "./ui/NotebookWriterPanel.js";
+import { NotebookCalendarDock } from "./ui/NotebookCalendarDock.js";
+import { InklingPanel } from "./ui/InklingPanel.js";
+import { MinimizeDock } from "./ui/MinimizeDock.js";
+import { InklingBottomNav } from "./ui/InklingBottomNav.js";
+import { WordWeaverEmbed } from "../wordweaver/WordWeaverEmbed.js";
+import { commitSlotNote } from "../utils/slotNoteSync.js";
+import { getLastView, saveLastView } from "../utils/storage.js";
+import { SHELL_APPS } from "../shell/appRegistry.js";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -36,16 +51,22 @@ const MONTH_NAMES = [
 ];
 
 /**
- * Dual-wall calendar: notebook (threads) + appointments.
+ * Dual calendar: Notebook Calendar (notes) + Appointments Calendar, plus Notebook Reader summary.
  */
 export class CalendarApp {
-  constructor({ scene, camera, renderer, controls }) {
+  constructor({ scene, camera, renderer, controls, osShell = true, onLocalDataChange }) {
+    this.onLocalDataChange = onLocalDataChange ?? (() => {});
     this.scene = scene;
     this.camera = camera;
     this.renderer = renderer;
     this.controls = controls;
+    this.osShell = osShell;
+    this._overviewCameraBookmark = null;
+    this._initialView = null;
+    this._fallbackMinimizeDock = null;
 
     this.activeWall = "notebook";
+    this.layerManager = new LayerManager();
     this.viewMode = "overview";
     this.panelMode = null;
     this.selectedDayId = null;
@@ -67,14 +88,10 @@ export class CalendarApp {
     }
 
     this.notebookWall = new CalendarWall(scene);
-    this.appointmentWall = new AppointmentWall(scene);
     this.dayDetailView = new DayDetailView(scene);
     this.cameraController = new CameraController(camera, controls);
     this.monthTransition = new MonthTransitionController(this.notebookWall);
-    this.wallTransition = new WallTransitionController(
-      this.notebookWall,
-      this.appointmentWall
-    );
+    this.wallTransition = { isBusy: false };
 
     this.notificationWall = new NotificationWall(scene);
 
@@ -103,6 +120,7 @@ export class CalendarApp {
 
     this.notificationWall.onItemClick = (target) => this.navigateFromNotification(target);
     this.notificationWall.onBack = () => this.exitNotificationWall();
+    this.notificationWall.onMinimize = () => this._minimizeNotificationWall();
 
     this.threadPanel = new ThreadPanel(this.state, {
       onChange: () => this._onDataChange(),
@@ -114,14 +132,48 @@ export class CalendarApp {
       }
     });
 
-    this.appointmentPanel = new AppointmentPanel(this.state, {
+    // Dock before WordWeaver so a weave error cannot block the small calendar.
+    this.notebookCalendarDock = new NotebookCalendarDock({
+      onOpenDay: (date) => this.openDayNotesByDate(date),
+      onOpenNotes: (date) => this.openDayNotesByDate(date),
+      onOpenWriter: (date) => this.openNotebookDayByDate(date),
+      onSyncMonth: (date) => this.syncCalendarMonth(date),
+      onMaximize: () => this.enterCalendarMaxLayer(),
+      onSidebarChange: () => {}
+    });
+
+    this.wordWeaverEmbed = new WordWeaverEmbed({
+      getCalendarState: () => this.state
+    });
+
+    this.inklingPanel = new InklingPanel(this);
+
+    this.notebookWriterPanel = new NotebookWriterPanel(this.state, {
       onChange: () => this._onDataChange(),
       onBack: () => this.closePanels(),
-      onAddAppointment: (dayId) => this._openAppointmentModal(dayId),
-      onEditAppointment: (dayId, appt) => this._openAppointmentModal(dayId, appt),
+      onSetReminder: (dayId) => this._openSchedule("reminder", dayId),
+      onSetAlarm: (dayId) => this._openSchedule("alarm", dayId),
+      onHourSelect: (hour) => this._syncHour(hour),
+      onCommitNote: (payload) => this._commitSlotNote(payload),
+      onCommitAppointment: (payload) => this._commitSlotAppointment(payload),
+      onDeleteAppointment: (payload) => this._deleteSlotAppointment(payload),
+      onMinimize: () => this._minimizeWriterPanel()
+    });
+
+    this.dayWindow = new DayWindow({
+      onBack: () => this.closePanels(),
+      onMinimize: (dayId, title, mode) =>
+        this._dockMinimizedPanel(
+          `day-window-${mode}-${dayId}`,
+          title,
+          () => this.dayWindow.restore()
+        ),
+      onHourSelect: (hour) => this._syncHour(hour),
+      onCommitNote: (payload) => this._commitSlotNote(payload),
       onSetReminder: (dayId) => this._openSchedule("reminder", dayId),
       onSetAlarm: (dayId) => this._openSchedule("alarm", dayId)
     });
+    this.dayWindow.setStateAccessor(() => this.state);
 
     this.uiOverlay = new UIOverlay(this.state, {
       getSelectedThreadId: () => this.threadPanel.getSelectedThreadId(),
@@ -132,7 +184,7 @@ export class CalendarApp {
     this.scheduleModal = new ScheduleModal(this.state, {
       onSaved: () => {
         this.threadPanel.refresh();
-        this.appointmentPanel.refresh();
+        this.notebookWriterPanel.refresh();
         this._onDataChange();
       },
       requestNotifyPermission: () => this.notificationService.requestPermission()
@@ -140,16 +192,13 @@ export class CalendarApp {
 
     this.appointmentModal = new AppointmentModal(this.state, {
       onSaved: () => {
-        this.appointmentPanel.refresh();
+        this.notebookWriterPanel.refresh();
         this._onDataChange();
       },
       requestNotifyPermission: () => this.notificationService.requestPermission()
     });
 
     this.notebookWall.buildFromState(this.state);
-    this.appointmentWall.buildFromState(this.state, { skipLayout: true });
-    this.appointmentWall.group.position.copy(this.notebookWall.group.position);
-    this.appointmentWall.setVisible(false);
 
     this.interaction = new CalendarInteraction({
       camera,
@@ -157,17 +206,21 @@ export class CalendarApp {
       getActiveWall: () => this._getActiveWall(),
       isInteractionEnabled: () => this.viewMode !== "notification-wall",
       dayDetailView: this.dayDetailView,
-      onNotebookDayClick: (dayId) => this.enterNotebookDetail(dayId),
-      onAppointmentDayClick: (dayId) => this.openAppointmentPanel(dayId),
+      onNotebookDayClick: (dayId) => this.openDayNotesLayer(dayId),
       onHourClick: (hour) => this._syncHour(hour),
       onCanvasTapEmpty: () => this._handleCanvasTapEmpty()
     });
 
-    this._frameOverviewCamera(false);
     this._onResize = () => this._handleViewportResize();
     window.addEventListener("resize", this._onResize, { passive: true });
     this._configureMobilePerformance();
     this._configureMobileControls();
+    this.bottomNav = new InklingBottomNav({
+      onTab: (tab, meta) => this._handleBottomNavTab(tab, meta)
+    });
+    this.layerManager.setBackdropHandler(() => this._closeActiveLayer());
+    this._bindStageBackdrop();
+    this._bindLayerLauncher();
     this._injectMobileToolbar();
     this._syncMobileToolbarState();
     this._bindNavigation();
@@ -176,11 +229,35 @@ export class CalendarApp {
     this.notificationService.tick();
     this._registerServiceWorker();
     this._mountInstallPrompt();
+    if (this.osShell) this._mountOsShell();
+    this._ensureMinimizeDock();
+    this._bindWriterPanelEvents();
+    this._bindWordWeaverEvents();
+    window.addEventListener("wordweaver:size-change", () => {
+      if (this.viewMode === "overview" && !this.panelMode) {
+        void this._frameOverviewCamera(false);
+      }
+    });
+    this._bindDetailZoomBack();
+    this._bindShellFocus();
+    this._syncChromeLayerState();
+    this._syncNotebookDockVisibility();
+    try {
+      this._bootInklingNotebookLayout();
+    } catch (err) {
+      console.error("[CalendarApp] Inkling layout boot failed", err);
+      this.notebookCalendarDock?.remountMini();
+    }
+    queueMicrotask(() => {
+      this.notebookCalendarDock?.remountMini();
+      this._saveOverviewBookmark();
+    });
+    setTimeout(() => {
+      this.notebookCalendarDock?.remountMini();
+      this._saveOverviewBookmark();
+    }, 300);
 
     this._applyNotificationTheme();
-    // #region agent log
-    fetch('http://127.0.0.1:7657/ingest/92d10a13-16b2-4bee-be33-e8a55df63a55',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6a598c'},body:JSON.stringify({sessionId:'6a598c',runId:'initial-5',hypothesisId:'H13',location:'CalendarApp.js:constructor',message:'CalendarApp booted with latest instrumentation',data:{activeWall:this.activeWall,viewMode:this.viewMode,panelMode:this.panelMode},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     // Keep Auto theme in sync with system preference.
     try {
@@ -200,84 +277,345 @@ export class CalendarApp {
     if (this.viewMode === "notification-wall") {
       this.notificationWall.buildFromState(this.state);
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7657/ingest/92d10a13-16b2-4bee-be33-e8a55df63a55',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6a598c'},body:JSON.stringify({sessionId:'6a598c',runId:'initial',hypothesisId:'H2',location:'CalendarApp.js:_refreshNotificationUi',message:'Refreshing notification UI and theme',data:{viewMode:this.viewMode,bodyClass:document.body.className,htmlClass:document.documentElement.className},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     this._applyNotificationTheme();
     this._syncMobileToolbarState();
   }
 
   _getActiveWall() {
     if (this.viewMode === "notification-wall") return null;
-    return this.activeWall === "appointments"
-      ? this.appointmentWall
-      : this.notebookWall;
+    return this.notebookWall;
+  }
+
+  /** Reset fade state so visible walls render at full opacity. */
+  _ensureWallsOpaque() {
+    if (this.notebookWall.group.visible) {
+      this.notebookWall.setGroupOpacity(1);
+    }
   }
 
   _syncPanelsState() {
     this.threadPanel.state = this.state;
-    this.appointmentPanel.state = this.state;
+    this.notebookWriterPanel.state = this.state;
     this.uiOverlay.state = this.state;
     this.scheduleModal.state = this.state;
     this.appointmentModal.state = this.state;
   }
 
   _syncHour(hour) {
-    this.dayDetailView.setSelectedHour(hour);
-    this.uiOverlay.setHour(hour, false);
-    this.threadPanel.setComposeHour(hour);
+    const h = String(hour);
+    const time = `${h.padStart(2, "0")}:00`;
+    if (this.panelMode === "notebook-writer") {
+      this.notebookWriterPanel.selectHour(h, false);
+      const day = this.selectedDayId ? getDayById(this.state, this.selectedDayId) : null;
+      if (day) saveLastView({ date: day.date, time });
+    } else if (this.viewMode === "detail") {
+      this.dayDetailView.setSelectedHour(h);
+    }
+    this.uiOverlay.setHour(h, false);
+    this.threadPanel.setComposeHour(h);
+    this.dayWindow.setSelectedHour(h);
+  }
+
+  /** @param {string} dateStr YYYY-MM-DD */
+  _resolveDayIdForDate(dateStr) {
+    const existing = this.state.days.find((d) => d.date === dateStr);
+    if (existing) return existing.id;
+
+    const { year, month } = parseDate(dateStr);
+    if (year !== this.state.year || month !== this.state.month) {
+      const dayData = extractDayDataByDate(this.state);
+      this.state = createCalendarStateFromSaved(year, month, dayData);
+      this._syncPanelsState();
+      this.notebookWall.buildFromState(this.state, { skipLayout: false });
+      persistCalendarState(this.state);
+      this._updateNavLabels();
+    }
+    return this.state.days.find((d) => d.date === dateStr)?.id ?? null;
+  }
+
+  _bindWordWeaverEvents() {
+    window.addEventListener("wordweaver:node-click", (event) => {
+      const { date, time } = event.detail ?? {};
+      if (!date) return;
+      void (async () => {
+        if (time) {
+          const hour = String(Number(String(time).split(":")[0]));
+          await this.openNotebookDayByDate(date);
+          this.focusNotebookHour(hour);
+          return;
+        }
+        await this.openNotebookDayByDate(date);
+      })();
+    });
+  }
+
+  _bindWriterPanelEvents() {
+    document.addEventListener("calendar3d-writer-restore", (event) => {
+      const { dayId, hour, mode } = event.detail ?? {};
+      if (!dayId) return;
+      const writerMode =
+        mode === "appointments" ? "appointments" : mode === "alarm" ? "alarm" : "notebook";
+      void this.openNotebookWriterPanel(dayId, hour ?? "0", writerMode);
+    });
+  }
+
+  _minimizeWriterPanel() {
+    const mode = this.notebookWriterPanel.getMode();
+    const dayId = this.notebookWriterPanel.getSavedDayId();
+    if (!dayId) return;
+    const hour = this.notebookWriterPanel.getSavedHour();
+    const dockId =
+      mode === "appointments"
+        ? "panel-appointment-writer"
+        : mode === "alarm"
+          ? "panel-alarm-writer"
+          : "panel-notebook-writer";
+    const label =
+      mode === "appointments" ? "Appointments" : mode === "alarm" ? "Alarm" : "Write";
+
+    this._dockMinimizedPanel(dockId, label, () => {
+      void this.openNotebookWriterPanel(dayId, hour, mode);
+    });
+
+    this.bottomNav?.setActiveTab(null);
+    this._showStageBackdrop(false);
+    this.panelMode = null;
+    this.selectedDayId = null;
+    this.viewMode = "overview";
+    this.interaction.setMode("overview");
+    this.notebookWall.setOverviewDimmed(false);
+    this.notebookWall.setSelectedDay(null);
+    this.layerManager.closeAll();
+    this._setMobileWriterScrollLock(false);
+    this._applyNotebookWallVisibility();
+    void this._frameOverviewCamera(false);
+  }
+
+  _minimizeNotificationWall() {
+    this._dockMinimizedPanel("notification-wall", "Notifications", () => {
+      void this.enterNotificationWall();
+    });
+    void this.exitNotificationWall();
+  }
+
+  /**
+   * @param {{ date: string, time: string, note: string }} payload
+   */
+  _commitSlotNote(payload) {
+    commitSlotNote(this.state, payload.date, payload.time, payload.note);
+    persistCalendarState(this.state);
+    this.onLocalDataChange();
+    this.threadPanel.refresh();
+    this._onDataChange();
+    if (this.panelMode === "notebook-writer" && this._isInklingNotebookLayout()) {
+      this.wordWeaverEmbed?.show(payload.date, payload.time);
+      window.dispatchEvent(
+        new CustomEvent("eugeneous:note-added", { detail: { y: window.innerHeight * 0.58 } })
+      );
+    }
+  }
+
+  /**
+   * @param {{ dayId?: string, date: string, time: string, title: string }} payload
+   */
+  _commitSlotAppointment(payload) {
+    const dayId = payload.dayId ?? this.selectedDayId;
+    if (!dayId) return;
+    const day = getDayById(this.state, dayId);
+    if (!day) return;
+    const title = payload.title?.trim();
+    if (!title) return;
+    const hour = Number(String(payload.time).split(":")[0]);
+    const triggerAt = computeTriggerAt(day.date, hour);
+    addAppointment(this.state, dayId, {
+      title,
+      description: "",
+      hour,
+      triggerAt
+    });
+    persistCalendarState(this.state);
+    this._onDataChange();
+  }
+
+  /**
+   * @param {{ dayId?: string, appointmentId: string }} payload
+   */
+  _deleteSlotAppointment(payload) {
+    const dayId = payload.dayId ?? this.selectedDayId;
+    if (!dayId || !payload.appointmentId) return;
+    deleteAppointment(this.state, dayId, payload.appointmentId);
+    persistCalendarState(this.state);
+    this._onDataChange();
   }
 
   _onDataChange() {
     this.dayDetailView.refreshHourIndicators();
     this.threadPanel.refresh();
-    this.appointmentPanel.refresh();
+    this.notebookWriterPanel?.refresh();
     this._refreshWalls();
     persistCalendarState(this.state);
+    this.onLocalDataChange();
     this.notificationService?.tick();
+    this.wordWeaverEmbed?.refresh();
   }
 
   _refreshWalls() {
     this.notebookWall.buildFromState(this.state, { skipLayout: true });
-    this.appointmentWall.buildFromState(this.state, { skipLayout: true });
   }
 
-  closePanels() {
-    // #region agent log
-    fetch('http://127.0.0.1:7657/ingest/92d10a13-16b2-4bee-be33-e8a55df63a55',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6a598c'},body:JSON.stringify({sessionId:'6a598c',runId:'initial-3',hypothesisId:'H8',location:'CalendarApp.js:closePanels',message:'closePanels invoked',data:{panelMode:this.panelMode,viewMode:this.viewMode,selectedDayId:this.selectedDayId},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+  async closePanels() {
     if (this.panelMode === "notebook-detail") {
-      this._closeNotebookDetail(false);
+      await this._closeNotebookDetail(false);
     }
-    if (this.panelMode === "appointments") {
-      this.appointmentPanel.close();
-      this.appointmentWall.setOverviewDimmed(false);
+    if (this.panelMode === "notebook-writer") {
+      this.dayWindow.close();
+      this.notebookWriterPanel.close();
+      this.layerManager.close("writer");
+      this.dayDetailView.hide();
+      this.notebookWall.setOverviewDimmed(false);
+      this.notebookWall.setSelectedDay(null);
       this.panelMode = null;
       this.selectedDayId = null;
       this.viewMode = "overview";
       this.interaction.setMode("overview");
-      document.body.classList.remove("appointment-panel-open");
+      this._showStageBackdrop(false);
+      this.bottomNav?.setActiveTab(null);
+      this._applyNotebookWallVisibility();
+    }
+    if (this.panelMode === "day-notes") {
+      this.threadPanel.close();
+      this.layerManager.close("day-notes");
+      this.notebookWall.setOverviewDimmed(false);
+      this.notebookWall.setSelectedDay(null);
+      this.panelMode = null;
+      this.selectedDayId = null;
+      this.viewMode = "overview";
+      this.interaction.setMode("overview");
+    }
+    this._setMobileWriterScrollLock(false);
+    this._ensureWallsOpaque();
+    this._applyNotebookWallVisibility();
+    if (this._isOverviewWallMode()) {
+      void this._frameOverviewCamera(false);
+    } else if (!this._isInklingNotebookLayout()) {
+      await this.resetView();
     }
   }
 
-  async openAppointmentPanel(dayId) {
-    // #region agent log
-    fetch('http://127.0.0.1:7657/ingest/92d10a13-16b2-4bee-be33-e8a55df63a55',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6a598c'},body:JSON.stringify({sessionId:'6a598c',runId:'initial-2',hypothesisId:'H7',location:'CalendarApp.js:openAppointmentPanel.enter',message:'openAppointmentPanel called',data:{dayId,viewMode:this.viewMode,panelMode:this.panelMode,activeWall:this.activeWall},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    if (this.wallTransition.isBusy) return;
+  /**
+   * Full-screen notes thread for a day (from 3D wall or mini calendar).
+   * @param {string} dayId
+   */
+  async openDayNotesLayer(dayId) {
+    if (this.monthTransition.isBusy) return;
     await this._closeAllPanelsForSwitch();
 
+    const day = getDayById(this.state, dayId);
+    if (!day) return;
+
     this.selectedDayId = dayId;
-    this.panelMode = "appointments";
+    this.panelMode = "day-notes";
+    this.viewMode = "panel";
+    this.notebookWall.setSelectedDay(dayId);
+    this.notebookWall.setOverviewDimmed(true);
+    this.notebookCalendarDock?.setDate(day.date);
+    this.threadPanel.open(dayId);
+    this.layerManager.open("day-notes", { element: this.threadPanel.el });
+    this._showStageBackdrop(true);
+    this.bottomNav?.setActiveTab(null);
+    this.interaction.setMode("overview");
+    this._applyNotebookWallVisibility();
+  }
+
+  /** @param {string} dateStr YYYY-MM-DD */
+  async openDayNotesByDate(dateStr) {
+    if (!dateStr) return;
+    await this.syncCalendarMonth(dateStr);
+    const dayId = this._resolveDayIdForDate(dateStr);
+    if (!dayId) return;
+    await this.openDayNotesLayer(dayId);
+  }
+
+  async enterCalendarMaxLayer() {
+    if (this.viewMode === "notification-wall") {
+      await this.exitNotificationWall();
+    }
+    await this._closeAllPanelsForSwitch();
+    this.layerManager.open("calendar-max");
+    this.notebookWall.setVisible(true);
+    this.notebookWall.setOverviewDimmed(false);
+    this.notebookWall.overviewWallGroup.scale.set(1.08, 1.08, 1.08);
+    this.controls.enabled = false;
+    await this._frameOverviewCamera(true);
+    this.controls.enabled = true;
+    this.bottomNav?.setActiveTab("calendar");
+    document.body.classList.add("inkling-stage-open", "inkling-tab-calendar");
+  }
+
+  exitCalendarMaxLayer() {
+    if (!this.layerManager.isOpen("calendar-max")) return;
+    this.layerManager.close("calendar-max");
+    this.notebookWall.overviewWallGroup.scale.set(1, 1, 1);
+    this.bottomNav?.setActiveTab(null);
+    document.body.classList.remove("inkling-stage-open", "inkling-tab-calendar");
+    void this._frameOverviewCamera(true);
+  }
+
+  /**
+   * Open day timeline on the Notebook Calendar (3D month + writer panel).
+   * @param {string} dayId
+   * @param {string} [initialHour]
+   */
+  async openNotebookWriterPanel(dayId, initialHour = "0", writerMode = "notebook") {
+    if (this.monthTransition.isBusy) return;
+    await this._closeAllPanelsForSwitch();
+
+    const day = getDayById(this.state, dayId);
+    if (!day) return;
+
+    this.selectedDayId = dayId;
+    this.panelMode = "notebook-writer";
     this.viewMode = "panel";
 
-    this.appointmentWall.setSelectedDay(dayId);
-    this.appointmentWall.setOverviewDimmed(true);
-    this.appointmentPanel.open(dayId);
-    // #region agent log
-    fetch('http://127.0.0.1:7657/ingest/92d10a13-16b2-4bee-be33-e8a55df63a55',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6a598c'},body:JSON.stringify({sessionId:'6a598c',runId:'initial-2',hypothesisId:'H7',location:'CalendarApp.js:openAppointmentPanel.afterOpen',message:'appointmentPanel.open invoked',data:{viewMode:this.viewMode,panelMode:this.panelMode,panelHidden:document.getElementById("appointment-panel")?.classList.contains("hidden")},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    this.interaction.setMode("overview");
+    if (this._isInklingNotebookLayout()) {
+      this.notebookWall.setVisible(true);
+      this.notebookWall.setSelectedDay(dayId);
+      this.notebookWall.setOverviewDimmed(true);
+      this.dayDetailView.hide();
+      this.notebookCalendarDock?.setDate(day.date);
+      this.notebookWriterPanel.open(dayId, initialHour, writerMode);
+      this._syncHour(String(initialHour));
+      this.notebookCalendarDock?.show();
+      this._setMobileWriterScrollLock(true);
+      this.bottomNav?.setActiveTab("writer");
+      this.layerManager.open("writer", { element: document.getElementById("notebook-writer-panel") });
+      this._showStageBackdrop(true);
+      saveLastView({ date: day.date, time: `${String(initialHour).padStart(2, "0")}:00` });
+      this._showWordWeaverPreview(day.date, `${String(initialHour).padStart(2, "0")}:00`);
+    } else {
+      this.notebookWall.setSelectedDay(dayId);
+      this.notebookWall.setOverviewDimmed(true);
+
+      const tile = this.notebookWall.getDayTileById(dayId);
+      if (tile) {
+        const worldPos = new THREE.Vector3();
+        tile.getWorldPosition(worldPos);
+        const anchor = worldPos.clone();
+        anchor.z += 1.4;
+        const { month, day: dayNum } = parseDate(day.date);
+        const label = `${MONTH_NAMES[month - 1]} ${dayNum} — tap an hour`;
+        this.dayDetailView.show(dayId, this.state, anchor, label);
+      }
+
+      this.notebookWriterPanel.open(dayId, initialHour, "notebook");
+      this.dayWindow.open(dayId, "notebook");
+      this._syncHour(String(initialHour));
+      this.notebookCalendarDock?.show();
+    }
+
+    this.interaction.setMode("writer");
+    this.interaction.setActiveWallType("notebook");
+    this._applyNotebookWallVisibility();
   }
 
   async enterNotebookDetail(dayId) {
@@ -311,55 +649,537 @@ export class CalendarApp {
     this.threadPanel.open(dayId);
     this.uiOverlay.open(dayId, "0");
     this._syncHour("0");
+    this.dayWindow.setSelectedHour("0");
+    this.dayWindow.open(dayId, "notebook");
 
     document.body.classList.add("detail-mode");
+    this._syncChromeLayerState();
 
-    const focus = anchor.clone();
-    focus.x += 2.75;
-    focus.y -= 1.8;
+    this._overviewCameraBookmark = {
+      position: this.camera.position.clone(),
+      target: this.controls.target.clone()
+    };
+
+    const focus = this.dayDetailView.getAttentionWorldCenter();
 
     this.controls.enabled = false;
-    await this.cameraController.zoomToDay(focus, new THREE.Vector3(0, 1.2, 6.5));
+    await this.cameraController.zoomToDay(focus, new THREE.Vector3(0, 0.35, 6.2));
     this.controls.enabled = true;
   }
 
   async _closeNotebookDetail(zoomOut = true) {
+    this.dayWindow.close();
     this.uiOverlay.close();
     this.threadPanel.close();
     this.dayDetailView.hide();
     this.notebookWall.setSelectedDay(null);
     this.notebookWall.setOverviewDimmed(false);
     document.body.classList.remove("detail-mode");
+    this._syncChromeLayerState();
 
     if (zoomOut && this.viewMode === "detail") {
       this.controls.enabled = false;
-      await this.cameraController.zoomToOverview(
-        this._getActiveWall().getCenterTarget(),
-        this._overviewCameraOffset()
-      );
+      if (this._isInklingNotebookLayout()) {
+        void this._frameOverviewCamera(true);
+      } else {
+        await this.resetView();
+      }
       this.controls.enabled = true;
     }
 
+    this._overviewCameraBookmark = null;
     this.viewMode = "overview";
     this.panelMode = null;
     this.selectedDayId = null;
     this.interaction.setMode("overview");
   }
 
+  _bindShellFocus() {
+    document.addEventListener("eugeneous:focus-calendar", async (event) => {
+      const wall = event.detail?.wall ?? "notebook";
+      const date = event.detail?.date;
+      if (date && wall === "notebook") {
+        await this.focusNotebookCalendarMonth(date);
+        this.notebookCalendarDock?.setDate(date);
+        return;
+      }
+      await this.focusMainCalendar(wall);
+    });
+  }
+
+  /**
+   * OS shell: focus the main 3D calendar (single canvas — not a separate window app).
+   * @param {"notebook"|"appointments"} [wall]
+   */
+  _captureInitialView() {
+    this._initialView = {
+      cameraPosition: this.camera.position.clone(),
+      controlsTarget: this.controls.target.clone(),
+      scrollY: window.scrollY
+    };
+  }
+
+  /**
+   * Restore startup camera / scroll (used when closing day panels or OS windows).
+   */
+  async resetView() {
+    if (this._isInklingNotebookLayout()) {
+      void this._frameOverviewCamera(false);
+      return;
+    }
+    if (!this._initialView) return;
+    await this.cameraController.restoreCamera(
+      this._initialView.cameraPosition,
+      this._initialView.controlsTarget
+    );
+    window.scrollTo(0, this._initialView.scrollY);
+  }
+
+  _getTodayDayId() {
+    const todayDay = this.state.days.find((d) => isToday(d.date));
+    return todayDay?.id ?? this.state.days[0]?.id ?? null;
+  }
+
+  _getTodayDate() {
+    const todayDay = this.state.days.find((d) => isToday(d.date));
+    return todayDay?.date ?? null;
+  }
+
+  /**
+   * Focus Notebook Calendar (3D month + dock). Optional floating app panel via useAppPanel / useOsWindow.
+   * @param {{ initialView?: "today"|string, dayId?: string, useAppPanel?: boolean, useOsWindow?: boolean }} [opts]
+   */
+  async openNotebookCalendar(opts = {}) {
+    const initialView = opts.initialView ?? "today";
+    let dayId = opts.dayId;
+    if (!dayId && initialView === "today") {
+      dayId = this._getTodayDayId();
+    }
+
+    const date = initialView === "today" ? this._getTodayDate() : initialView;
+    if (date) this.notebookCalendarDock?.setDate(date);
+    this.notebookCalendarDock?.show();
+
+    const openAppPanel = opts.useAppPanel ?? opts.useOsWindow;
+    if (openAppPanel && this.osShell && this.windowManager) {
+      await this.windowManager.openApp("notebook-calendar", {
+        initialView: date ?? "today",
+        dayId
+      });
+    }
+
+    if (dayId) {
+      await this.openNotebookWriterPanel(dayId);
+    } else {
+      await this.focusMainCalendar();
+    }
+  }
+
+  /** Sync loaded month state for a date (no 3D camera fly-in on Inkling layout). */
+  async syncCalendarMonth(dateStr) {
+    if (!dateStr) return;
+    const { year, month } = parseDate(dateStr);
+    if (year !== this.state.year || month !== this.state.month) {
+      const delta = (year - this.state.year) * 12 + (month - this.state.month);
+      if (this.viewMode === "overview" && !this.panelMode) {
+        await this.goToMonth(delta);
+      } else {
+        const dayData = extractDayDataByDate(this.state);
+        this.state = createCalendarStateFromSaved(year, month, dayData);
+        this._syncPanelsState();
+        this.notebookWall.buildFromState(this.state, { skipLayout: false });
+        persistCalendarState(this.state);
+        this._updateNavLabels();
+        if (this.activeWall === "notebook") {
+          void this._frameOverviewCamera(false);
+        }
+      }
+    }
+    this.notebookCalendarDock?.setDate(dateStr);
+  }
+
+  /** Focus 3D month for a date without opening the writer. */
+  async focusNotebookCalendarMonth(dateStr) {
+    if (!dateStr) return;
+    await this.syncCalendarMonth(dateStr);
+    if (this._isInklingNotebookLayout()) {
+      return;
+    }
+    await this.focusMainCalendar();
+    this.notebookCalendarDock?.setDate(dateStr);
+  }
+
+  async openNotebookDayByDate(dateStr) {
+    if (!dateStr) return;
+    await this.syncCalendarMonth(dateStr);
+    const dayId = this._resolveDayIdForDate(dateStr);
+    if (!dayId) {
+      console.warn("[CalendarApp] Write: no day node for", dateStr);
+      return;
+    }
+    const last = getLastView();
+    const lastTime = last?.date === dateStr && last?.time ? last.time : "09:00";
+    const hour = String(Number(lastTime.split(":")[0]));
+    await this.openNotebookWriterPanel(dayId, hour);
+  }
+
+  openWordWeaverFromRail() {
+    const date = this.notebookCalendarDock?.getDate() ?? this._getTodayDate();
+    if (!date) return;
+    const time = getLastView()?.time ?? "09:00";
+    this._showWordWeaverPreview(date, time);
+  }
+
+  /** Inkling split layout (small calendar + 3D wall + writer). Stays on during notification wall. */
+  _isInklingNotebookLayout() {
+    return document.body.classList.contains("inkling-notebook-layout");
+  }
+
+  _isOverviewWallMode() {
+    return this.viewMode !== "notification-wall";
+  }
+
+  _bootInklingNotebookLayout() {
+    document.body.classList.add("inkling-notebook-layout");
+    document.documentElement.style.setProperty("--calendar-sidebar-w", "220px");
+
+    try {
+      localStorage.removeItem("inkling:sidebarCollapsed");
+    } catch {
+      /* ignore */
+    }
+
+    document.getElementById("top-chrome")?.classList.remove("hidden", "is-hidden");
+    document.getElementById("calendar-sidebar")?.classList.remove("hidden", "is-collapsed");
+    document.getElementById("calendar-sidebar")?.classList.add("is-expanded");
+
+    this.notebookCalendarDock?.show();
+    if (typeof this.notebookCalendarDock?.resetPanelPosition === "function") {
+      this.notebookCalendarDock.resetPanelPosition();
+    }
+    this.notebookCalendarDock?.expand(false);
+    requestAnimationFrame(() => {
+      this.notebookCalendarDock?.remountMini();
+    });
+
+    this.notebookWall.setVisible(true);
+    this.notebookWall.setOverviewDimmed(false);
+    this.notebookWall.setSelectedDay(null);
+
+    this._applyNotebookWallVisibility();
+
+    const bootDate = this.notebookCalendarDock?.getDate() ?? this._getTodayDate();
+    if (bootDate) {
+      this._showWordWeaverPreview(bootDate, getLastView()?.time ?? "09:00");
+    }
+
+    void this._frameOverviewCamera(false);
+    this.bottomNav?.show();
+
+    const startTab = new URLSearchParams(window.location.search).get("tab");
+    if (startTab === "wordweaver") {
+      queueMicrotask(() => void this._handleBottomNavTab("wordweaver", { toggle: false }));
+    }
+  }
+
+  _bindStageBackdrop() {
+    document.getElementById("inkling-stage-backdrop")?.addEventListener("click", () => {
+      this._closeBottomStage();
+    });
+  }
+
+  _showStageBackdrop(show) {
+    const backdrop = document.getElementById("inkling-stage-backdrop");
+    backdrop?.classList.toggle("hidden", !show);
+    backdrop?.setAttribute("aria-hidden", String(!show));
+    document.body.classList.toggle("inkling-stage-backdrop-on", show);
+  }
+
+  _clearBottomTabClasses() {
+    document.body.classList.remove(
+      "inkling-tab-calendar",
+      "inkling-tab-writer",
+      "inkling-tab-wordweaver",
+      "inkling-tab-wall",
+      "inkling-tab-inkling"
+    );
+  }
+
+  _closeBottomStage() {
+    this.exitCalendarMaxLayer();
+    this.bottomNav?.setActiveTab(null);
+    document.body.classList.remove("inkling-stage-open");
+    this._clearBottomTabClasses();
+    this._showStageBackdrop(false);
+    this.layerManager.closeAll();
+    this.notebookWriterPanel.close();
+    this.threadPanel.close();
+    this.inklingPanel.minimize();
+    document.getElementById("inkling-fab")?.classList.add("hidden");
+    if (this.panelMode === "notebook-writer" || this.panelMode === "day-notes") {
+      this.notebookWriterPanel.close();
+      this.threadPanel.close();
+      this.panelMode = null;
+      this.selectedDayId = null;
+      this.notebookWall.setOverviewDimmed(false);
+      this._setMobileWriterScrollLock(false);
+    }
+    void this._frameOverviewCamera(false);
+    this.wordWeaverEmbed?.exitImmersive();
+  }
+
+  _closeActiveLayer() {
+    if (this.layerManager.isOpen("calendar-max")) {
+      this.exitCalendarMaxLayer();
+      return;
+    }
+    if (this.panelMode === "day-notes") {
+      void this.closePanels();
+      return;
+    }
+    if (this.panelMode === "notebook-writer") {
+      void this.closePanels();
+      return;
+    }
+    this._closeBottomStage();
+  }
+
+  _bindLayerLauncher() {
+    document.getElementById("inkling-layer-launcher")?.querySelectorAll("[data-layer]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const layer = btn.getAttribute("data-layer");
+        if (!layer) return;
+        void this._openLayerFromLauncher(layer);
+      });
+    });
+  }
+
+  async _openLayerFromLauncher(layer) {
+    const date = this.notebookCalendarDock?.getDate() ?? this._getTodayDate();
+    switch (layer) {
+      case "calendar-max":
+        if (this.layerManager.isOpen("calendar-max")) this.exitCalendarMaxLayer();
+        else await this.enterCalendarMaxLayer();
+        break;
+      case "writer":
+        if (date) await this.openNotebookDayByDate(date);
+        break;
+      case "wordweaver":
+        void this._handleBottomNavTab("wordweaver", { toggle: this.bottomNav?.getActiveTab() === "wordweaver" });
+        break;
+      case "inkling":
+        void this._handleBottomNavTab("inkling", { toggle: this.bottomNav?.getActiveTab() === "inkling" });
+        break;
+      default:
+        break;
+    }
+  }
+
+  /**
+   * @param {string} tab
+   * @param {{ toggle: boolean }} meta
+   */
+  async _handleBottomNavTab(tab, meta) {
+    if (meta.toggle) {
+      this._closeBottomStage();
+      return;
+    }
+
+    if (this.viewMode === "notification-wall") {
+      await this.exitNotificationWall();
+    }
+
+    this._clearBottomTabClasses();
+    this.notebookWriterPanel.close();
+    this.threadPanel.close();
+    this.inklingPanel.minimize();
+
+    this.bottomNav?.setActiveTab(tab);
+    document.body.classList.add("inkling-stage-open", `inkling-tab-${tab}`);
+    this._showStageBackdrop(true);
+
+    const date = this.notebookCalendarDock?.getDate() ?? this._getTodayDate();
+    const time = getLastView()?.time ?? "09:00";
+
+    switch (tab) {
+      case "calendar":
+        await this.enterCalendarMaxLayer();
+        break;
+      case "writer":
+        await this.openNotebookDayByDate(date);
+        break;
+      case "wordweaver":
+        this.layerManager.open("wordweaver");
+        this.wordWeaverEmbed?.enterImmersive();
+        break;
+      case "wall":
+        this.layerManager.closeAll();
+        this._showStageBackdrop(false);
+        this.notebookWall.setVisible(true);
+        this.notebookWall.setOverviewDimmed(false);
+        void this._frameOverviewCamera(true);
+        break;
+      case "inkling":
+        this.layerManager.open("inkling");
+        document.getElementById("inkling-fab")?.classList.add("hidden");
+        this.inklingPanel.expand();
+        break;
+      default:
+        break;
+    }
+  }
+
+  _showWordWeaverPreview(dateStr, time) {
+    this.wordWeaverEmbed?.show(dateStr, time);
+  }
+
+  _hideWordWeaverPreview() {
+    this.wordWeaverEmbed?.hide();
+  }
+
+  _applyNotebookWallVisibility() {
+    const inklingLayout = this._isInklingNotebookLayout();
+    if (inklingLayout || this.viewMode === "notification-wall") {
+      document.body.classList.add("inkling-notebook-layout");
+    }
+    document.getElementById("calendar-nav")?.classList.remove("is-hidden");
+    document.getElementById("top-chrome")?.classList.remove("is-hidden");
+
+    if (this.viewMode === "notification-wall") return;
+
+    this.notebookWall.setVisible(true);
+    if (inklingLayout && !this.layerManager.isOpen("calendar-max")) {
+      this._showWordWeaverPreview(
+        this.notebookCalendarDock?.getDate() ?? this._getTodayDate(),
+        getLastView()?.time ?? "09:00"
+      );
+    }
+    if (this.panelMode === "notebook-writer" && this.selectedDayId) {
+      const day = getDayById(this.state, this.selectedDayId);
+      if (day) {
+        this._showWordWeaverPreview(day.date, getLastView()?.time ?? "09:00");
+      }
+    }
+    if (inklingLayout && this.viewMode === "overview" && !this.panelMode && !this.layerManager.isOpen("calendar-max")) {
+      void this._frameOverviewCamera(false);
+    }
+
+    this._ensureWallsOpaque();
+  }
+
+  focusNotebookHour(hour) {
+    this._syncHour(String(hour));
+    if (this.panelMode === "notebook-writer") {
+      this.notebookWriterPanel.selectHour(String(hour), false);
+    } else if (this.viewMode === "detail") {
+      this.dayDetailView.pulseHour(String(hour));
+    }
+  }
+
+  _dockMinimizedPanel(id, title, restoreFn) {
+    const dock = this._getMinimizeDock();
+    dock.addWindow(id, {
+      title,
+      onRestore: () => {
+        dock.removeWindow(id);
+        restoreFn();
+        this._syncChromeLayerState();
+      }
+    });
+    this._syncChromeLayerState();
+  }
+
+  _ensureMinimizeDock() {
+    const dock = this._getMinimizeDock();
+    const host = document.getElementById("app");
+    if (host && !host.contains(dock.el)) {
+      dock.mount(host);
+    }
+    if (!dock._chromeBound) {
+      dock._chromeBound = true;
+      dock.onChange = () => this._syncChromeLayerState();
+      document.addEventListener("calendar3d-chrome-change", () => this._syncChromeLayerState());
+    }
+  }
+
+  _getMinimizeDock() {
+    if (this.windowManager?.minimizeDock) {
+      return this.windowManager.minimizeDock;
+    }
+    if (!this._fallbackMinimizeDock) {
+      this._fallbackMinimizeDock = new MinimizeDock();
+      this._fallbackMinimizeDock.mount(document.getElementById("app"));
+    }
+    return this._fallbackMinimizeDock;
+  }
+
+  _syncChromeLayerState() {
+    const dock = this._getMinimizeDock();
+    document.body.classList.toggle("has-minimized-dock", dock.hasWindows());
+  }
+
+  _syncNotebookDockVisibility() {
+    if (this.viewMode === "notification-wall") {
+      this.notebookCalendarDock?.show();
+      return;
+    }
+    this.notebookCalendarDock?.show();
+    this.notebookCalendarDock?.remountMini();
+  }
+
+  async focusMainCalendar() {
+    if (this.viewMode === "notification-wall") {
+      await this.exitNotificationWall();
+    }
+    await this._closeAllPanelsForSwitch();
+    this.controls.enabled = false;
+    await this._frameOverviewCamera(true);
+    this.controls.enabled = true;
+  }
+
+  _bindDetailZoomBack() {
+    this._onDetailWheel = (event) => {
+      if (this.viewMode !== "detail" || this.cameraController.isAnimating) return;
+      if (event.deltaY > 0) {
+        event.preventDefault();
+        this._closeNotebookDetail(true);
+      }
+    };
+    this.renderer.domElement.addEventListener("wheel", this._onDetailWheel, { passive: false });
+  }
+
   async _closeAllPanelsForSwitch() {
     if (this.panelMode === "notebook-detail") {
       await this._closeNotebookDetail(true);
     }
-    if (this.panelMode === "appointments") {
-      this.appointmentPanel.close();
-      this.appointmentWall.setOverviewDimmed(false);
-      this.appointmentWall.setSelectedDay(null);
-      this.panelMode = null;
-      document.body.classList.remove("appointment-panel-open");
+    if (this.panelMode === "notebook-writer") {
+      this.dayWindow.close();
+      this.notebookWriterPanel.close();
+      this.dayDetailView.hide();
+      this.notebookWall.setOverviewDimmed(false);
+      this.notebookWall.setSelectedDay(null);
     }
+    if (this.panelMode === "day-notes") {
+      this.threadPanel.close();
+      this.layerManager.close("day-notes");
+      this.notebookWall.setOverviewDimmed(false);
+      this.notebookWall.setSelectedDay(null);
+    }
+    this.panelMode = null;
     this.selectedDayId = null;
     this.viewMode = "overview";
     this.interaction.setMode("overview");
+    document.body.classList.remove(
+      "notebook-writer-panel-open",
+      "appointment-writer-panel-open"
+    );
+    if (
+      document.body.dataset.panelOpen === "notebook-writer" ||
+      document.body.dataset.panelOpen === "appointment-writer"
+    ) {
+      delete document.body.dataset.panelOpen;
+    }
   }
 
   _openSchedule(mode, dayId) {
@@ -379,62 +1199,34 @@ export class CalendarApp {
     const span = Math.max(bounds.width, bounds.height);
     const mobile = window.innerWidth <= 768;
     const aspect = window.innerWidth / Math.max(window.innerHeight, 1);
+    const calendarMax = this.layerManager.isOpen("calendar-max");
 
-    const distanceMultiplier = mobile || aspect < 1 ? 1.7 : 1.35;
-    const distanceMin = mobile || aspect < 1 ? 15 : 12;
+    const distanceMultiplier = calendarMax
+      ? mobile || aspect < 1
+        ? 1.45
+        : 1.15
+      : mobile || aspect < 1
+        ? 1.7
+        : 1.35;
+    const distanceMin = calendarMax ? (mobile ? 12 : 9) : mobile || aspect < 1 ? 15 : 12;
     const distance = Math.max(distanceMin, span * distanceMultiplier);
-    const y = mobile || aspect < 1 ? 1.6 : 1.2;
+    const y = mobile || aspect < 1 ? 1.6 : calendarMax ? 0.95 : 1.2;
     return new THREE.Vector3(0, y, distance);
   }
 
   _bindWallToggle() {
-    const btnNotebook = document.getElementById("wall-notebook");
-    const btnAppointments = document.getElementById("wall-appointments");
-
-    btnNotebook?.addEventListener("click", () => this.switchWall("notebook"));
-    btnAppointments?.addEventListener("click", () => this.switchWall("appointments"));
-    this._updateWallToggleUI();
+    /* legacy wall toggle removed — 3D wall is always notebook */
   }
 
   _updateWallToggleUI() {
-    const btnNotebook = document.getElementById("wall-notebook");
-    const btnAppointments = document.getElementById("wall-appointments");
-    btnNotebook?.classList.toggle("is-active", this.activeWall === "notebook");
-    btnAppointments?.classList.toggle("is-active", this.activeWall === "appointments");
-    btnNotebook?.setAttribute("aria-pressed", String(this.activeWall === "notebook"));
-    btnAppointments?.setAttribute("aria-pressed", String(this.activeWall === "appointments"));
-
-    const hint = document.getElementById("overview-hint");
-    if (hint) {
-      hint.textContent =
-        this.activeWall === "appointments"
-          ? "Appointments wall — click a day to manage scheduled visits"
-          : "Notebook wall — click a day to open threaded notes and the 3D hour grid";
-    }
+    this._syncChromeLayerState();
   }
 
   async switchWall(target) {
-    if (this.viewMode === "notification-wall") return;
-    if (this.activeWall === target || this.wallTransition.isBusy) return;
-    if (this.viewMode !== "overview" || this.panelMode) {
-      await this._closeAllPanelsForSwitch();
-    }
-
-    this.notebookWall.setSelectedDay(null);
-    this.appointmentWall.setSelectedDay(null);
-    this.notebookWall.setOverviewDimmed(false);
-    this.appointmentWall.setOverviewDimmed(false);
-
-    await this.wallTransition.switchTo(target);
-
-    this.activeWall = target;
-    this.interaction.setActiveWallType(target);
-    this._updateWallToggleUI();
+    if (target !== "notebook") return;
+    this.activeWall = "notebook";
+    this._applyNotebookWallVisibility();
     this._syncMobileToolbarState();
-
-    const center = this._getActiveWall().getCenterTarget();
-    this.controls.target.copy(center);
-    this.controls.update();
   }
 
   async enterNotificationWall() {
@@ -447,13 +1239,13 @@ export class CalendarApp {
     this.interaction.setMode("notification");
 
     this.notebookWall.setVisible(false);
-    this.appointmentWall.setVisible(false);
+    this.notificationService.tick();
+    this.notificationService.setFastTick(true);
+
+    document.body.classList.add("inkling-notebook-layout", "inkling-notification-wall");
     this.notificationWall.buildFromState(this.state);
     this.notificationWall.setVisible(true);
-
-    document.getElementById("wall-toggle")?.classList.add("is-hidden");
-    const hint = document.getElementById("overview-hint");
-    if (hint) hint.textContent = "Notification history — click an entry to jump to that day";
+    this.notebookCalendarDock?.show();
 
     this.controls.enabled = false;
     const center = this.notificationWall.getCenterTarget();
@@ -468,25 +1260,19 @@ export class CalendarApp {
   async exitNotificationWall() {
     if (this.viewMode !== "notification-wall") return;
 
+    this.notificationService.setFastTick(false);
     this.notificationWall.setVisible(false);
     this.viewMode = "overview";
     this.interaction.setMode("overview");
+    document.body.classList.remove("inkling-notification-wall");
 
-    document.getElementById("wall-toggle")?.classList.remove("is-hidden");
     this._updateWallToggleUI();
 
-    const targetWall = this._wallBeforeNotification || "notebook";
-    if (targetWall === "appointments") {
-      this.notebookWall.setVisible(false);
-      this.appointmentWall.setVisible(true);
-      this.activeWall = "appointments";
-    } else {
-      this.notebookWall.setVisible(true);
-      this.appointmentWall.setVisible(false);
-      this.activeWall = "notebook";
-    }
-    this.interaction.setActiveWallType(this.activeWall);
-    this._updateWallToggleUI();
+    this.activeWall = "notebook";
+    this.notebookWall.setVisible(true);
+    this.interaction.setActiveWallType("notebook");
+    this._applyNotebookWallVisibility();
+    this._syncNotebookDockVisibility();
 
     this.controls.enabled = false;
     await this._frameOverviewCamera(true);
@@ -520,27 +1306,9 @@ export class CalendarApp {
 
     await this._ensureMonthForDay(day);
 
-    const wall =
-      target.wall ||
-      (target.type === "appointment" ? "appointments" : "notebook");
     const hour = target.hour != null ? String(target.hour) : null;
-
-    if (wall === "appointments" || target.type === "appointment") {
-      if (this.activeWall !== "appointments") {
-        await this.switchWall("appointments");
-      }
-      await this.openAppointmentPanel(target.dayId);
-      return;
-    }
-
-    if (this.activeWall !== "notebook") {
-      await this.switchWall("notebook");
-    }
-    await this.enterNotebookDetail(target.dayId);
-    if (hour != null) {
-      this._syncHour(hour);
-      this.dayDetailView.pulseHour(hour);
-    }
+    const writerMode = target.type === "appointment" ? "appointments" : "notebook";
+    await this.openNotebookWriterPanel(target.dayId, hour ?? "0", writerMode);
   }
 
   async _ensureMonthForDay(day) {
@@ -595,9 +1363,7 @@ export class CalendarApp {
         this.state = state;
         this._syncPanelsState();
         this.notebookWall.buildFromState(this.state, { skipLayout: false });
-        this.appointmentWall.buildFromState(this.state, { skipLayout: true });
-        this.appointmentWall.group.position.copy(this.notebookWall.group.position);
-        this._frameOverviewCamera(true);
+        void this._frameOverviewCamera(true);
         persistCalendarState(this.state);
         this._updateNavLabels();
       },
@@ -607,7 +1373,9 @@ export class CalendarApp {
   }
 
   _frameOverviewCamera(animate) {
-    const center = this._getActiveWall().getCenterTarget();
+    const wall = this._getActiveWall();
+    if (!wall) return;
+    const center = wall.getCenterTarget();
     const offset = this._overviewCameraOffset();
     const desired = center.clone().add(offset);
 
@@ -615,10 +1383,13 @@ export class CalendarApp {
       this.camera.position.copy(desired);
       this.controls.target.copy(center);
       this.controls.update();
+      this._saveOverviewBookmark();
       return;
     }
 
-    this.cameraController.zoomToOverview(center, offset);
+    return this.cameraController.zoomToOverview(center, offset).then(() => {
+      this._saveOverviewBookmark();
+    });
   }
 
   _handleViewportResize() {
@@ -634,13 +1405,11 @@ export class CalendarApp {
     if (this.viewMode !== "overview" || this.panelMode || this.viewMode === "notification-wall") {
       return;
     }
-    this._frameOverviewCamera(false);
+    void this._frameOverviewCamera(false);
   }
 
   _handleCanvasTapEmpty() {
-    // #region agent log
-    fetch('http://127.0.0.1:7657/ingest/92d10a13-16b2-4bee-be33-e8a55df63a55',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6a598c'},body:JSON.stringify({sessionId:'6a598c',runId:'initial-3',hypothesisId:'H8',location:'CalendarApp.js:_handleCanvasTapEmpty',message:'Canvas empty tap handler fired',data:{isMobile:this._isMobileViewport,viewMode:this.viewMode,panelMode:this.panelMode},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+
     // Mobile-first: outside tap closes open overlays before interacting further.
     if (!this._isMobileViewport) return;
 
@@ -658,11 +1427,25 @@ export class CalendarApp {
       this.exitNotificationWall();
       return;
     }
-    if (this.panelMode === "appointments" || this.panelMode === "notebook-detail") {
+    if (this.panelMode === "day-notes" || this.panelMode === "notebook-detail") {
       this.closePanels();
       return;
     }
     this.notificationSettings?.close?.();
+  }
+
+  _setMobileWriterScrollLock(active) {
+    document.body.classList.toggle("inkling-writer-scroll-lock", Boolean(active));
+    if (!this.controls || !this._isMobileViewport) return;
+    if (active) {
+      this.controls.enabled = false;
+    } else if (
+      this.panelMode !== "notebook-writer" &&
+      this.panelMode !== "day-notes" &&
+      this.viewMode !== "detail"
+    ) {
+      this.controls.enabled = true;
+    }
   }
 
   _configureMobileControls() {
@@ -726,21 +1509,22 @@ export class CalendarApp {
     bar.className = "mobile-bottom-toolbar";
     bar.setAttribute("aria-label", "Mobile quick actions");
     bar.innerHTML = `
-      <button type="button" class="mobile-toolbar-btn" data-action="notebook">${iconDay}<span>Notebook</span></button>
-      <button type="button" class="mobile-toolbar-btn" data-action="appointments">${iconHour}<span>Appointments</span></button>
+      <button type="button" class="mobile-toolbar-btn" data-action="wall">${iconDay}<span>The Wall</span></button>
+      <button type="button" class="mobile-toolbar-btn" data-action="writer">${iconHour}<span>Writer</span></button>
       <button type="button" class="mobile-toolbar-btn" data-action="notifications">${iconBell}<span>Notifications</span></button>
       <button type="button" class="mobile-toolbar-btn" data-action="settings">${iconSettings}<span>Settings</span></button>
     `;
 
-    bar.querySelector('[data-action="notebook"]')?.addEventListener("click", async () => {
+    bar.querySelector('[data-action="wall"]')?.addEventListener("click", async () => {
       if (!this._isMobileViewport) return;
       if (this.viewMode === "notification-wall") await this.exitNotificationWall();
-      if (this.activeWall !== "notebook") await this.switchWall("notebook");
+      void this._handleBottomNavTab("wall", { toggle: false });
     });
-    bar.querySelector('[data-action="appointments"]')?.addEventListener("click", async () => {
+    bar.querySelector('[data-action="writer"]')?.addEventListener("click", async () => {
       if (!this._isMobileViewport) return;
       if (this.viewMode === "notification-wall") await this.exitNotificationWall();
-      if (this.activeWall !== "appointments") await this.switchWall("appointments");
+      const date = this.notebookCalendarDock?.getDate() ?? this._getTodayDate();
+      if (date) await this.openNotebookDayByDate(date);
     });
     bar.querySelector('[data-action="notifications"]')?.addEventListener("click", async () => {
       if (!this._isMobileViewport) return;
@@ -763,8 +1547,8 @@ export class CalendarApp {
     this._mobileToolbarEl.querySelectorAll(".mobile-toolbar-btn").forEach((btn) => {
       const action = btn.getAttribute("data-action");
       const active =
-        (action === "notebook" && this.activeWall === "notebook" && this.viewMode !== "notification-wall") ||
-        (action === "appointments" && this.activeWall === "appointments" && this.viewMode !== "notification-wall") ||
+        (action === "wall" && this.viewMode !== "notification-wall" && !this.panelMode) ||
+        (action === "writer" && this.panelMode === "notebook-writer") ||
         (action === "notifications" && this.viewMode === "notification-wall");
       btn.classList.toggle("is-active", active);
     });
@@ -799,6 +1583,58 @@ export class CalendarApp {
     this.installPrompt.mount();
   }
 
+  _mountOsShell() {
+    // Phase OS shell bootstrap hook: launcher + window manager integration.
+    // Remove by deleting this method, imports, and constructor call.
+    if (typeof document === "undefined") return;
+    const root = document.getElementById("app");
+    if (!root || root.querySelector(".os-shell")) return;
+
+    const shell = document.createElement("div");
+    shell.className = "os-shell";
+    shell.setAttribute("role", "application");
+    shell.setAttribute("aria-label", "OS shell");
+    root.appendChild(shell);
+
+    const apps = SHELL_APPS;
+
+    this.windowManager = new WindowManager({ apps, calendarApp: this });
+    this.windowManager.mount(shell);
+
+    this.appLauncher = new AppLauncher({
+      apps,
+      onOpenApp: (appId) => this._openShellApp(appId)
+    });
+    this.appLauncher.mount(shell);
+  }
+
+  /**
+   * OS launcher — Notebook Calendar + WordWeaver satellite panels (linked to in-page dock / embed).
+   * @param {string} appId
+   */
+  async _openShellApp(appId) {
+    if (!this.windowManager) return;
+
+    const date = this.notebookCalendarDock?.getDate() ?? this._getTodayDate();
+
+    if (appId === "wordweaver") {
+      this._showWordWeaverPreview(date, getLastView()?.time ?? "09:00");
+      await this.windowManager.openApp("wordweaver", { initialView: date });
+      return;
+    }
+
+    if (appId === "notebook-calendar") {
+      this.notebookCalendarDock?.show();
+      if (date) await this.syncCalendarMonth(date);
+      await this.windowManager.openApp("notebook-calendar", {
+        initialView: date ?? "today"
+      });
+      return;
+    }
+
+    await this.windowManager.openApp(appId, { initialView: date ?? "today" });
+  }
+
   _applyNotificationTheme() {
     const settings = loadNotificationSettings();
     const mode = settings.theme ?? "auto";
@@ -819,9 +1655,6 @@ export class CalendarApp {
     // Also set on :root so `:root.theme-light` selectors work reliably.
     document.documentElement.classList.remove("theme-light", "theme-dark");
     document.documentElement.classList.add(target);
-    // #region agent log
-    fetch('http://127.0.0.1:7657/ingest/92d10a13-16b2-4bee-be33-e8a55df63a55',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6a598c'},body:JSON.stringify({sessionId:'6a598c',runId:'initial',hypothesisId:'H3',location:'CalendarApp.js:_applyNotificationTheme',message:'Applied theme classes',data:{mode,target,bodyClass:document.body.className,htmlClass:document.documentElement.className},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
   }
 
 }

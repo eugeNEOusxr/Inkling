@@ -9,6 +9,15 @@ html, body {
 
 /* Notification & UI theme variables */
 :root {
+  /* Phase visual remodel aliases.
+     Rollback: remove alias variables and enhancement override block below. */
+  --gold-100: #f7e7b8;
+  --gold-500: #d4af37;
+  --gold-700: #b8860b;
+  --charcoal-900: #0b0c0f;
+  --charcoal-700: #111217;
+  --aqua-400: #4ee6e6;
+  --aqua-200: #a8f7f7;
   --bg: #f8f9fa;
   --panel-bg: #ffffff;
   --text: #1a1a1a;
@@ -133,21 +142,91 @@ body.theme-light .notification-theme-select {
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 10px 18px;
-  background: rgba(10, 14, 26, 0.9);
-  border: 1px solid rgba(100, 116, 139, 0.4);
+  gap: 12px;
+  padding: 8px 14px;
+  background: linear-gradient(
+    180deg,
+    rgba(14, 20, 36, 0.92) 0%,
+    rgba(8, 12, 24, 0.96) 100%
+  );
+  border: 1px solid rgba(78, 230, 230, 0.22);
   border-radius: 999px;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(16px) saturate(1.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(212, 175, 55, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(212, 175, 55, 0.12);
   z-index: 20;
 }
 
 #calendar-nav-month {
-  font-size: 16px;
-  font-weight: 600;
-  min-width: 150px;
+  display: inline-block;
+  min-width: 168px;
+  padding: 6px 16px;
+  font-size: 19px;
+  font-weight: 700;
   text-align: center;
+  letter-spacing: 0.05em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: #fff8e7;
+  background: linear-gradient(
+    180deg,
+    rgba(22, 32, 52, 0.88) 0%,
+    rgba(10, 16, 30, 0.94) 100%
+  );
+  border-radius: 10px;
+  border: 1px solid rgba(78, 230, 230, 0.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 248, 231, 0.12),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(212, 175, 55, 0.22),
+    0 2px 10px rgba(0, 0, 0, 0.35);
+  -webkit-text-stroke: 0.45px rgba(8, 12, 24, 0.85);
+  paint-order: stroke fill;
+  text-shadow:
+    -1px -1px 0 rgba(8, 12, 24, 0.95),
+    1px -1px 0 rgba(8, 12, 24, 0.95),
+    -1px 1px 0 rgba(8, 12, 24, 0.95),
+    1px 1px 0 rgba(8, 12, 24, 0.95),
+    0 2px 4px rgba(0, 0, 0, 0.75),
+    0 0 14px rgba(212, 175, 55, 0.22);
+}
+
+body.theme-light #calendar-nav-month {
+  color: #422006;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 251, 235, 0.98) 0%,
+    rgba(254, 243, 199, 0.96) 100%
+  );
+  border-color: rgba(180, 130, 20, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(180, 140, 40, 0.15),
+    0 0 0 1px rgba(146, 64, 14, 0.12),
+    0 2px 8px rgba(120, 53, 15, 0.12);
+  -webkit-text-stroke: 0.4px rgba(255, 251, 235, 0.9);
+  text-shadow:
+    -1px -1px 0 rgba(255, 255, 255, 0.85),
+    1px -1px 0 rgba(255, 255, 255, 0.85),
+    -1px 1px 0 rgba(255, 255, 255, 0.85),
+    1px 1px 0 rgba(255, 255, 255, 0.85),
+    0 1px 2px rgba(120, 53, 15, 0.35);
+}
+
+body.theme-light #calendar-nav {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 252, 245, 0.96) 0%,
+    rgba(254, 243, 199, 0.94) 100%
+  );
+  border-color: rgba(180, 140, 40, 0.35);
+  box-shadow:
+    0 8px 24px rgba(120, 53, 15, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 0 rgba(180, 140, 40, 0.12);
 }
 
 #calendar-nav button {
@@ -242,28 +321,6 @@ body.theme-light .notification-theme-select {
   color: #f8fafc;
 }
 
-.overview-hint {
-  position: absolute;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  margin: 0;
-  padding: 10px 18px;
-  font-size: 13px;
-  color: #94a3b8;
-  background: rgba(10, 14, 26, 0.8);
-  border-radius: 8px;
-  border: 1px solid #334155;
-  pointer-events: none;
-  z-index: 15;
-}
-
-body.detail-mode .overview-hint {
-  left: 22%;
-  transform: translateX(-50%);
-  font-size: 12px;
-}
-
 /* Hour editor — bottom-left, 3D grid visible beside it */
 #hour-editor-panel {
   position: absolute;
@@ -325,8 +382,13 @@ body.detail-mode .overview-hint {
   margin-bottom: 0;
 }
 
-body.detail-mode #thread-panel {
+body.detail-mode:not(.day-window-open) #thread-panel {
   left: min(42%, 480px);
+}
+
+body.day-window-open.detail-mode #thread-panel,
+body.day-window-open.detail-mode #hour-editor-panel {
+  display: block;
 }
 
 /* In-app alerts */
@@ -366,6 +428,65 @@ body.detail-mode #thread-panel {
 
 .in-app-alert--alarm {
   border-left: 4px solid #f87171;
+  min-width: min(320px, 92vw);
+}
+
+.in-app-alert-snooze {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(248, 113, 113, 0.25);
+}
+
+.in-app-alert-snooze-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fca5a5;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.in-app-alert-snooze-chip {
+  min-width: 32px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(30, 15, 15, 0.8);
+  color: #fecaca;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.in-app-alert-snooze-chip.is-selected,
+.in-app-alert-snooze-chip:hover {
+  border-color: rgba(212, 175, 55, 0.65);
+  background: rgba(212, 175, 55, 0.15);
+  color: #fde68a;
+}
+
+.in-app-alert-snooze-unit {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.in-app-alert-snooze-primary {
+  margin-left: auto;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  background: rgba(127, 29, 29, 0.35);
+  color: #fde68a;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.in-app-alert-snooze-primary:hover {
+  background: rgba(153, 27, 27, 0.5);
 }
 
 .in-app-alert--appointment {
@@ -568,10 +689,6 @@ body.detail-mode #thread-panel {
   color: #f1f5f9;
   box-sizing: border-box;
   font-family: inherit;
-}
-
-body.appointment-panel-open .overview-hint {
-  left: 22%;
 }
 
 .in-app-alert strong {
@@ -1162,6 +1279,146 @@ body.appointment-panel-open .overview-hint {
   margin-bottom: 16px;
 }
 
+/* Circular analog hour picker (appointments + reminders) — gold + aqua */
+.circular-clock-mount {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+
+.circular-clock {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.circular-clock__bezel {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(200px, 68vw);
+  height: min(200px, 68vw);
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 30%, rgba(212, 175, 55, 0.12), transparent 55%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.circular-clock__svg {
+  position: relative;
+  z-index: 1;
+  width: min(220px, 72vw);
+  height: auto;
+  touch-action: none;
+  cursor: pointer;
+  filter: drop-shadow(0 10px 28px rgba(56, 189, 248, 0.22));
+}
+
+.circular-clock__ring {
+  fill: none;
+  stroke: url(#clock-ring-gold);
+  stroke-width: 4;
+}
+
+.circular-clock__face {
+  stroke: rgba(212, 175, 55, 0.35);
+  stroke-width: 2;
+}
+
+.circular-clock__tick {
+  stroke: rgba(78, 230, 230, 0.35);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.circular-clock__tick--major {
+  stroke: rgba(212, 175, 55, 0.75);
+  stroke-width: 2.5;
+}
+
+.circular-clock__numeral {
+  fill: #fde68a;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.circular-clock__icon {
+  fill: rgba(168, 247, 247, 0.85);
+  pointer-events: none;
+}
+
+.circular-clock--alarm .circular-clock__icon {
+  fill: #fca5a5;
+}
+
+.circular-clock__hand {
+  stroke: #a5f3fc;
+  stroke-width: 4;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.55));
+}
+
+.circular-clock--alarm .circular-clock__hand {
+  stroke: #fecaca;
+  filter: drop-shadow(0 0 8px rgba(248, 113, 113, 0.5));
+}
+
+.circular-clock__hub {
+  fill: #d4af37;
+  stroke: rgba(168, 247, 247, 0.5);
+  stroke-width: 2;
+}
+
+.circular-clock__controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.circular-clock__ampm {
+  display: flex;
+  gap: 6px;
+}
+
+.circular-clock__ampm-btn {
+  min-width: 48px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(78, 230, 230, 0.35);
+  background: rgba(10, 16, 30, 0.85);
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.circular-clock__ampm-btn.is-active {
+  border-color: rgba(212, 175, 55, 0.65);
+  background: rgba(212, 175, 55, 0.18);
+  color: #fde68a;
+}
+
+.circular-clock--alarm .circular-clock__ampm-btn.is-active {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: rgba(127, 29, 29, 0.35);
+  color: #fecaca;
+}
+
+.circular-clock__readout {
+  font-size: 15px;
+  font-weight: 600;
+  color: #a5f3fc;
+  letter-spacing: 0.02em;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
 .time-unit-picker {
   display: flex;
   flex-direction: column;
@@ -1305,12 +1562,27 @@ body.appointment-panel-open .overview-hint {
   color: #fbbf24;
 }
 
-/* Notification bell + dropdown */
+/* Notification bell + dropdown (sidebar / notify-bar; see style-enhancements.css) */
 .notification-dropdown {
-  position: absolute;
-  top: 16px;
-  right: 20px;
-  z-index: 110;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notification-gear-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(10, 14, 26, 0.92);
+  color: #cbd5e1;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.notification-gear-btn:hover {
+  border-color: #818cf8;
+  color: #e0e7ff;
 }
 
 .notification-bell-btn {
@@ -1659,22 +1931,17 @@ body.appointment-panel-open .overview-hint {
   top: 72px;
 }
 
-/* Notification wall panel */
+/* Notification wall panel — holographic shell in style-enhancements.css */
 #notification-wall-panel {
-  position: absolute;
+  position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
-  left: min(32%, 380px);
-  z-index: 28;
+  left: min(28%, 340px);
+  z-index: 10380;
   pointer-events: auto;
-  background: linear-gradient(
-    90deg,
-    rgba(2, 3, 8, 0.12) 0%,
-    rgba(4, 6, 12, 0.97) 14%,
-    rgba(3, 4, 10, 0.99) 100%
-  );
-  border-left: 1px solid rgba(99, 102, 241, 0.28);
+  background: transparent;
+  border: none;
 }
 
 #notification-wall-panel.hidden {
@@ -1685,9 +1952,10 @@ body.appointment-panel-open .overview-hint {
   height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 96px 18px 20px;
+  padding: 0;
   box-sizing: border-box;
-  gap: 10px;
+  gap: 0;
+  overflow: hidden;
 }
 
 .notification-wall-inner .panel-hint {
@@ -1798,11 +2066,23 @@ body.appointment-panel-open .overview-hint {
 
 .notification-wall-scroll-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 10px 16px 4px;
+  padding: 4px 6px 2px 12px;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(168, 247, 247, 0.45) rgba(10, 14, 26, 0.9);
+}
+
+.notification-wall-scroll-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.notification-wall-scroll-content::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #d4af37, #4ee6e6);
+  border-radius: 999px;
 }
 
 .notification-wall-scroll-shadow {
@@ -2062,10 +2342,6 @@ body.appointment-panel-open .overview-hint {
   font-size: 13px;
   line-height: 1.45;
   color: #cbd5e1;
-}
-
-body.notification-wall-open .overview-hint {
-  left: 22%;
 }
 
 body.notification-wall-open #wall-toggle.is-hidden {
@@ -2437,7 +2713,8 @@ body.notification-wall-open #wall-toggle.is-hidden {
 
   #calendar-nav-month {
     min-width: 0;
-    font-size: 15px;
+    font-size: 17px;
+    padding: 5px 12px;
   }
 
   #calendar-nav button,
@@ -2472,10 +2749,6 @@ body.notification-wall-open #wall-toggle.is-hidden {
     justify-content: flex-start;
   }
 
-  .overview-hint {
-    display: none;
-  }
-
   #in-app-alerts {
     top: 120px;
     left: 10px;
@@ -2483,19 +2756,25 @@ body.notification-wall-open #wall-toggle.is-hidden {
     max-width: none;
   }
 
-  /* Panels become full-screen overlays */
-  #thread-panel,
-  #appointment-panel,
+  /* Panels become full-screen overlays (unless inside day window) */
+  body:not(.day-window-open) #thread-panel,
+  body:not(.day-window-open) #appointment-panel,
   #notification-wall-panel {
     left: 0;
     right: 0;
     top: 0;
     bottom: 0;
     border-left: none;
-    z-index: 60;
-    background: rgba(6, 10, 18, 0.98);
-    backdrop-filter: blur(10px);
+    z-index: 10380;
+    background: transparent;
     animation: panel-slide-in 0.24s ease-out;
+  }
+
+  #notification-wall-panel .notification-wall-inner {
+    top: 56px;
+    right: 8px;
+    bottom: 2px;
+    left: 8px;
   }
 
   @keyframes panel-slide-in {
@@ -2554,12 +2833,7 @@ body.notification-wall-open #wall-toggle.is-hidden {
     padding: 10px;
   }
 
-  /* Notification dropdown as bottom sheet */
-  .notification-dropdown {
-    right: 10px;
-    top: 12px;
-  }
-
+  /* Notification dropdown as bottom sheet (mobile) */
   .notification-dropdown-menu {
     position: fixed;
     left: 0;
@@ -2601,9 +2875,8 @@ body.notification-wall-open #wall-toggle.is-hidden {
   }
 
   /* Notification wall / settings as full-screen mobile sheets */
-  .notification-wall-inner {
-    padding: 74px 10px 12px;
-    gap: 8px;
+  .notification-wall-scroll-content {
+    padding-bottom: 2px;
   }
 
   .notification-wall-header h2 {
@@ -2726,5 +2999,468 @@ body.notification-wall-open #wall-toggle.is-hidden {
   .install-prompt * {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* UX pass: DayScroller, MinimizeDock, notebook panel — see style-enhancements.css */
+
+/* DayScroller base layout */
+.day-scroller {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.day-scroller__track-wrap {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.day-scroller__track {
+  display: flex;
+  gap: 4px;
+}
+
+/* Legacy minimize dock — replaced by .chrome-rail in style-enhancements.css */
+.minimize-dock {
+  display: none;
+}
+
+/* OS shell layer for AppLauncher + WindowManager.
+   Rollback: remove this block and CalendarApp _mountOsShell hook. */
+.os-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 10120;
+  pointer-events: none;
+}
+
+body.detail-mode .os-shell,
+body.embedded-app .os-shell {
+  visibility: hidden;
+}
+
+.day-hover-preview {
+  position: fixed;
+  z-index: 10090;
+  width: min(300px, 88vw);
+  max-height: min(280px, 42vh);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid rgba(78, 230, 230, 0.35);
+  background: linear-gradient(180deg, rgba(18, 26, 44, 0.97) 0%, rgba(10, 14, 26, 0.98) 100%);
+  color: #e2e8f0;
+  pointer-events: none;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(212, 175, 55, 0.2);
+  overflow: hidden;
+}
+
+.day-hover-preview.hidden {
+  display: none;
+}
+
+.day-hover-preview__header {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.6);
+}
+
+.day-hover-preview__title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fde68a;
+  letter-spacing: 0.03em;
+}
+
+.day-hover-preview__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 8px 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 140, 248, 0.5) transparent;
+}
+
+.day-hover-preview__list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.day-hover-preview__list::-webkit-scrollbar-thumb {
+  background: rgba(129, 140, 248, 0.45);
+  border-radius: 999px;
+}
+
+.day-hover-preview__row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 6px 4px;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.35);
+}
+
+.day-hover-preview__row:last-child {
+  border-bottom: none;
+}
+
+.day-hover-preview__time {
+  font-size: 12px;
+  font-weight: 700;
+  color: #a8f7f7;
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+}
+
+.day-hover-preview__note-wrap {
+  min-width: 0;
+}
+
+.day-hover-preview__kind {
+  display: block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+
+.day-hover-preview__text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #f1f5f9;
+  word-break: break-word;
+}
+
+.day-hover-preview__empty {
+  margin: 0;
+  padding: 12px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.app-notebook-calendar,
+.app-notebook-calendar__frame {
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+  border: 0;
+  border-radius: 8px;
+  background: #0a0f18;
+}
+
+.os-app-launcher__title {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.os-app-launcher {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  width: min(320px, calc(100vw - 32px));
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  background: rgba(10, 14, 26, 0.58);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.34);
+  padding: 12px;
+  pointer-events: auto;
+}
+
+.os-app-launcher__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(98px, 1fr));
+  gap: 10px;
+}
+
+.os-app-icon {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 6px;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.os-app-icon:hover,
+.os-app-icon:focus-visible {
+  border-color: rgba(129, 140, 248, 0.75);
+  background: rgba(30, 41, 59, 0.55);
+  outline: none;
+}
+
+.os-app-icon__image {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.os-app-icon__label {
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.os-window-manager {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.os-window.os-window--notebook-compact {
+  width: min(300px, calc(100vw - 24px));
+  min-height: 0;
+  border-color: rgba(212, 175, 55, 0.4);
+  background: rgba(10, 14, 26, 0.88);
+  backdrop-filter: blur(10px);
+}
+
+.os-window.os-window--notebook-compact .os-window__body {
+  min-height: 0;
+  max-height: 200px;
+  padding: 8px 10px;
+}
+
+.os-window {
+  position: absolute;
+  width: min(560px, calc(100vw - 24px));
+  min-height: 260px;
+  border: 1px solid rgba(99, 102, 241, 0.45);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(10, 14, 26, 0.95);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.48);
+  pointer-events: auto;
+  transition: transform 140ms ease, opacity 140ms ease;
+}
+
+.os-window.is-focused {
+  border-color: rgba(129, 140, 248, 0.9);
+}
+
+.os-window.is-minimized {
+  opacity: 0;
+  transform: scale(0.98);
+  pointer-events: none;
+}
+
+.os-window__titlebar {
+  height: 38px;
+  padding: 0 10px;
+  background: rgba(15, 23, 42, 0.92);
+  border-bottom: 1px solid rgba(51, 65, 85, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: grab;
+  user-select: none;
+}
+
+.os-window__title {
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.os-window__actions {
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+  position: relative;
+  z-index: 2;
+}
+
+.os-window__btn {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(71, 85, 105, 0.8);
+  background: rgba(15, 23, 42, 0.85);
+  color: #cbd5e1;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  flex-shrink: 0;
+}
+
+.os-window__btn:hover {
+  background: rgba(51, 65, 85, 0.9);
+  color: #f8fafc;
+}
+
+.os-window__btn--close {
+  border-color: rgba(239, 68, 68, 0.75);
+  color: #fecaca;
+  font-weight: 700;
+}
+
+.os-window__btn--close:hover {
+  background: rgba(127, 29, 29, 0.85);
+  border-color: #f87171;
+  color: #fff;
+}
+
+.os-window__body {
+  min-height: 220px;
+  max-height: min(65vh, 620px);
+  overflow: auto;
+  padding: 14px;
+  color: #e2e8f0;
+}
+
+.app-notebook-calendar__title {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.app-notebook-calendar__description {
+  margin: 0 0 8px;
+  color: #cbd5e1;
+}
+
+.app-notebook-calendar__meta {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.os-window-error {
+  margin: 0;
+  color: #fca5a5;
+}
+
+/* Phase A visual foundation overrides.
+   Rollback: remove this block and style-enhancements.css. */
+#calendar-nav,
+.wall-toggle,
+.notification-dropdown-menu,
+#thread-panel,
+#appointment-panel,
+#notification-wall-panel,
+.modal-dialog,
+.notification-settings-dialog,
+.os-app-launcher,
+.os-window {
+  border-color: rgba(212, 175, 55, 0.28);
+  box-shadow: var(--shadow-elevation-1), inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+#calendar-nav button,
+.btn-secondary,
+.btn-primary,
+.wall-toggle-btn.is-active {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.34), rgba(17, 18, 23, 0.85));
+  border-color: rgba(212, 175, 55, 0.56);
+}
+
+.notification-bell-btn,
+.mobile-toolbar-btn.is-active {
+  box-shadow: 0 0 22px rgba(78, 230, 230, 0.2);
+  border-color: rgba(78, 230, 230, 0.5);
+}
+
+.panel-card,
+.thread-sidebar,
+.thread-main,
+.appointment-card,
+.note-card,
+.notification-sound-preview-card {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.06));
+  border-radius: 12px;
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.6);
+}
+
+.panel-card::before,
+.thread-sidebar::before,
+.thread-main::before,
+.appointment-card::before,
+.note-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("/assets/textures/panel-grain.png");
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+.wall--notebook #app {
+  background: radial-gradient(circle at 10% 8%, rgba(212, 175, 55, 0.08), transparent 35%);
+  transition: background 420ms ease;
+}
+
+.wall--appointments #app {
+  background: radial-gradient(circle at 90% 12%, rgba(78, 230, 230, 0.1), transparent 38%);
+  transition: background 420ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .os-window,
+  .os-window *,
+  .os-app-launcher,
+  .os-app-launcher * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Phase C/D perf and accessibility fallback classes.
+   Rollback: remove this fallback block. */
+html.low-power .visual-overlay,
+html.low-power .visual-orb-layer,
+html.low-power .visual-orb {
+  display: none !important;
+}
+
+@keyframes orbFloat {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(0, -10px, 0) scale(1.04); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .visual-overlay,
+  .visual-orb-layer,
+  .visual-orb {
+    display: none !important;
+  }
+
+  #app,
+  #three-canvas,
+  .panel-card,
+  .thread-sidebar,
+  .thread-main,
+  .appointment-card,
+  .note-card,
+  .notification-sound-preview-card {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --gold-500: #f5cf58;
+    --aqua-400: #7ff3f3;
+    --text: #ffffff;
+    --text-secondary: #d1d5db;
   }
 }

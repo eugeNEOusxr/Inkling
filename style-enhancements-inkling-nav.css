@@ -1,0 +1,427 @@
+/* Inkling bottom nav + centered stage panels — loaded via import in enhancements tail */
+
+body.inkling-notebook-layout {
+  --writer-scroll-track: rgba(26, 31, 40, 0.96);
+  --writer-scroll-rail: #252b36;
+  --writer-scroll-thumb-aqua: rgba(78, 230, 230, 0.78);
+  --writer-scroll-thumb-gold: rgba(212, 175, 55, 0.72);
+  --inkling-bottom-nav-h: 62px;
+}
+
+/* Bottom navigation */
+.inkling-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10300;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(180deg, rgba(26, 31, 40, 0.92), rgba(12, 16, 24, 0.98));
+  border-top: 1px solid rgba(78, 230, 230, 0.22);
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.inkling-bottom-nav.hidden {
+  display: none;
+}
+
+.inkling-bottom-nav__btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 48px;
+  padding: 4px 2px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(20, 28, 42, 0.6);
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.inkling-bottom-nav__btn.is-active {
+  color: #e0fffe;
+  border-color: rgba(78, 230, 230, 0.45);
+  background: rgba(78, 230, 230, 0.12);
+  box-shadow: 0 0 16px rgba(78, 230, 230, 0.15);
+}
+
+.inkling-bottom-nav__icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* Stage backdrop */
+.inkling-stage-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10180;
+  background: rgba(4, 8, 16, 0.62);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+
+.inkling-stage-backdrop.hidden {
+  display: none;
+  pointer-events: none;
+}
+
+body.inkling-stage-backdrop-on #three-canvas {
+  filter: brightness(0.45) saturate(0.85);
+}
+
+/* Hide legacy mobile toolbar + wall toggle on phone */
+body.inkling-notebook-layout .mobile-bottom-toolbar {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  body.inkling-notebook-layout #wall-toggle.wall-toggle {
+    display: none !important;
+  }
+}
+
+/* Centered writer modal — tablet/desktop; phone uses layers.css full-height sheet */
+@media (min-width: 769px) {
+body.inkling-notebook-layout #notebook-writer-panel:not(.hidden) {
+  position: fixed !important;
+  inset: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  z-index: 10250 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--inkling-chrome-h, 56px) + 8px) 12px calc(var(--inkling-bottom-nav-h) + 12px);
+  pointer-events: none !important;
+  background: transparent !important;
+  overflow: hidden !important;
+}
+
+body.inkling-notebook-layout #notebook-writer-panel:not(.hidden) .notebook-writer-panel-inner {
+  position: relative !important;
+  width: min(560px, 100%) !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  height: auto !important;
+  margin: 0 !important;
+  pointer-events: auto !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+body.inkling-notebook-layout #notebook-writer-panel .notebook-writer-body.panel-card {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+}
+
+/* Writer mode tabs + time picker */
+.notebook-writer-mode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px 0;
+}
+
+.notebook-writer-mode-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(78, 230, 230, 0.25);
+  background: rgba(26, 31, 40, 0.85);
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notebook-writer-mode-tab.is-active {
+  color: #fde68a;
+  border-color: rgba(212, 175, 55, 0.5);
+  background: rgba(212, 175, 55, 0.12);
+}
+
+.notebook-writer-time-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 14px 4px;
+  flex-wrap: wrap;
+}
+
+.notebook-writer-clock {
+  flex: 0 0 auto;
+}
+
+.notebook-writer-wheel-mount {
+  width: 120px;
+  max-height: 160px;
+}
+
+.notebook-writer-wheel-mount.hidden {
+  display: none;
+}
+
+/* Vertical time wheel */
+.vertical-time-wheel {
+  position: relative;
+  width: 120px;
+}
+
+.vertical-time-wheel__viewport {
+  max-height: 140px;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: var(--writer-scroll-thumb-aqua) var(--writer-scroll-track);
+}
+
+.vertical-time-wheel__pad {
+  height: 52px;
+  flex-shrink: 0;
+}
+
+.vertical-time-wheel__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.vertical-time-wheel__slot {
+  scroll-snap-align: center;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vertical-time-wheel__slot.is-centered {
+  color: #a8f7f7;
+  font-size: 14px;
+}
+
+.vertical-time-wheel__highlight {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  top: 50%;
+  height: 36px;
+  transform: translateY(-50%);
+  border-radius: 8px;
+  border: 1px solid rgba(78, 230, 230, 0.35);
+  background: rgba(78, 230, 230, 0.08);
+  pointer-events: none;
+}
+
+/* Writer scrollbars — aqua / gold on charcoal */
+body.inkling-notebook-layout .notebook-writer-scroller-mount {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden !important;
+  scrollbar-color: var(--writer-scroll-thumb-aqua) var(--writer-scroll-track);
+}
+
+body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track {
+  overflow-y: auto !important;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: var(--writer-scroll-thumb-aqua) var(--writer-scroll-track);
+}
+
+body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller__track::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    var(--writer-scroll-thumb-gold),
+    var(--writer-scroll-thumb-aqua)
+  );
+  border-radius: 6px;
+}
+
+body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller__scroll-rail {
+  background: var(--writer-scroll-rail);
+}
+
+/* Calendar tab — centered modal on phone */
+@media (max-width: 900px) {
+  body.inkling-tab-calendar #calendar-sidebar.calendar-sidebar {
+    position: fixed !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: min(320px, calc(100vw - 24px)) !important;
+    max-height: min(72vh, 520px) !important;
+    z-index: 10240 !important;
+    bottom: auto !important;
+  }
+
+  body.inkling-tab-calendar #calendar-sidebar .calendar-sidebar__rail {
+    display: none !important;
+  }
+
+  body.inkling-tab-calendar #calendar-sidebar .calendar-sidebar__panel {
+    display: flex !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+}
+
+/* Reader / wall tab centered */
+body.inkling-notebook-layout.inkling-tab-wall .notebook-reader-panel:not(.hidden) {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 10245 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--inkling-chrome-h, 56px) + 8px) 12px calc(var(--inkling-bottom-nav-h) + 12px);
+  pointer-events: none !important;
+}
+
+body.inkling-notebook-layout.inkling-tab-wall .notebook-reader-panel__inner {
+  width: min(640px, 100%) !important;
+  max-height: 100% !important;
+  pointer-events: auto !important;
+}
+
+/* WordWeaver tab — layout handled by .wordweaver-embed--stage in style-enhancements-wordweaver.css */
+body.inkling-tab-wordweaver #top-chrome.top-chrome {
+  pointer-events: none !important;
+}
+
+body.inkling-tab-wordweaver #top-chrome .top-chrome__bar {
+  pointer-events: auto !important;
+}
+
+/* Inkling tab — centered chat */
+body.inkling-tab-inkling .inkling-panel:not(.inkling-panel--minimized) {
+  position: fixed !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: min(420px, calc(100vw - 24px)) !important;
+  max-height: min(70vh, 560px) !important;
+  z-index: 10255 !important;
+}
+
+body.inkling-notebook-layout .inkling-fab {
+  display: none !important;
+}
+
+/* Chrome rail — left pills only */
+.chrome-rail {
+  bottom: calc(var(--inkling-bottom-nav-h, 62px) + 12px + env(safe-area-inset-bottom, 0px));
+}
+
+body.inkling-notebook-layout .calendar-sidebar__collapse-btn,
+body.inkling-notebook-layout .calendar-sidebar__rail-btn {
+  border-color: rgba(78, 230, 230, 0.35);
+  background: rgba(26, 31, 40, 0.9);
+  color: #a8f7f7;
+}
+
+body.inkling-notebook-layout .calendar-sidebar__collapse-btn:hover,
+body.inkling-notebook-layout .calendar-sidebar__rail-btn:hover {
+  border-color: rgba(212, 175, 55, 0.45);
+  color: #fde68a;
+}
+
+/* Inkling AI feedback */
+.inkling-msg__feedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(78, 230, 230, 0.15);
+}
+
+.inkling-feedback-btn {
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(78, 230, 230, 0.3);
+  background: rgba(26, 31, 40, 0.9);
+  cursor: pointer;
+}
+
+.inkling-feedback-category {
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(26, 31, 40, 0.95);
+  color: #94a3b8;
+  border: 1px solid rgba(78, 230, 230, 0.22);
+}
+
+.inkling-msg__feedback--sent {
+  opacity: 0.65;
+}
+
+/* Account settings page */
+.account-settings-page .account-settings-card {
+  max-width: 480px;
+  width: 100%;
+}
+
+.account-settings__section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(78, 230, 230, 0.15);
+}
+
+.account-settings__section h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: #a8f7f7;
+}
+
+.account-settings__check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.auth-username-wrap.hidden {
+  display: none;
+}
+
+.auth-forgot {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.auth-forgot a {
+  color: #7dd3fc;
+}

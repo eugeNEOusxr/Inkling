@@ -1,0 +1,316 @@
+/* Full-screen tool layers — fade + scale + depth */
+
+.inkling-layer-enter {
+  opacity: 0;
+  transform: scale(0.94) translateZ(0);
+}
+
+.inkling-layer-enter-active {
+  opacity: 1;
+  transform: scale(1) translateZ(0);
+  transition:
+    opacity 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.inkling-layer-exit {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.inkling-layer-exit-active {
+  opacity: 0;
+  transform: scale(0.96) translateY(8px);
+  transition:
+    opacity 0.32s ease,
+    transform 0.34s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body.inkling-fullscreen-layer-open #three-canvas {
+  filter: brightness(0.42) saturate(0.82);
+  transition: filter 0.4s ease;
+}
+
+/* Floating tool launcher */
+.inkling-layer-launcher {
+  position: fixed;
+  right: 14px;
+  top: calc(var(--inkling-chrome-h, 56px) + 12px);
+  z-index: 10120;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.inkling-layer-launcher__btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: linear-gradient(145deg, rgba(26, 31, 40, 0.92), rgba(8, 12, 20, 0.95));
+  color: #e8d5a3;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45), 0 0 12px rgba(78, 230, 230, 0.08);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.inkling-layer-launcher__btn:hover,
+.inkling-layer-launcher__btn.is-active {
+  border-color: rgba(78, 230, 230, 0.55);
+  box-shadow: 0 0 18px rgba(78, 230, 230, 0.2);
+  transform: scale(1.06);
+}
+
+body.inkling-fullscreen-layer-open .inkling-layer-launcher {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* Calendar maximized — 3D wall primary */
+body.inkling-layer--calendar-max #calendar-sidebar {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-12px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+body.inkling-layer--calendar-max #top-chrome .wordweaver-embed {
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+body.inkling-layer--calendar-max #three-canvas {
+  filter: brightness(1) saturate(1.05) !important;
+}
+
+body.inkling-layer--calendar-max .inkling-stage-backdrop {
+  display: none !important;
+}
+
+/* Day notes thread — full screen */
+body.inkling-notebook-layout #thread-panel[data-inkling-layer="day-notes"]:not(.hidden) {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 10240 !important;
+  display: flex !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+  padding: calc(var(--inkling-chrome-h, 56px) + 8px) 12px calc(var(--inkling-bottom-nav-h, 62px) + 12px) !important;
+  pointer-events: none !important;
+  background: transparent !important;
+}
+
+body.inkling-notebook-layout #thread-panel[data-inkling-layer="day-notes"]:not(.hidden) .thread-panel-inner {
+  width: min(720px, 100%) !important;
+  max-height: 100% !important;
+  margin: 0 auto !important;
+  pointer-events: auto !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+body.inkling-notebook-layout #thread-panel .thread-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Writer layer — reuse stage panel sizing */
+body.inkling-layer--writer #notebook-writer-panel:not(.hidden) {
+  z-index: 10250 !important;
+}
+
+/* Hide legacy wall toggle everywhere in inkling layout */
+body.inkling-notebook-layout #wall-toggle {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .inkling-layer-launcher {
+    right: 10px;
+    top: auto;
+    bottom: calc(var(--inkling-bottom-nav-h, 62px) + 72px);
+    flex-direction: row;
+    flex-wrap: wrap;
+    max-width: calc(100% - 20px);
+    justify-content: flex-end;
+  }
+
+  .inkling-layer-launcher__btn {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+
+  /* —— Phone spatial layout: layers use full viewport —— */
+  body.inkling-notebook-layout {
+    --writer-panel-pad-top: calc(var(--inkling-chrome-h, 52px) + env(safe-area-inset-top, 0px));
+    --writer-panel-pad-bottom: calc(var(--inkling-bottom-nav-h, 62px) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Writer: bottom sheet, maximum vertical space for 24h timeline */
+  body.inkling-notebook-layout #notebook-writer-panel:not(.hidden),
+  body.inkling-layer--writer #notebook-writer-panel:not(.hidden) {
+    display: flex !important;
+    align-items: stretch !important;
+    justify-content: flex-end !important;
+    inset: 0 !important;
+    padding: var(--writer-panel-pad-top) 0 var(--writer-panel-pad-bottom) !important;
+    overflow: hidden !important;
+  }
+
+  body.inkling-notebook-layout #notebook-writer-panel:not(.hidden) .notebook-writer-panel-inner {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    border-radius: 18px 18px 0 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-panel-inner .thread-header {
+    flex: 0 0 auto;
+    padding: 10px 12px 4px !important;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-mode-tabs {
+    flex: 0 0 auto;
+    padding: 4px 10px 0;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-time-picker-row {
+    flex: 0 0 auto;
+    padding: 4px 10px;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-hint {
+    display: none;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-hour-strip {
+    flex: 0 0 auto;
+    max-height: 44px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    padding: 0 8px 6px;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-body.panel-card {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    margin: 0 6px !important;
+    padding: 4px !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-scroller-mount {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: hidden !important;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline.day-scroller--vertical {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track-wrap {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    gap: 8px;
+    padding: 6px 8px 8px 10px !important;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    overflow-y: scroll !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--writer-scroll-thumb-aqua, rgba(78, 230, 230, 0.78))
+      var(--writer-scroll-track, rgba(26, 31, 40, 0.96));
+    padding-right: 4px;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+      180deg,
+      var(--writer-scroll-thumb-gold, rgba(212, 175, 55, 0.72)),
+      var(--writer-scroll-thumb-aqua, rgba(78, 230, 230, 0.78))
+    );
+    border-radius: 6px;
+    min-height: 40px;
+  }
+
+  body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller__scroll-rail {
+    flex: 0 0 10px !important;
+    min-width: 10px;
+    opacity: 0.9;
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 1px rgba(78, 230, 230, 0.2);
+  }
+
+  body.inkling-notebook-layout .notebook-writer-schedules {
+    flex: 0 0 auto;
+    max-height: 72px !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 6px 6px !important;
+  }
+
+  /* Day notes layer — full height scroll */
+  body.inkling-notebook-layout #thread-panel[data-inkling-layer="day-notes"]:not(.hidden) {
+    padding: var(--writer-panel-pad-top) 8px var(--writer-panel-pad-bottom) !important;
+    align-items: stretch !important;
+  }
+
+  body.inkling-notebook-layout #thread-panel[data-inkling-layer="day-notes"]:not(.hidden) .thread-panel-inner {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+  }
+
+  body.inkling-notebook-layout #thread-panel .thread-body {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Calendar max — edge-to-edge 3D */
+  body.inkling-layer--calendar-max #calendar-sidebar {
+    display: none !important;
+  }
+
+  body.inkling-layer--calendar-max .inkling-layer-launcher {
+    opacity: 0.5;
+  }
+}

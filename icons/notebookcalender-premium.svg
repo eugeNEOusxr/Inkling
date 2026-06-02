@@ -1,0 +1,20 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="NotebookCalender premium mark">
+  <!-- Phase A premium icon variant. Remove file to rollback asset. -->
+  <defs>
+    <linearGradient id="g1" x1="64" y1="52" x2="444" y2="460" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B0C0F"/>
+      <stop offset="0.55" stop-color="#111217"/>
+      <stop offset="1" stop-color="#191B24"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="96" y1="82" x2="386" y2="396" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7E7B8"/>
+      <stop offset="0.5" stop-color="#D4AF37"/>
+      <stop offset="1" stop-color="#B8860B"/>
+    </linearGradient>
+  </defs>
+  <rect x="42" y="42" width="428" height="428" rx="106" fill="url(#g1)"/>
+  <rect x="42" y="42" width="428" height="428" rx="106" stroke="#4EE6E6" stroke-opacity="0.28" stroke-width="2"/>
+  <path d="M120 356V128H174L286 288V128H392V384H338L226 224V384H120V356Z" fill="url(#g2)"/>
+  <circle cx="382" cy="118" r="12" fill="#4EE6E6" fill-opacity="0.8"/>
+  <circle cx="362" cy="98" r="5" fill="#A8F7F7" fill-opacity="0.8"/>
+</svg>

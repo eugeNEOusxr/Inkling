@@ -1,0 +1,78 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Notebook Calendar app icon">
+  <defs>
+    <linearGradient id="nb-bg" x1="56" y1="48" x2="456" y2="464" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0c1018"/>
+      <stop offset="1" stop-color="#12182a"/>
+    </linearGradient>
+    <linearGradient id="nb-gold" x1="120" y1="96" x2="392" y2="416" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="0.5" stop-color="#d4af37"/>
+      <stop offset="1" stop-color="#b8860b"/>
+    </linearGradient>
+    <linearGradient id="nb-aqua" x1="160" y1="200" x2="352" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a5f3fc"/>
+      <stop offset="1" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="40" y="40" width="432" height="432" rx="96" fill="url(#nb-bg)"/>
+  <rect x="40" y="40" width="432" height="432" rx="96" stroke="#4ee6e6" stroke-opacity="0.35" stroke-width="3"/>
+
+  <!-- Calendar sheet -->
+  <rect x="108" y="118" width="296" height="276" rx="24" fill="#0a0f1a" stroke="url(#nb-gold)" stroke-width="4"/>
+  <rect x="108" y="118" width="296" height="52" rx="24" fill="url(#nb-gold)" fill-opacity="0.22"/>
+  <rect x="108" y="146" width="296" height="24" fill="url(#nb-gold)" fill-opacity="0.12"/>
+
+  <!-- Month header bar -->
+  <circle cx="148" cy="144" r="6" fill="#fde68a" fill-opacity="0.85"/>
+  <circle cx="256" cy="144" r="6" fill="#fde68a" fill-opacity="0.85"/>
+  <circle cx="364" cy="144" r="6" fill="#fde68a" fill-opacity="0.85"/>
+
+  <!-- Day grid (7 x 5) -->
+  <g fill="#1e293b" stroke="#334155" stroke-width="2">
+    <rect x="124" y="182" width="34" height="30" rx="6"/>
+    <rect x="166" y="182" width="34" height="30" rx="6"/>
+    <rect x="208" y="182" width="34" height="30" rx="6"/>
+    <rect x="250" y="182" width="34" height="30" rx="6"/>
+    <rect x="292" y="182" width="34" height="30" rx="6"/>
+    <rect x="334" y="182" width="34" height="30" rx="6"/>
+    <rect x="376" y="182" width="34" height="30" rx="6"/>
+
+    <rect x="124" y="220" width="34" height="30" rx="6"/>
+    <rect x="166" y="220" width="34" height="30" rx="6"/>
+    <rect x="208" y="220" width="34" height="30" rx="6" fill="url(#nb-aqua)" fill-opacity="0.35" stroke="#38bdf8"/>
+    <rect x="250" y="220" width="34" height="30" rx="6"/>
+    <rect x="292" y="220" width="34" height="30" rx="6"/>
+    <rect x="334" y="220" width="34" height="30" rx="6"/>
+    <rect x="376" y="220" width="34" height="30" rx="6"/>
+
+    <rect x="124" y="258" width="34" height="30" rx="6"/>
+    <rect x="166" y="258" width="34" height="30" rx="6"/>
+    <rect x="208" y="258" width="34" height="30" rx="6"/>
+    <rect x="250" y="258" width="34" height="30" rx="6"/>
+    <rect x="292" y="258" width="34" height="30" rx="6"/>
+    <rect x="334" y="258" width="34" height="30" rx="6"/>
+    <rect x="376" y="258" width="34" height="30" rx="6"/>
+
+    <rect x="124" y="296" width="34" height="30" rx="6"/>
+    <rect x="166" y="296" width="34" height="30" rx="6"/>
+    <rect x="208" y="296" width="34" height="30" rx="6"/>
+    <rect x="250" y="296" width="34" height="30" rx="6"/>
+    <rect x="292" y="296" width="34" height="30" rx="6"/>
+    <rect x="334" y="296" width="34" height="30" rx="6"/>
+    <rect x="376" y="296" width="34" height="30" rx="6"/>
+
+    <rect x="124" y="334" width="34" height="30" rx="6"/>
+    <rect x="166" y="334" width="34" height="30" rx="6"/>
+    <rect x="208" y="334" width="34" height="30" rx="6"/>
+    <rect x="250" y="334" width="34" height="30" rx="6"/>
+    <rect x="292" y="334" width="34" height="30" rx="6"/>
+    <rect x="334" y="334" width="34" height="30" rx="6"/>
+    <rect x="376" y="334" width="34" height="30" rx="6"/>
+  </g>
+
+  <!-- Notebook spine (component inside the shell, not the shell itself) -->
+  <path d="M88 148V388C88 402 98 412 112 412H108V148Z" fill="#0a0f1a" stroke="url(#nb-gold)" stroke-width="3"/>
+  <path d="M96 168V368" stroke="#4ee6e6" stroke-opacity="0.45" stroke-width="2" stroke-linecap="round"/>
+  <path d="M96 200H118M96 248H118M96 296H118" stroke="#fde68a" stroke-opacity="0.35" stroke-width="2" stroke-linecap="round"/>
+</svg>

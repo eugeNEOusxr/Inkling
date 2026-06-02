@@ -1,17 +1,17 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "EugeneousXR",
+  "productName": "Inkling",
   "version": "0.1.0",
   "identifier": "com.eugeousxr.notebookcalender",
   "build": {
-    "frontendDist": "..",
+    "frontendDist": "../dist",
     "beforeDevCommand": "npm run serve:pwa",
     "beforeBuildCommand": "npm run build:web"
   },
   "app": {
     "windows": [
       {
-        "title": "EugeneousXR",
+        "title": "Inkling",
         "width": 800,
         "height": 600,
         "resizable": true,

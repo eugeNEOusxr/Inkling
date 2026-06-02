@@ -1,11 +1,17 @@
 /* Phase 1 PWA baseline: minimal offline support with safe caching strategy. */
-const CACHE_VERSION = "eugeneousxr-v1";
+const CACHE_VERSION = "eugeneousxr-v23";
 const CACHE_NAME = `${CACHE_VERSION}-core`;
 const CORE_ASSETS = [
   "/",
   "/index.html",
   "/style.css",
   "/style-enhancements.css",
+  "/style-enhancements-inkling-nav.css",
+  "/style-enhancements-wordweaver.css",
+  "/style-enhancements-layers.css",
+  "/account-settings.html",
+  "/forgot-password.html",
+  "/reset-password.html",
   "/src/main.js",
   "/manifest.json"
 ];
@@ -46,7 +52,25 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache-first for static app shell and modules.
+  const isSourceModule = url.pathname.startsWith("/src/");
+
+  // Network-first for ES modules so code updates are not stuck behind SW cache.
+  if (isSourceModule) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200 && response.type === "basic") {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Cache-first for static app shell assets.
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
