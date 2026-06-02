@@ -52,6 +52,7 @@ export class CalendarApp {
     this._wallBeforeNotification = "notebook";
     this._isMobileViewport = window.innerWidth <= 768;
     this._mobileToolbarEl = null;
+    this.nativeRuntime = this._detectNativeRuntime();
     this.installPrompt = null;
 
     const saved = loadSavedMonth();
@@ -770,6 +771,15 @@ export class CalendarApp {
   }
 
   update() {}
+
+  _detectNativeRuntime() {
+    // Phase 2 Tauri scaffold hook: detect native host safely.
+    // Remove by deleting this method and constructor assignment.
+    const hasTauri = typeof window !== "undefined" && Boolean(window.__TAURI__);
+    return {
+      isTauri: hasTauri
+    };
+  }
 
   _registerServiceWorker() {
     // PWA bootstrap hook: safe registration for offline app shell support.

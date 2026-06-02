@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "build:web": "echo \"Static app: no bundler configured yet\"",
-    "serve:pwa": "serve -s ."
+    "serve:pwa": "serve -s .",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.2",
     "serve": "^14.2.4"
   }
 }
