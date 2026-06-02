@@ -1,0 +1,13 @@
+{
+  "name": "eugeneousxr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:web": "echo \"Static app: no bundler configured yet\"",
+    "serve:pwa": "serve -s ."
+  },
+  "devDependencies": {
+    "serve": "^14.2.4"
+  }
+}

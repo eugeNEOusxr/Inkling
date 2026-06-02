@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#111217" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="/manifest.json" />
+  <title>3D Calendar</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style-enhancements.css" />
+</head>
+<body>
+  <div id="app">
+    <canvas id="three-canvas"></canvas>
+
+    <div id="ui-overlay">
+      <nav id="calendar-nav" aria-label="Month navigation">
+        <button type="button" id="calendar-prev" title="Previous month">‹</button>
+        <span id="calendar-nav-month">June 2026</span>
+        <button type="button" id="calendar-next" title="Next month">›</button>
+      </nav>
+
+      <div id="wall-toggle" class="wall-toggle" role="tablist" aria-label="Calendar wall">
+        <button type="button" id="wall-notebook" class="wall-toggle-btn is-active" role="tab" aria-pressed="true">
+          📓 Notebook Wall
+        </button>
+        <button type="button" id="wall-appointments" class="wall-toggle-btn" role="tab" aria-pressed="false">
+          📅 Appointments Wall
+        </button>
+      </div>
+
+      <div id="notification-dropdown" class="notification-dropdown">
+        <button
+          type="button"
+          id="btn-notification-bell"
+          class="notification-bell-btn"
+          aria-label="Notifications"
+          aria-expanded="false"
+          aria-haspopup="true"
+        >
+          <span class="notification-bell-icon" aria-hidden="true">🔔</span>
+          <span id="notification-badge" class="notification-badge hidden">0</span>
+        </button>
+        <div id="notification-dropdown-menu" class="notification-dropdown-menu hidden" role="menu">
+          <header class="notification-dropdown-header">
+            <span>Upcoming</span>
+            <button type="button" id="btn-open-notification-settings" class="btn-ghost btn-ghost--sm">Settings</button>
+          </header>
+          <p id="notification-dropdown-empty" class="notification-dropdown-empty">Nothing scheduled soon.</p>
+          <div id="notification-dropdown-list" class="notification-dropdown-list"></div>
+          <footer class="notification-dropdown-footer">
+            <button type="button" id="btn-open-notification-wall" class="btn-ghost btn-ghost--sm">View notification wall</button>
+          </footer>
+        </div>
+      </div>
+
+      <div class="notify-bar">
+        <button type="button" id="btn-notify-permission" class="btn-ghost">Enable browser alerts</button>
+        <span id="notify-status" class="notify-status"></span>
+      </div>
+
+      <p id="overview-hint" class="overview-hint">Click a day to zoom into the 3D hour grid — month wall stays visible</p>
+
+      <!-- Hour editor (detail mode) -->
+      <div id="hour-editor-panel" class="hidden" aria-hidden="true">
+        <div class="hour-editor-inner panel-card">
+          <h3 class="panel-section-title">Hour notes</h3>
+          <p class="panel-hint">Synced with the 3D grid · selected thread</p>
+
+          <label for="overlay-hour">Hour</label>
+          <select id="overlay-hour"></select>
+
+          <label for="overlay-note">Note text</label>
+          <textarea id="overlay-note" rows="4" placeholder="Write notes for this hour…"></textarea>
+
+          <label for="overlay-insert-input" class="label-secondary">Quick insert</label>
+          <div class="action-row action-row--split">
+            <input type="text" id="overlay-insert-input" placeholder="Snippet to append…" autocomplete="off" />
+            <button type="button" id="overlay-insert-btn" class="btn-secondary">Insert</button>
+          </div>
+
+          <div class="action-row action-row--primary">
+            <button type="button" id="overlay-save" class="btn-primary btn-enter">
+              <span>Save note</span>
+              <kbd>↵</kbd>
+            </button>
+          </div>
+          <p id="overlay-status" class="note-status" aria-live="polite"></p>
+        </div>
+      </div>
+
+      <div id="in-app-alerts" aria-live="polite"></div>
+
+      <!-- Notification wall (full history) -->
+      <div id="notification-wall-panel" class="hidden" aria-hidden="true">
+        <div class="notification-wall-inner">
+          <header class="notification-wall-header">
+            <h2 id="notification-wall-title">Notification Wall</h2>
+            <button type="button" id="btn-notification-wall-back" class="btn-nav-back">← Back</button>
+          </header>
+          <p class="panel-hint">Past and upcoming alerts grouped by day</p>
+          <div id="notification-wall-list" class="notification-wall-list"></div>
+        </div>
+      </div>
+
+      <!-- Notification settings -->
+      <div id="notification-settings-panel" class="hidden" aria-hidden="true">
+        <div id="btn-notification-settings-backdrop" class="modal-backdrop"></div>
+        <div class="modal-dialog panel-card notification-settings-dialog">
+          <header class="notification-settings-header">
+            <h3>Notification settings</h3>
+            <button type="button" id="btn-notification-settings-close" class="btn-ghost">Close</button>
+          </header>
+
+          <label for="notify-settings-sound">Default alert sound</label>
+          <select id="notify-settings-sound"></select>
+
+          <label for="notify-settings-volume">Volume <span id="notify-settings-volume-label">45%</span></label>
+          <input type="range" id="notify-settings-volume" min="0" max="1" step="0.05" value="0.45" />
+
+          <button type="button" id="btn-notify-test-sound" class="btn-secondary">Test sound</button>
+
+          <fieldset class="notification-toggles">
+            <legend>Reminder levels</legend>
+            <label class="toggle-row"><input type="checkbox" id="notify-toggle-soft" checked /> Soft (60 min)</label>
+            <label class="toggle-row"><input type="checkbox" id="notify-toggle-medium" checked /> Medium (15 min)</label>
+            <label class="toggle-row"><input type="checkbox" id="notify-toggle-urgent" checked /> Urgent (5 min)</label>
+            <label class="toggle-row"><input type="checkbox" id="notify-toggle-final" checked /> At time</label>
+          </fieldset>
+
+          <fieldset class="notification-toggles">
+            <legend>Other</legend>
+            <label class="toggle-row"><input type="checkbox" id="notify-toggle-sounds" checked /> Sound alerts</label>
+            <label class="toggle-row"><input type="checkbox" id="notify-toggle-browser" checked /> Browser notifications</label>
+          </fieldset>
+
+          <div class="action-row action-row--split">
+            <button type="button" id="btn-notify-settings-browser" class="btn-outline">Request browser permission</button>
+            <button type="button" id="btn-notify-clear-history" class="btn-ghost">Clear history</button>
+          </div>
+          <p id="notify-settings-status" class="note-status" aria-live="polite"></p>
+        </div>
+      </div>
+
+      <!-- Thread panel -->
+      <div id="thread-panel" class="hidden" aria-hidden="true">
+        <div class="thread-panel-inner">
+          <header class="thread-header">
+            <div class="thread-header-row">
+              <h2 id="thread-day-title">June 1</h2>
+              <button type="button" id="btn-back-month" class="btn-nav-back">← Back to month</button>
+            </div>
+
+            <div class="toolbar-group">
+              <span class="toolbar-group-label">Schedule</span>
+              <div class="toolbar-group-actions">
+                <button type="button" id="btn-set-reminder" class="btn-outline btn-outline--reminder">
+                  🔔 Set reminder
+                </button>
+                <button type="button" id="btn-set-alarm" class="btn-outline btn-outline--alarm">
+                  ⏰ Set alarm
+                </button>
+              </div>
+            </div>
+
+            <div class="toolbar-group">
+              <span class="toolbar-group-label">Browse</span>
+              <div class="toolbar-group-actions">
+                <button type="button" id="btn-view-all-notes" class="btn-ghost btn-toggle" aria-pressed="false">
+                  View all notes for this day
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <div id="all-notes-section" class="all-notes-section hidden">
+            <h3>All notes for this day</h3>
+            <div id="all-notes-list" class="all-notes-list"></div>
+          </div>
+
+          <div class="thread-body">
+            <aside class="thread-sidebar panel-card">
+              <div class="sidebar-head">
+                <h3>Threads</h3>
+              </div>
+
+              <div class="new-thread-box">
+                <label for="thread-label-input" class="label-secondary">New thread</label>
+                <input type="text" id="thread-label-input" placeholder="Label (optional)" autocomplete="off" />
+                <button type="button" id="btn-create-thread" class="btn-secondary btn-enter btn-block">
+                  <span>Create thread</span>
+                  <kbd>↵</kbd>
+                </button>
+              </div>
+
+              <div id="thread-list" class="thread-list"></div>
+
+              <h3 class="schedules-heading">Reminders &amp; alarms</h3>
+              <div id="day-reminders-list" class="day-reminders-list"></div>
+            </aside>
+
+            <section class="thread-main panel-card">
+              <h3>Notes in selected thread</h3>
+              <div id="thread-notes-list" class="thread-notes-list"></div>
+
+              <footer class="thread-compose">
+                <span class="toolbar-group-label">Add a note</span>
+                <div class="compose-row compose-row--split">
+                  <div class="compose-field">
+                    <label for="thread-note-hour">Hour</label>
+                    <select id="thread-note-hour"></select>
+                  </div>
+                </div>
+                <label for="thread-note-input">Note</label>
+                <textarea id="thread-note-input" rows="3" placeholder="Type your note…"></textarea>
+                <div class="action-row action-row--primary">
+                  <button type="button" id="btn-enter-note" class="btn-primary btn-enter btn-block">
+                    <span>Add note</span>
+                    <kbd>↵</kbd>
+                  </button>
+                </div>
+                <p class="compose-hint">Press <kbd>Enter</kbd> to add · <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line</p>
+                <p id="thread-compose-status" class="note-status" aria-live="polite"></p>
+              </footer>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <!-- Appointment panel -->
+      <div id="appointment-panel" class="hidden" aria-hidden="true">
+        <div class="thread-panel-inner appointment-panel-inner">
+          <header class="thread-header">
+            <div class="thread-header-row">
+              <h2 id="appointment-day-title">June 1</h2>
+              <button type="button" id="btn-appt-back-month" class="btn-nav-back">← Back to month</button>
+            </div>
+            <div class="toolbar-group">
+              <span class="toolbar-group-label">Appointments</span>
+              <div class="toolbar-group-actions">
+                <button type="button" id="btn-add-appointment" class="btn-primary">+ Add Appointment</button>
+              </div>
+            </div>
+            <div class="toolbar-group">
+              <span class="toolbar-group-label">Schedule</span>
+              <div class="toolbar-group-actions">
+                <button type="button" id="btn-appt-set-reminder" class="btn-outline btn-outline--reminder">🔔 Set Reminder</button>
+                <button type="button" id="btn-appt-set-alarm" class="btn-outline btn-outline--alarm">⏰ Set Alarm</button>
+              </div>
+            </div>
+          </header>
+          <p id="appointment-panel-status" class="note-status" aria-live="polite"></p>
+          <div class="appointment-panel-body panel-card">
+            <h3>Scheduled appointments</h3>
+            <div id="appointment-list" class="appointment-list"></div>
+            <h3 class="schedules-heading">Reminders &amp; alarms</h3>
+            <div id="appointment-schedules-list" class="day-reminders-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Appointment modal -->
+      <div id="appointment-modal" class="hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div class="modal-dialog panel-card">
+          <h3 id="appointment-modal-title">Add appointment</h3>
+          <label for="appointment-title">Title</label>
+          <input type="text" id="appointment-title" placeholder="Appointment title" />
+          <label for="appointment-description">Description</label>
+          <textarea id="appointment-description" rows="3" placeholder="Details…"></textarea>
+          
+          <!-- Digital Clock Time Picker -->
+          <div class="time-picker-section">
+            <label>Time</label>
+            <div class="digital-clock-picker">
+              <!-- Hour selector -->
+              <div class="time-unit-picker">
+                <div class="time-unit-label">Hour</div>
+                <button type="button" class="time-increment-btn time-increment-up" id="appointment-hour-up" aria-label="Increase hour">▲</button>
+                <div class="time-display-box">
+                  <div id="appointment-hour-display" class="time-display">00</div>
+                </div>
+                <button type="button" class="time-increment-btn time-increment-down" id="appointment-hour-down" aria-label="Decrease hour">▼</button>
+                <div class="time-unit-grid">
+                  <!-- Hour grid will be populated by JS -->
+                  <div id="appointment-hour-grid" class="hour-grid"></div>
+                </div>
+              </div>
+              
+              <!-- Minute selector -->
+              <div class="time-unit-picker">
+                <div class="time-unit-label">Minute</div>
+                <button type="button" class="time-increment-btn time-increment-up" id="appointment-minute-up" aria-label="Increase minute">▲</button>
+                <div class="time-display-box">
+                  <div id="appointment-minute-display" class="time-display">00</div>
+                </div>
+                <button type="button" class="time-increment-btn time-increment-down" id="appointment-minute-down" aria-label="Decrease minute">▼</button>
+                <div class="time-unit-grid">
+                  <!-- Minute grid will be populated by JS -->
+                  <div id="appointment-minute-grid" class="minute-grid"></div>
+                </div>
+              </div>
+            </div>
+            <!-- Hidden select for state management -->
+            <select id="appointment-hour" style="display: none;"></select>
+          </div>
+          
+          <div class="action-row action-row--end">
+            <button type="button" id="appointment-cancel" class="btn-ghost">Cancel</button>
+            <button type="button" id="appointment-save" class="btn-primary btn-enter">
+              <span>Save</span>
+              <kbd>↵</kbd>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reminder / Alarm modal -->
+      <div id="schedule-modal" class="hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div class="modal-dialog panel-card">
+          <h3 id="schedule-modal-title">Set reminder</h3>
+          
+          <!-- Digital Clock Time Picker -->
+          <div class="time-picker-section">
+            <label>Time</label>
+            <div class="digital-clock-picker">
+              <!-- Hour selector -->
+              <div class="time-unit-picker">
+                <div class="time-unit-label">Hour</div>
+                <button type="button" class="time-increment-btn time-increment-up" id="schedule-hour-up" aria-label="Increase hour">▲</button>
+                <div class="time-display-box">
+                  <div id="schedule-hour-display" class="time-display">00</div>
+                </div>
+                <button type="button" class="time-increment-btn time-increment-down" id="schedule-hour-down" aria-label="Decrease hour">▼</button>
+                <div class="time-unit-grid">
+                  <div id="schedule-hour-grid" class="hour-grid"></div>
+                </div>
+              </div>
+              
+              <!-- Minute selector -->
+              <div class="time-unit-picker">
+                <div class="time-unit-label">Minute</div>
+                <button type="button" class="time-increment-btn time-increment-up" id="schedule-minute-up" aria-label="Increase minute">▲</button>
+                <div class="time-display-box">
+                  <div id="schedule-minute-display" class="time-display">00</div>
+                </div>
+                <button type="button" class="time-increment-btn time-increment-down" id="schedule-minute-down" aria-label="Decrease minute">▼</button>
+                <div class="time-unit-grid">
+                  <div id="schedule-minute-grid" class="minute-grid"></div>
+                </div>
+              </div>
+            </div>
+            <select id="schedule-hour" style="display: none;"></select>
+          </div>
+          
+          <label for="schedule-message">Message</label>
+          <input type="text" id="schedule-message" placeholder="What should we remind you?" />
+          <div class="action-row action-row--end">
+            <button type="button" id="schedule-cancel" class="btn-ghost">Cancel</button>
+            <button type="button" id="schedule-save" class="btn-primary btn-enter">
+              <span>Save</span>
+              <kbd>↵</kbd>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.164.0/build/three.module.js",
+        "three/": "https://unpkg.com/three@0.164.0/"
+      }
+    }
+  </script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
