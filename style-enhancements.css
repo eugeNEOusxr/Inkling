@@ -4926,6 +4926,22 @@ body.inkling-writer-scroll-lock #three-canvas {
   touch-action: none !important;
 }
 
+/* Desktop: wheel over Writer timeline must scroll slots, not zoom the 3D wall */
+body.notebook-writer-panel-open .notebook-writer-scroller-mount .day-scroller__track,
+body.inkling-writer-scroll-lock .notebook-writer-scroller-mount .day-scroller__track {
+  overflow-y: scroll !important;
+  overscroll-behavior: contain;
+}
+
+body.notebook-writer-panel-open .notebook-writer-scroller-mount .day-scroller__track-wrap,
+body.inkling-writer-scroll-lock .notebook-writer-scroller-mount .day-scroller__track-wrap {
+  overflow: hidden !important;
+}
+
+body.notebook-writer-panel-open .vertical-time-wheel__viewport {
+  overscroll-behavior: contain;
+}
+
 .wordweaver-embed--topbar .wordweaver-embed__bar {
   display: flex;
   flex-wrap: wrap;

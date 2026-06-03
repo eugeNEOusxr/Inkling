@@ -31,7 +31,9 @@ const DEFAULTS = {
   enableUrgent: true,
   enableFinal: true,
   enableBrowser: true,
-  enableSounds: true
+  enableSounds: true,
+  theme: "auto",
+  appearancePalette: "neutral"
 };
 
 /**

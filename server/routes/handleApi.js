@@ -88,6 +88,9 @@ export async function handleApi(req, res, url) {
       .toLowerCase();
     const password = String(body.password || "");
     const username = body.username ? String(body.username).trim() : null;
+    const appearancePalette = ["neutral", "masculine", "feminine"].includes(body.appearancePalette)
+      ? body.appearancePalette
+      : "neutral";
 
     if (!validateEmail(email) || password.length < 6) {
       return json(res, 400, { error: "Valid email and password (6+ chars) required." });
@@ -111,7 +114,7 @@ export async function handleApi(req, res, url) {
       bundle: { version: 2, savedAt: 0 },
       settings: {
         notifications: { enabled: true, sound: true, priority: "normal", quietHours: null },
-        theme: { mode: "dark" },
+        theme: { mode: "dark", appearancePalette },
         ai: { proactive: true }
       },
       notificationSchedules: [],

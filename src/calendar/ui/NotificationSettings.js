@@ -9,6 +9,8 @@ import { displayNameForUser } from "../../auth/userAccount.js";
 import { getInklingWelcomeMessage } from "../ai/inklingWelcome.js";
 import { getDisplayName, getUsername, setUsername } from "./userProfile.js";
 import { iconSettings } from "./IconLibrary.js";
+import { renderAppearancePalettePicker } from "../../theme/appearancePaletteUi.js";
+import { setAppearancePalette } from "../../theme/applyAppearance.js";
 
 const ADDITIONAL_THEMES = [
   { id: "softMarimba", label: "Soft Marimba" },
@@ -173,11 +175,32 @@ export class NotificationSettings {
     const extras = document.createElement("div");
     extras.className = "notification-settings-extra";
 
+    const appearanceSection = document.createElement("section");
+    appearanceSection.className =
+      "notification-settings-extra-section notification-settings-extra-section--appearance";
+    appearanceSection.innerHTML = `
+      <h4 class="notification-settings-extra-title">Color style</h4>
+      <p class="notification-settings-extra-help">Feminine, masculine, or neutral accents — pink clock &amp; atomic WordWeaver notes in Feminine.</p>
+      <div class="appearance-palette-picker-mount" data-appearance-picker></div>
+    `;
+
+    const appearanceMount = appearanceSection.querySelector("[data-appearance-picker]");
+    if (appearanceMount) {
+      const s0 = loadNotificationSettings();
+      this._appearancePicker = renderAppearancePalettePicker(appearanceMount, {
+        selectedId: s0.appearancePalette ?? "neutral",
+        onSelect: (id) => {
+          setAppearancePalette(id);
+          this.onChange();
+        }
+      });
+    }
+
     const themeSection = document.createElement("section");
     themeSection.className =
       "notification-settings-extra-section notification-settings-extra-section--theme";
     themeSection.innerHTML = `
-      <h4 class="notification-settings-extra-title">${iconSettings} Theme</h4>
+      <h4 class="notification-settings-extra-title">${iconSettings} Light &amp; dark</h4>
       <p class="notification-settings-extra-help">Choose light, dark, or follow your system preference.</p>
       <label class="notification-theme-label" for="notify-settings-theme">Theme</label>
       <select id="notify-settings-theme" class="notification-theme-select"></select>
@@ -313,6 +336,7 @@ export class NotificationSettings {
     extras.appendChild(previewSection);
     extras.appendChild(quietSection);
     extras.insertBefore(themeSection, extras.firstChild);
+    extras.insertBefore(appearanceSection, extras.firstChild);
 
     if (insertPoint) {
       container.insertBefore(extras, insertPoint);
@@ -491,6 +515,8 @@ export class NotificationSettings {
     if (this.themeSelect) {
       this.themeSelect.value = s.theme ?? "auto";
     }
+
+    this._appearancePicker?.setSelected(s.appearancePalette ?? "neutral");
   }
 
   _setChecked(id, value) {

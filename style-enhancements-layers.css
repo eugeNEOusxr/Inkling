@@ -113,12 +113,71 @@ body.inkling-notebook-layout #thread-panel[data-inkling-layer="day-notes"]:not(.
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;
+  background: linear-gradient(165deg, rgba(18, 24, 38, 0.97), rgba(8, 12, 22, 0.99)) !important;
+  color: #e2e8f0 !important;
+  padding: 16px 18px 18px !important;
+  position: relative;
+}
+
+body.inkling-notebook-layout #thread-panel .day-notes-panel-inner .thread-header {
+  padding-top: 8px !important;
+}
+
+body.inkling-notebook-layout #thread-panel #thread-day-title {
+  color: #f1f5f9 !important;
+  font-family: var(--font-display, "Outfit", sans-serif);
+}
+
+body.inkling-notebook-layout #thread-panel .panel-card {
+  background: rgba(26, 31, 40, 0.92) !important;
+  border-color: rgba(78, 230, 230, 0.22) !important;
+  color: #e2e8f0 !important;
+}
+
+body.inkling-notebook-layout #thread-panel .thread-sidebar h3,
+body.inkling-notebook-layout #thread-panel .thread-main h3,
+body.inkling-notebook-layout #thread-panel .toolbar-group-label,
+body.inkling-notebook-layout #thread-panel label {
+  color: #cbd5e1 !important;
+}
+
+body.inkling-notebook-layout #thread-panel input,
+body.inkling-notebook-layout #thread-panel textarea,
+body.inkling-notebook-layout #thread-panel select {
+  background: rgba(12, 18, 28, 0.95) !important;
+  color: #f1f5f9 !important;
+  border-color: rgba(78, 230, 230, 0.28) !important;
+}
+
+body.inkling-notebook-layout #thread-panel .thread-item,
+body.inkling-notebook-layout #thread-panel .thread-notes-list,
+body.inkling-notebook-layout #thread-panel .compose-hint {
+  color: #e2e8f0 !important;
+}
+
+body.theme-light body.inkling-notebook-layout #thread-panel[data-inkling-layer="day-notes"]:not(.hidden),
+body.theme-light body.inkling-notebook-layout #thread-panel[data-inkling-layer="day-notes"]:not(.hidden) .thread-panel-inner {
+  background: linear-gradient(165deg, rgba(18, 24, 38, 0.97), rgba(8, 12, 22, 0.99)) !important;
+  color: #e2e8f0 !important;
 }
 
 body.inkling-notebook-layout #thread-panel .thread-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+}
+
+/* Full-screen 3D month wall — not the small calendar popup */
+body.inkling-layer--calendar-max #calendar-sidebar {
+  display: none !important;
+}
+
+body.inkling-layer--calendar-max #three-canvas {
+  filter: brightness(1) saturate(1.05) !important;
+}
+
+body.inkling-layer--calendar-max.inkling-tab-calendar #calendar-sidebar {
+  display: none !important;
 }
 
 /* Writer layer — reuse stage panel sizing */

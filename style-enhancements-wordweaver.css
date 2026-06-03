@@ -42,7 +42,7 @@ body.wordweaver-immersive #wordweaver-embed.wordweaver-embed--stage {
 body.inkling-tab-wordweaver #wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__mount {
   display: block !important;
   flex: 1 1 auto !important;
-  min-height: min(42vh, 380px) !important;
+  min-height: min(48vh, 440px) !important;
   height: auto !important;
   width: 100% !important;
   position: relative !important;
@@ -59,8 +59,20 @@ body.inkling-tab-wordweaver #wordweaver-embed .wordweaver-canvas {
 
 .wordweaver-embed.wordweaver-embed--stage.is-minimized .wordweaver-embed__mount {
   display: block !important;
-  min-height: min(42vh, 380px) !important;
+  min-height: min(48vh, 440px) !important;
   height: auto !important;
+}
+
+.wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__bar {
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  row-gap: 4px;
+}
+
+.wordweaver-embed.wordweaver-embed--stage .wordweaver-remarks {
+  flex-shrink: 0;
+  max-height: 72px;
 }
 
 @keyframes wordweaver-enter {
@@ -323,14 +335,47 @@ body.inkling-tab-wordweaver #wordweaver-embed .wordweaver-daily-panel {
 }
 
 @media (max-width: 768px) {
-  .wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__mount {
-    min-height: min(38vh, 320px) !important;
+  .wordweaver-embed.wordweaver-embed--stage,
+  body.inkling-tab-wordweaver #wordweaver-embed.wordweaver-embed--stage {
+    left: 4px !important;
+    right: 4px !important;
+    top: calc(var(--inkling-chrome-h, 52px) + 4px + env(safe-area-inset-top, 0px)) !important;
+    bottom: calc(var(--inkling-bottom-nav-h, 62px) + 4px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__bar {
+    padding: 6px 8px;
+  }
+
+  .wordweaver-embed__bar-titles .wordweaver-embed__headline {
+    font-size: 14px;
+  }
+
+  .wordweaver-embed__layout-select {
+    max-width: 120px;
+    font-size: 11px;
+  }
+
+  .wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__mount,
+  body.inkling-notebook-layout .wordweaver-embed.wordweaver-embed--stage.is-expanded .wordweaver-embed__mount {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
     height: auto !important;
   }
 
-  body.inkling-notebook-layout .wordweaver-embed.wordweaver-embed--stage.is-expanded .wordweaver-embed__mount {
-    min-height: min(38vh, 320px) !important;
-    height: auto !important;
+  .wordweaver-embed.wordweaver-embed--stage .wordweaver-remarks {
+    max-height: 56px;
+    font-size: 11px;
+  }
+
+  .wordweaver-daily-panel {
+    max-height: 100px;
+    font-size: 11px;
+  }
+
+  .wordweaver-embed__seg {
+    padding: 4px 6px;
+    font-size: 10px;
   }
 }
 

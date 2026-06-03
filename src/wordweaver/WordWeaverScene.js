@@ -2,6 +2,9 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { disposeWeaveMeshes, layoutSegmentWeave } from "./layoutSegmentWeave.js";
 import { getActiveCustomLayout } from "./customLayout.js";
+import { getCameraFrameForLayout } from "./layoutModes.js";
+import { WordWeaverAtomOrbits } from "./WordWeaverAtomOrbits.js";
+import { getActivePalette } from "../theme/appearancePalettes.js";
 
 /**
  * WordWeaver 3D viewport — spatial thought-weaving with multiple layout modes.
@@ -21,13 +24,16 @@ export class WordWeaverScene {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x05060a);
-    this.scene.fog = new THREE.Fog(0x05060a, 8, 22);
+    this.scene.fog = new THREE.Fog(0x05060a, 10, 28);
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 80);
     this.camera.position.set(0, 2.4, 8.2);
     this._cameraHome = this.camera.position.clone();
+    this._targetHome = new THREE.Vector3(0, 1.1, 0);
     this._entranceStart = 0;
     this._entranceMs = 0;
+    this._layoutEntranceStart = 0;
+    this._layoutEntranceMs = 0;
 
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
@@ -38,15 +44,15 @@ export class WordWeaverScene {
 
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
-    this.controls.target.set(0, 1.1, 0);
+    this.controls.target.copy(this._targetHome);
     this.controls.maxPolarAngle = Math.PI * 0.52;
     this.controls.minDistance = 3.5;
-    this.controls.maxDistance = 16;
+    this.controls.maxDistance = 18;
 
     const amb = new THREE.AmbientLight(0x404060, 0.9);
     const key = new THREE.DirectionalLight(0x7dd3fc, 0.85);
     key.position.set(4, 8, 6);
-    const rim = new THREE.PointLight(0x4ee6e6, 0.4, 20);
+    const rim = new THREE.PointLight(0x4ee6e6, 0.4, 24);
     rim.position.set(-3, 4, 2);
     this.scene.add(amb, key, rim);
 
@@ -60,6 +66,12 @@ export class WordWeaverScene {
     this._lastModule = null;
     this._meshes = [];
     this._pickables = [];
+    /** @type {THREE.Line[]} */
+    this._threadLines = [];
+    /** @type {Array<{ group: THREE.Group, target: THREE.Vector3, spawn: THREE.Vector3, phase: number, baseScale: number, startMs: number }>} */
+    this._nodeAnims = [];
+    /** @type {WordWeaverAtomOrbits | null} */
+    this._atomOrbits = null;
     this._raycaster = new THREE.Raycaster();
     this._pointer = new THREE.Vector2();
     this._hovered = null;
@@ -91,7 +103,6 @@ export class WordWeaverScene {
   }
 
   /**
-   * Visual guides while editing custom layout (floor ring, height pillar, depth plane).
    * @param {import('./customLayout.js').CustomLayoutParams | null} params
    * @param {boolean} visible
    */
@@ -145,17 +156,22 @@ export class WordWeaverScene {
 
   /**
    * @param {import('../inkling-core/timelineNode.js').SegmentModule} module
-   * @param {{ immersive?: boolean, skipEntrance?: boolean, customParams?: object, editGuide?: boolean }} [opts]
+   * @param {{ immersive?: boolean, skipEntrance?: boolean, customParams?: object, editGuide?: boolean, keepGuide?: boolean }} [opts]
    */
   setModule(module, opts = {}) {
     this._lastModule = module;
+    this._atomOrbits?.dispose();
+    this._atomOrbits = null;
     disposeWeaveMeshes(this._meshes);
     this.weaveGroup.clear();
     this._meshes = [];
     this._pickables = [];
+    this._threadLines = [];
+    this._nodeAnims = [];
 
     const customParams = opts.customParams ?? (this._layoutMode === "custom" ? getActiveCustomLayout() : null);
-    const { disposed, pickables } = layoutSegmentWeave(
+    const nodeCount = Math.min(module.nodes?.length ?? 0, 12);
+    const { disposed, pickables, threadLines } = layoutSegmentWeave(
       module,
       this.weaveGroup,
       this._layoutMode,
@@ -163,6 +179,9 @@ export class WordWeaverScene {
     );
     this._meshes = disposed;
     this._pickables = pickables;
+    this._threadLines = threadLines ?? [];
+
+    this._applyCameraFrame(nodeCount);
 
     if (opts.editGuide && customParams) {
       this.setEditGuide(customParams, true);
@@ -170,30 +189,176 @@ export class WordWeaverScene {
       this.setEditGuide(null, false);
     }
 
+    this._initNodeAnimations();
+    if (getActivePalette().atomOrbits && pickables.length) {
+      this._atomOrbits = new WordWeaverAtomOrbits(this.weaveGroup, pickables);
+    }
+
     this.controls.update();
 
     if (opts.skipEntrance) {
       this._entranceMs = 0;
-      this.camera.position.lerp(this._cameraHome, 0.2);
+      this._layoutEntranceMs = 0;
+      this.camera.position.copy(this._cameraHome);
+      this.controls.target.copy(this._targetHome);
+      this._snapNodesToTargets();
     } else if (opts.immersive) {
       this._entranceStart = performance.now();
-      this._entranceMs = 1400;
-      this.camera.position.set(0, 3.2, 14);
+      this._entranceMs = 1200;
+      this._layoutEntranceStart = performance.now();
+      this._layoutEntranceMs = 1100;
+      this.camera.position.set(0, 3.4, 15);
     } else {
-      this._entranceMs = 0;
-      this.camera.position.copy(this._cameraHome);
+      this._entranceStart = performance.now();
+      this._entranceMs = 700;
+      this._layoutEntranceStart = performance.now();
+      this._layoutEntranceMs = 900;
+      this.camera.position.copy(this._cameraHome).multiplyScalar(1.15);
     }
   }
 
   /**
-   * Rebuild weave using new custom params (live editor).
+   * @param {number} nodeCount
+   */
+  _applyCameraFrame(nodeCount) {
+    const frame = getCameraFrameForLayout(this._layoutMode, nodeCount);
+    this._cameraHome.copy(frame.position);
+    this._targetHome.copy(frame.target);
+    this.controls.target.copy(this._targetHome);
+    const span = frame.position.distanceTo(frame.target);
+    this.scene.fog.near = Math.max(6, span * 0.5);
+    this.scene.fog.far = Math.max(22, span * 3.2);
+    this.controls.minDistance = Math.max(2.5, span * 0.35);
+    this.controls.maxDistance = Math.max(14, span * 2.4);
+  }
+
+  _initNodeAnimations() {
+    const now = performance.now();
+    this._nodeAnims = [];
+    for (const { mesh } of this._pickables) {
+      const group = mesh.getGroup();
+      if (group.userData.type !== "weave-node") continue;
+      const pos = group.userData.layoutPos;
+      if (!pos) continue;
+      const target = new THREE.Vector3(pos.x, pos.y, pos.z);
+      const spawn = target.clone().add(new THREE.Vector3(0, 2.8, 0.6));
+      const baseScale = group.userData.layoutScale ?? 1;
+      group.position.copy(spawn);
+      group.scale.setScalar(baseScale * 0.12);
+      this._nodeAnims.push({
+        group,
+        target,
+        spawn,
+        phase: group.userData.layoutPhase ?? 0,
+        baseScale,
+        startMs: now
+      });
+    }
+  }
+
+  _snapNodesToTargets() {
+    for (const anim of this._nodeAnims) {
+      const off = this._idleOffset(this._layoutMode, anim.phase, 0);
+      anim.group.position.set(
+        anim.target.x + off.x,
+        anim.target.y + off.y,
+        anim.target.z + off.z
+      );
+      anim.group.scale.setScalar(anim.baseScale);
+    }
+    this._updateThreadLines();
+  }
+
+  /**
+   * @param {import('./layoutModes.js').WeaveLayoutMode} mode
+   * @param {number} phase
+   * @param {number} t
+   */
+  _idleOffset(mode, phase, t) {
+    switch (mode) {
+      case "float":
+        return {
+          x: Math.sin(t * 0.9 + phase) * 0.14,
+          y: Math.sin(t * 1.2 + phase * 0.7) * 0.2,
+          z: Math.cos(t * 0.85 + phase) * 0.12
+        };
+      case "constellation":
+        return {
+          x: Math.sin(t * 0.35 + phase) * 0.06,
+          y: Math.sin(t * 0.5 + phase * 1.1) * 0.08,
+          z: Math.cos(t * 0.4 + phase) * 0.06
+        };
+      case "tree":
+        return {
+          x: Math.sin(t * 0.45 + phase) * 0.05,
+          y: Math.sin(t * 0.6 + phase) * 0.03,
+          z: 0
+        };
+      case "river":
+        return {
+          x: Math.sin(t * 0.7 + phase) * 0.04,
+          y: Math.sin(t * 1.1 + phase) * 0.05,
+          z: Math.sin(t * 0.5 + phase) * 0.06
+        };
+      case "forest":
+        return {
+          x: Math.sin(t * 0.4 + phase) * 0.04,
+          y: 0,
+          z: Math.cos(t * 0.35 + phase) * 0.04
+        };
+      case "street":
+        return {
+          x: Math.sin(t * 0.25 + phase) * 0.02,
+          y: Math.sin(t * 0.3 + phase) * 0.025,
+          z: 0
+        };
+      default:
+        return { x: 0, y: 0, z: 0 };
+    }
+  }
+
+  _updateNodeAnimations(now, layoutEase) {
+    for (const anim of this._nodeAnims) {
+      const elapsed = now - anim.startMs;
+      const enter = Math.min(1, elapsed / 780);
+      const ease = (1 - (1 - enter) ** 3) * layoutEase;
+      const off = this._idleOffset(this._layoutMode, anim.phase, now * 0.001);
+      const tx = anim.target.x + off.x;
+      const ty = anim.target.y + off.y;
+      const tz = anim.target.z + off.z;
+      anim.group.position.set(
+        THREE.MathUtils.lerp(anim.spawn.x, tx, ease),
+        THREE.MathUtils.lerp(anim.spawn.y, ty, ease),
+        THREE.MathUtils.lerp(anim.spawn.z, tz, ease)
+      );
+      const sc = anim.baseScale * (0.15 + ease * 0.85);
+      anim.group.scale.setScalar(sc);
+    }
+    this._updateThreadLines();
+  }
+
+  _updateThreadLines() {
+    for (const line of this._threadLines) {
+      const { nodeA, nodeB } = line.userData;
+      const ga = this._pickables.find((p) => p.node.id === nodeA)?.mesh.getGroup().position;
+      const gb = this._pickables.find((p) => p.node.id === nodeB)?.mesh.getGroup().position;
+      if (!ga || !gb || !line.geometry) continue;
+      const pos = line.geometry.attributes.position;
+      if (!pos) continue;
+      pos.setXYZ(0, ga.x, ga.y, ga.z);
+      pos.setXYZ(1, gb.x, gb.y, gb.z);
+      pos.needsUpdate = true;
+    }
+  }
+
+  /**
    * @param {import('./customLayout.js').CustomLayoutParams} params
    */
   relayoutCustom(params) {
     if (!this._lastModule || this._layoutMode !== "custom") return;
     this.setModule(this._lastModule, {
       customParams: params,
-      skipEntrance: true,
+      skipEntrance: false,
       editGuide: true,
       keepGuide: true
     });
@@ -258,20 +423,44 @@ export class WordWeaverScene {
 
   _tick() {
     const t = this._clock.getElapsedTime();
+    const now = performance.now();
+
+    let layoutEase = 1;
+    if (this._layoutEntranceMs > 0) {
+      const elapsed = now - this._layoutEntranceStart;
+      layoutEase = Math.min(1, elapsed / this._layoutEntranceMs);
+      layoutEase = 1 - (1 - layoutEase) ** 3;
+      if (elapsed >= this._layoutEntranceMs) this._layoutEntranceMs = 0;
+    }
 
     if (this._entranceMs > 0) {
-      const elapsed = performance.now() - this._entranceStart;
+      const elapsed = now - this._entranceStart;
       const p = Math.min(1, elapsed / this._entranceMs);
       const ease = 1 - (1 - p) ** 3;
       this.camera.position.lerpVectors(
-        new THREE.Vector3(0, 3.2, 14),
+        new THREE.Vector3(0, 3.4, 15),
         this._cameraHome,
         ease
       );
+      this.controls.target.lerp(this._targetHome, 0.08);
       if (p >= 1) this._entranceMs = 0;
     }
 
-    this.weaveGroup.rotation.y = Math.sin(t * 0.08) * 0.04;
+    if (this._nodeAnims.length) {
+      this._updateNodeAnimations(now, layoutEase);
+    }
+
+    this._atomOrbits?.update(t);
+
+    const rotSpeed = this._layoutMode === "constellation" ? 0.05 : 0.08;
+    const rotAmp =
+      this._layoutMode === "street" || this._layoutMode === "river"
+        ? 0.015
+        : this._layoutMode === "tree"
+          ? 0.025
+          : 0.04;
+    this.weaveGroup.rotation.y = Math.sin(t * rotSpeed) * rotAmp;
+
     this.controls.update();
     this._meshes.forEach((m, i) => m.animatePulse?.(0.35 + (i % 3) * 0.05));
     this.renderer.render(this.scene, this.camera);
@@ -284,6 +473,8 @@ export class WordWeaverScene {
     this.canvas.removeEventListener("pointermove", this._onPointerMove);
     this.canvas.removeEventListener("pointerdown", this._onPointerDown);
     this._resizeObserver?.disconnect();
+    this._atomOrbits?.dispose();
+    this._atomOrbits = null;
     disposeWeaveMeshes(this._meshes);
     this.weaveGroup.clear();
     this.setEditGuide(null, false);

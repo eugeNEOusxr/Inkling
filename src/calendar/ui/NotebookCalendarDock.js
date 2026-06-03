@@ -78,7 +78,11 @@ export class NotebookCalendarDock {
 
     this.el.querySelector('[data-delta="-1"]')?.addEventListener("click", () => this._shift(-1));
     this.el.querySelector('[data-delta="1"]')?.addEventListener("click", () => this._shift(1));
-    this.el.querySelector("[data-today]")?.addEventListener("click", () => this.setDate(todayIso()));
+    this.el.querySelector("[data-today]")?.addEventListener("click", () => {
+      const today = todayIso();
+      this.setDate(today);
+      void this.onSyncMonth(today);
+    });
     this.el.querySelector("[data-open-notes]")?.addEventListener("click", () => void this._openNotes());
     this.el.querySelector("[data-open-writer]")?.addEventListener("click", () => void this._openWriter());
     this.sidebar?.querySelector("[data-calendar-maximize]")?.addEventListener("click", (e) => {
@@ -185,7 +189,6 @@ export class NotebookCalendarDock {
       onSelect: (iso) => {
         this.setDate(iso);
         void this.onSyncMonth(iso);
-        void this._openNotes();
       },
       onMonthChange: (y, m) => {
         const d = parseIso(this._date);

@@ -1,0 +1,196 @@
+/* Appearance palettes — feminine / masculine / neutral (works with theme-light & theme-dark) */
+
+/* —— Feminine: hot pink, UV magenta, coral —— */
+:root[data-appearance="feminine"].theme-dark,
+:root[data-appearance="feminine"].theme-light {
+  --accent: #ff2d8f;
+  --accent-light: rgba(255, 45, 143, 0.18);
+  --aqua-400: #f472b6;
+  --aqua-200: #fbcfe8;
+  --gold-500: #fb7185;
+  --gold-100: #ffe4e6;
+  --notify-reminder: #f472b6;
+  --notify-alarm: #f43f5e;
+  --notify-appointment: #fb7185;
+  --notify-note: #e879f9;
+  --glow-primary: 0 0 24px rgba(255, 45, 143, 0.35);
+  --glow-accent: 0 0 20px rgba(192, 38, 211, 0.28);
+  --writer-scroll-track: rgba(42, 16, 36, 0.96);
+  --writer-scroll-thumb-aqua: rgba(255, 45, 143, 0.85);
+  --writer-scroll-thumb-gold: rgba(251, 113, 133, 0.8);
+}
+
+:root[data-appearance="feminine"].theme-dark {
+  --bg: #140810;
+  --panel-bg: #221018;
+  --text: #fce7f3;
+  --text-secondary: #f9a8d4;
+  --panel-border: rgba(255, 45, 143, 0.28);
+  --charcoal-900: #140810;
+  --charcoal-700: #221018;
+}
+
+:root[data-appearance="feminine"].theme-light {
+  --bg: #fff5f9;
+  --panel-bg: #ffffff;
+  --text: #4a044e;
+  --text-secondary: #9d174d;
+  --panel-border: rgba(255, 45, 143, 0.22);
+}
+
+body[data-appearance="feminine"].inkling-notebook-layout #three-canvas {
+  filter: brightness(0.92) saturate(1.15) hue-rotate(-8deg);
+}
+
+body[data-appearance="feminine"] .inkling-bottom-nav__btn.is-active {
+  border-color: rgba(255, 45, 143, 0.55);
+  background: rgba(255, 45, 143, 0.14);
+  color: #fce7f3;
+}
+
+body[data-appearance="feminine"] .notebook-writer-mode-tab.is-active {
+  color: #fce7f3;
+  border-color: rgba(255, 45, 143, 0.55);
+  background: rgba(255, 45, 143, 0.14);
+}
+
+body[data-appearance="feminine"] .circular-clock__hand {
+  stroke: var(--clock-hand, #fda4af) !important;
+}
+
+body[data-appearance="feminine"] .circular-clock__numeral {
+  fill: #fbcfe8;
+}
+
+body[data-appearance="feminine"] .circular-clock__tick {
+  stroke: rgba(244, 114, 182, 0.45);
+}
+
+body[data-appearance="feminine"] .circular-clock__tick--major {
+  stroke: rgba(255, 45, 143, 0.85);
+}
+
+body[data-appearance="feminine"] .circular-clock__hub {
+  fill: rgba(255, 45, 143, 0.9) !important;
+}
+
+/* —— Masculine: steel & indigo —— */
+:root[data-appearance="masculine"].theme-dark,
+:root[data-appearance="masculine"].theme-light {
+  --accent: #3b82f6;
+  --accent-light: rgba(59, 130, 246, 0.15);
+  --aqua-400: #38bdf8;
+  --aqua-200: #bae6fd;
+  --gold-500: #94a3b8;
+  --notify-reminder: #38bdf8;
+  --notify-alarm: #f87171;
+  --notify-appointment: #94a3b8;
+  --notify-note: #6366f1;
+  --glow-primary: 0 0 22px rgba(59, 130, 246, 0.3);
+  --writer-scroll-thumb-aqua: rgba(96, 165, 250, 0.82);
+  --writer-scroll-thumb-gold: rgba(148, 163, 184, 0.75);
+}
+
+:root[data-appearance="masculine"].theme-dark {
+  --bg: #0a0e18;
+  --panel-bg: #141c2e;
+  --text: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --panel-border: rgba(59, 130, 246, 0.25);
+}
+
+/* —— Neutral: classic aqua + gold (explicit refresh) —— */
+:root[data-appearance="neutral"].theme-dark {
+  --accent: #0a9dc4;
+  --aqua-400: #4ee6e6;
+  --gold-500: #d4af37;
+}
+
+/* Settings appearance picker */
+.appearance-palette-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.appearance-palette-group__title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.appearance-palette-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.appearance-palette-chip {
+  flex: 1 1 100%;
+  min-width: 140px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 2px solid rgba(100, 116, 139, 0.45);
+  background: rgba(15, 23, 42, 0.6);
+  color: #e2e8f0;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+
+.appearance-palette-chip:hover {
+  transform: translateY(-1px);
+}
+
+.appearance-palette-chip.is-active {
+  border-color: var(--inkling-aqua, #4ee6e6);
+  box-shadow: 0 0 16px rgba(var(--inkling-accent-rgb, 78, 230, 230), 0.25);
+}
+
+.appearance-palette-chip__name {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.appearance-palette-chip__hint {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.appearance-palette-chip--feminine .appearance-palette-chip__swatch {
+  background: linear-gradient(135deg, #ff2d8f, #c026d3, #fb7185);
+}
+
+.appearance-palette-chip--masculine .appearance-palette-chip__swatch {
+  background: linear-gradient(135deg, #1e3a5f, #3b82f6, #64748b);
+}
+
+.appearance-palette-chip--neutral .appearance-palette-chip__swatch {
+  background: linear-gradient(135deg, #0a7ea4, #4ee6e6, #d4af37);
+}
+
+.appearance-palette-chip__swatch {
+  height: 6px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.auth-appearance-picker {
+  margin: 12px 0 4px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(100, 116, 139, 0.35);
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.auth-appearance-picker .appearance-palette-group__title {
+  color: #64748b;
+}

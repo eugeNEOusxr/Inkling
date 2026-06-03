@@ -106,6 +106,11 @@ export class WordWeaverEmbed {
       this.layoutSelect.value = this._layoutMode;
     }
 
+    this._onAppearanceChange = () => {
+      if (this._scene && this._date) this.refresh();
+    };
+    window.addEventListener("inkling:appearance-change", this._onAppearanceChange);
+
     queueMicrotask(() => {
       const params = new URLSearchParams(window.location.search);
       const immersive = params.get("tab") === "wordweaver" || params.get("wordweaver") === "1";

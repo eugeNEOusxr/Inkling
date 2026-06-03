@@ -270,9 +270,9 @@ body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller__scro
   background: var(--writer-scroll-rail);
 }
 
-/* Calendar tab — centered modal on phone */
+/* Calendar tab — pick a day in the small calendar (not full 3D wall) */
 @media (max-width: 900px) {
-  body.inkling-tab-calendar #calendar-sidebar.calendar-sidebar {
+  body.inkling-tab-calendar:not(.inkling-layer--calendar-max) #calendar-sidebar.calendar-sidebar {
     position: fixed !important;
     left: 50% !important;
     top: 50% !important;
@@ -283,11 +283,11 @@ body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller__scro
     bottom: auto !important;
   }
 
-  body.inkling-tab-calendar #calendar-sidebar .calendar-sidebar__rail {
+  body.inkling-tab-calendar:not(.inkling-layer--calendar-max) #calendar-sidebar .calendar-sidebar__rail {
     display: none !important;
   }
 
-  body.inkling-tab-calendar #calendar-sidebar .calendar-sidebar__panel {
+  body.inkling-tab-calendar:not(.inkling-layer--calendar-max) #calendar-sidebar .calendar-sidebar__panel {
     display: flex !important;
     opacity: 1 !important;
     pointer-events: auto !important;

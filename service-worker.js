@@ -1,5 +1,5 @@
 /* Phase 1 PWA baseline: minimal offline support with safe caching strategy. */
-const CACHE_VERSION = "eugeneousxr-v23";
+const CACHE_VERSION = "eugeneousxr-v26";
 const CACHE_NAME = `${CACHE_VERSION}-core`;
 const CORE_ASSETS = [
   "/",
@@ -9,6 +9,7 @@ const CORE_ASSETS = [
   "/style-enhancements-inkling-nav.css",
   "/style-enhancements-wordweaver.css",
   "/style-enhancements-layers.css",
+  "/style-appearance-palettes.css",
   "/account-settings.html",
   "/forgot-password.html",
   "/reset-password.html",

@@ -7,6 +7,7 @@
   <title>Sign in — Inkling</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="style-enhancements.css" />
+  <link rel="stylesheet" href="style-appearance-palettes.css" />
 </head>
 <body class="auth-page">
   <main class="auth-screen auth-screen--page">
@@ -30,6 +31,11 @@
         <input type="text" id="auth-username" name="username" autocomplete="username" placeholder="letters, numbers, underscore" pattern="[a-zA-Z0-9_]{3,24}" />
       </div>
 
+      <div id="auth-appearance-wrap" class="auth-appearance-picker auth-username-wrap hidden">
+        <p class="auth-card__lead" style="margin: 0 0 8px; font-size: 13px;">Pick your color style (you can change this anytime in Settings).</p>
+        <div id="auth-appearance-picker" data-auth-appearance-picker></div>
+      </div>
+
       <p class="auth-forgot"><a href="/forgot-password.html">Forgot password?</a></p>
 
       <p id="auth-error" class="auth-error hidden" role="alert"></p>
@@ -48,6 +54,9 @@
     import { setSession } from "./src/auth/session.js";
     import { apiFetch, pullCloudBundle } from "./src/auth/cloudSync.js";
     import { applyServerUserToClient } from "./src/auth/userSettingsSync.js";
+    import { renderAppearancePalettePicker } from "./src/theme/appearancePaletteUi.js";
+    import { applyPaletteToDocument } from "./src/theme/appearancePalettes.js";
+    import { saveNotificationSettings } from "./src/calendar/notifications/notificationSettings.js";
 
     const form = document.getElementById("auth-form");
     const emailInput = document.getElementById("auth-email");
@@ -59,6 +68,19 @@
     const tabRegister = document.querySelector('[data-auth-tab="register"]');
     const usernameWrap = document.getElementById("auth-username-wrap");
     const usernameInput = document.getElementById("auth-username");
+    const appearanceWrap = document.getElementById("auth-appearance-wrap");
+    const appearanceMount = document.getElementById("auth-appearance-picker");
+
+    let registerAppearance = "neutral";
+    const appearancePicker = appearanceMount
+      ? renderAppearancePalettePicker(appearanceMount, {
+          selectedId: "neutral",
+          onSelect: (id) => {
+            registerAppearance = id;
+            applyPaletteToDocument(id);
+          }
+        })
+      : null;
 
     let mode = "signin";
 
@@ -67,6 +89,7 @@
       tabSignIn?.classList.toggle("is-active", mode === "signin");
       tabRegister?.classList.toggle("is-active", mode === "register");
       usernameWrap?.classList.toggle("hidden", mode !== "register");
+      appearanceWrap?.classList.toggle("hidden", mode !== "register");
       if (submitBtn) submitBtn.querySelector("span").textContent =
         mode === "signin" ? "Sign in" : "Create account";
       errorEl?.classList.add("hidden");
@@ -91,14 +114,19 @@
       try {
         const path = mode === "signin" ? "/api/auth/login" : "/api/auth/register";
         const payload = { email, password };
-        if (mode === "register" && usernameInput?.value?.trim()) {
-          payload.username = usernameInput.value.trim();
+        if (mode === "register") {
+          if (usernameInput?.value?.trim()) payload.username = usernameInput.value.trim();
+          payload.appearancePalette = registerAppearance;
         }
         const result = await apiFetch(path, {
           method: "POST",
           body: JSON.stringify(payload)
         });
         setSession({ token: result.token, email: result.email, user: result.user });
+        if (mode === "register") {
+          saveNotificationSettings({ appearancePalette: registerAppearance });
+          applyPaletteToDocument(registerAppearance);
+        }
         applyServerUserToClient(result.user);
         statusEl.textContent = "Loading your calendar…";
         await pullCloudBundle();

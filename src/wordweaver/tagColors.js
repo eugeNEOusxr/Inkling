@@ -1,3 +1,5 @@
+import { getActivePalette } from "../theme/appearancePalettes.js";
+
 const ACCENT_GLOW = 0x6366f1;
 
 /** @type {Record<string, number>} */
@@ -32,8 +34,12 @@ const KIND_GLOW = {
  * @param {import('../inkling-core/timelineNode.js').TimelineNode} node
  */
 export function glowColorForNode(node) {
+  const palette = getActivePalette();
   for (const tag of node.tags ?? []) {
     if (TAG_GLOW[tag]) return TAG_GLOW[tag];
   }
-  return KIND_GLOW[node.kind] ?? ACCENT_GLOW;
+  if (node.kind === "insight") return palette.wwInsight ?? KIND_GLOW.insight;
+  if (node.kind === "appointment") return palette.wwGlowDefault ?? KIND_GLOW.appointment;
+  if (node.kind === "note") return palette.wwNode ?? KIND_GLOW.note;
+  return palette.wwGlowDefault ?? KIND_GLOW[node.kind] ?? ACCENT_GLOW;
 }

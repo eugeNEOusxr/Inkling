@@ -1,3 +1,7 @@
+import { getActivePalette } from "../../theme/appearancePalettes.js";
+
+let _clockInstanceSeq = 0;
+
 /**
  * 12-hour analog clock (12 at top, 1–11 clockwise) with AM/PM — reminder or alarm styling.
  */
@@ -13,6 +17,7 @@ export class CircularTimePicker {
     this.hour24 = 12;
     this.isPm = false;
     this._dragging = false;
+    this._gradSuffix = `c${++_clockInstanceSeq}`;
 
     this.root.innerHTML = "";
     this.root.className = `circular-clock-mount circular-clock-mount--${this.variant}`;
@@ -83,6 +88,46 @@ export class CircularTimePicker {
 
     this.ampmAm?.addEventListener("click", () => this._setAmPm(false));
     this.ampmPm?.addEventListener("click", () => this._setAmPm(true));
+
+    this._onAppearanceChange = () => this._applyPaletteGradients();
+    window.addEventListener("inkling:appearance-change", this._onAppearanceChange);
+    this._applyPaletteGradients();
+  }
+
+  _applyPaletteGradients() {
+    const palette = getActivePalette();
+    const defs = this.root.querySelector("[data-clock-defs]");
+    const face = this.root.querySelector("[data-clock-face]");
+    const ring = this.root.querySelector(".circular-clock__ring");
+    if (!defs || !face) return;
+
+    const faceId = `clock-face-glow-${this._gradSuffix}`;
+    const ringId = `clock-ring-glow-${this._gradSuffix}`;
+
+    defs.innerHTML = `
+      <radialGradient id="${faceId}" cx="50%" cy="38%" r="65%">
+        <stop offset="0%" stop-color="${palette.clockFaceCenter}"/>
+        <stop offset="55%" stop-color="rgba(18, 28, 48, 0.95)"/>
+        <stop offset="100%" stop-color="rgba(8, 12, 22, 1)"/>
+      </radialGradient>
+      <linearGradient id="${ringId}" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="${palette.clockRingStart}"/>
+        <stop offset="50%" stop-color="${palette.clockRingMid}"/>
+        <stop offset="100%" stop-color="${palette.clockRingStart}"/>
+      </linearGradient>
+    `;
+
+    face.setAttribute("fill", `url(#${faceId})`);
+    if (ring) {
+      ring.setAttribute("stroke", `url(#${ringId})`);
+    }
+    if (this.hand) {
+      this.hand.setAttribute("stroke", palette.clockHand);
+    }
+    const hub = this.root.querySelector(".circular-clock__hub");
+    if (hub) {
+      hub.setAttribute("fill", palette.accent);
+    }
   }
 
   setVariant(variant) {
@@ -149,6 +194,7 @@ export class CircularTimePicker {
     this.svg?.removeEventListener("pointerdown", this._onPointerDown);
     window.removeEventListener("pointermove", this._onPointerMove);
     window.removeEventListener("pointerup", this._onPointerUp);
+    window.removeEventListener("inkling:appearance-change", this._onAppearanceChange);
   }
 
   _setAmPm(pm) {

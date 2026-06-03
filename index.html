@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="style-enhancements-inkling-nav.css" />
   <link rel="stylesheet" href="style-enhancements-wordweaver.css" />
   <link rel="stylesheet" href="style-enhancements-layers.css" />
+  <link rel="stylesheet" href="style-appearance-palettes.css" />
 </head>
 <body>
   <div id="app">
@@ -85,7 +86,7 @@
         class="inkling-layer-launcher"
         aria-label="Open tools"
       >
-        <button type="button" class="inkling-layer-launcher__btn" data-layer="calendar-max" title="Expand calendar">📅</button>
+        <button type="button" class="inkling-layer-launcher__btn" data-layer="calendar-max" title="Full-screen 3D month wall">📅</button>
         <button type="button" class="inkling-layer-launcher__btn" data-layer="writer" title="Writer">✎</button>
         <button type="button" class="inkling-layer-launcher__btn" data-layer="wordweaver" title="WordWeaver">🪡</button>
         <button type="button" class="inkling-layer-launcher__btn" data-layer="inkling" title="Inkling">✦</button>
@@ -93,7 +94,7 @@
 
       <aside id="calendar-sidebar" class="calendar-sidebar is-expanded" aria-label="Calendar">
         <div class="calendar-sidebar__rail" data-sidebar-rail aria-hidden="true">
-          <button type="button" class="calendar-sidebar__rail-btn" data-sidebar-expand aria-label="Expand calendar" title="Expand calendar">+</button>
+          <button type="button" class="calendar-sidebar__rail-btn" data-sidebar-expand aria-label="Show small calendar" title="Show small calendar">+</button>
           <span class="calendar-sidebar__rail-day" data-collapsed-day title="Selected day"></span>
           <div class="calendar-sidebar__rail-alerts"></div>
         </div>
@@ -103,7 +104,7 @@
             <button type="button" class="calendar-sidebar__drag" data-sidebar-drag aria-label="Drag calendar panel" title="Drag to move">⠿</button>
             <span class="calendar-sidebar__head-title">Small calendar</span>
             <div class="calendar-sidebar__head-tools">
-              <button type="button" class="calendar-sidebar__maximize-btn" data-calendar-maximize aria-label="Expand calendar to full screen" title="Expand calendar">⛶</button>
+              <button type="button" class="calendar-sidebar__maximize-btn" data-calendar-maximize aria-label="Open full-screen 3D month wall" title="3D month wall">⛶</button>
               <button type="button" class="calendar-sidebar__collapse-btn" data-sidebar-collapse aria-label="Minimize small calendar" title="Minimize small calendar">−</button>
             </div>
           </header>
@@ -281,7 +282,9 @@
 
       <!-- Thread panel -->
       <div id="thread-panel" class="hidden inkling-stage-panel" data-inkling-layer="day-notes" aria-hidden="true">
-        <div class="thread-panel-inner">
+        <div class="thread-panel-inner reader-holographic glass-panel shine-effect day-notes-panel-inner">
+          <div class="reader-holographic__aurora" aria-hidden="true"></div>
+          <div class="reader-holographic__particles" aria-hidden="true"></div>
           <header class="thread-header">
             <div class="thread-header-row">
               <h2 id="thread-day-title">June 1</h2>

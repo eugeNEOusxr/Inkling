@@ -13,6 +13,7 @@ const entriesToCopy = [
   "style.css",
   "style-enhancements.css",
   "style-enhancements-layers.css",
+  "style-appearance-palettes.css",
   "manifest.json",
   "service-worker.js",
   "src",

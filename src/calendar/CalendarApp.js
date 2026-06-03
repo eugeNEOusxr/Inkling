@@ -31,6 +31,8 @@ import { NotificationDropdown } from "./ui/NotificationDropdown.js";
 import { NotificationSettings } from "./ui/NotificationSettings.js";
 import { InstallPrompt } from "./ui/InstallPrompt.js";
 import { loadNotificationSettings } from "./notifications/notificationSettings.js";
+import { bootstrapAppearance } from "../theme/applyAppearance.js";
+import { bootstrapAppearance } from "../theme/applyAppearance.js";
 import { iconDay, iconHour, iconBell, iconSettings } from "./ui/IconLibrary.js";
 import { WindowManager } from "./ui/WindowManager.js";
 import { AppLauncher } from "./ui/AppLauncher.js";
@@ -541,15 +543,18 @@ export class CalendarApp {
       await this.exitNotificationWall();
     }
     await this._closeAllPanelsForSwitch();
+    this._showStageBackdrop(false);
     this.layerManager.open("calendar-max");
     this.notebookWall.setVisible(true);
     this.notebookWall.setOverviewDimmed(false);
     this.notebookWall.overviewWallGroup.scale.set(1.08, 1.08, 1.08);
+    this.notebookCalendarDock?.show();
     this.controls.enabled = false;
     await this._frameOverviewCamera(true);
     this.controls.enabled = true;
     this.bottomNav?.setActiveTab("calendar");
-    document.body.classList.add("inkling-stage-open", "inkling-tab-calendar");
+    document.body.classList.add("inkling-stage-open");
+    document.body.classList.remove("inkling-tab-calendar");
   }
 
   exitCalendarMaxLayer() {
@@ -1004,7 +1009,11 @@ export class CalendarApp {
 
     switch (tab) {
       case "calendar":
-        await this.enterCalendarMaxLayer();
+        if (this.layerManager.isOpen("calendar-max")) {
+          this.exitCalendarMaxLayer();
+        } else {
+          await this.enterCalendarMaxLayer();
+        }
         break;
       case "writer":
         await this.openNotebookDayByDate(date);
@@ -1435,8 +1444,13 @@ export class CalendarApp {
   }
 
   _setMobileWriterScrollLock(active) {
+    this._setWriterScrollLock(active);
+  }
+
+  /** Block 3D orbit zoom while Writer is open so the mouse wheel scrolls the timeline. */
+  _setWriterScrollLock(active) {
     document.body.classList.toggle("inkling-writer-scroll-lock", Boolean(active));
-    if (!this.controls || !this._isMobileViewport) return;
+    if (!this.controls) return;
     if (active) {
       this.controls.enabled = false;
     } else if (
@@ -1655,6 +1669,8 @@ export class CalendarApp {
     // Also set on :root so `:root.theme-light` selectors work reliably.
     document.documentElement.classList.remove("theme-light", "theme-dark");
     document.documentElement.classList.add(target);
+
+    bootstrapAppearance();
   }
 
 }

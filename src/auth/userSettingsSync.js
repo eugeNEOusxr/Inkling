@@ -2,6 +2,7 @@ import { getSession, setSession } from "./session.js";
 import { saveLocalProfile } from "./userAccount.js";
 import { saveNotificationSettings } from "../calendar/notifications/notificationSettings.js";
 import { applyWordWeaverFromServer } from "../wordweaver/wordweaverCloudSync.js";
+import { applyPaletteToDocument, PALETTES } from "../theme/appearancePalettes.js";
 
 /**
  * Merge server user profile + settings into local session and preferences.
@@ -34,13 +35,27 @@ export function applyServerUserToClient(user) {
 
   applyWordWeaverFromServer(user.settings?.wordweaver);
 
-  const themeMode = user.settings?.theme?.mode;
-  if (themeMode === "light" || themeMode === "dark") {
+  const theme = user.settings?.theme;
+  const themeMode = theme?.mode;
+  const patch = {};
+
+  if (themeMode === "light" || themeMode === "dark" || themeMode === "auto") {
+    patch.theme = themeMode;
     document.documentElement.dataset.inklingTheme = themeMode;
     try {
       localStorage.setItem("inkling:theme", themeMode);
     } catch {
       /* ignore */
     }
+  }
+
+  const paletteId = theme?.appearancePalette;
+  if (paletteId && PALETTES[paletteId]) {
+    patch.appearancePalette = paletteId;
+    applyPaletteToDocument(paletteId);
+  }
+
+  if (Object.keys(patch).length) {
+    saveNotificationSettings(patch);
   }
 }

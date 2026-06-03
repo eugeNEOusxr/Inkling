@@ -5,11 +5,11 @@ export const LAYOUT_SAVED_AT_KEY = "inkling:wordweaverLayoutSavedAt";
 /** @typedef {{ verticalStep: number, horizontalSpread: number, depthSpread: number, spiralTwist: number, yBase: number, name?: string }} CustomLayoutParams */
 
 export const DEFAULT_CUSTOM_LAYOUT = /** @type {CustomLayoutParams} */ ({
-  verticalStep: 0.72,
-  horizontalSpread: 0.85,
-  depthSpread: 0.65,
-  spiralTwist: 0.18,
-  yBase: 0.35,
+  verticalStep: 0.88,
+  horizontalSpread: 1.05,
+  depthSpread: 0.82,
+  spiralTwist: 0.22,
+  yBase: 0.4,
   name: "My layout"
 });
 
@@ -72,8 +72,8 @@ export function customPlacement(node, i, total, p = getActiveCustomLayout()) {
   const step = p.verticalStep;
   let y = p.yBase + i * step;
   const maxY = p.yBase + Math.max(total - 1, 0) * step;
-  if (maxY > 4.2) {
-    const scale = 4.2 / maxY;
+  if (maxY > 5.2) {
+    const scale = 5.2 / maxY;
     y = p.yBase + i * step * scale;
   }
   return {

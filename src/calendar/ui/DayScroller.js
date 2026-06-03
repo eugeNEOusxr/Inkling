@@ -98,19 +98,35 @@ export default class DayScroller {
     container.appendChild(this.el);
   }
 
-  /** Let Android/WebView scroll the timeline without the 3D canvas stealing touches. */
+  /** Touch + mouse wheel: scroll timeline without the 3D canvas or time wheel stealing input. */
   _enableTouchScroll() {
     const track = this.track;
     const wrap = this.el?.querySelector(".day-scroller__track-wrap");
     if (!track) return;
 
     track.setAttribute("tabindex", "0");
-    const stop = (e) => e.stopPropagation();
+
+    const stopBubble = (e) => e.stopPropagation();
     for (const el of [track, wrap, this.el]) {
-      if (!el) continue;
-      el.addEventListener("touchstart", stop, { passive: true });
-      el.addEventListener("touchmove", stop, { passive: true });
-      el.addEventListener("pointerdown", stop);
+      if (!el || el.dataset.scrollerBound) continue;
+      el.dataset.scrollerBound = "1";
+      el.addEventListener("touchstart", stopBubble, { passive: true });
+      el.addEventListener("touchmove", stopBubble, { passive: true });
+      el.addEventListener("pointerdown", stopBubble);
+    }
+
+    if (!track.dataset.wheelBound) {
+      track.dataset.wheelBound = "1";
+      track.addEventListener(
+        "wheel",
+        (e) => {
+          if (track.scrollHeight <= track.clientHeight) return;
+          e.preventDefault();
+          e.stopPropagation();
+          track.scrollTop += e.deltaY;
+        },
+        { passive: false }
+      );
     }
   }
 

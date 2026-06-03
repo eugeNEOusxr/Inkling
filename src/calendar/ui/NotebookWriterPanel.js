@@ -472,6 +472,20 @@ export class NotebookWriterPanel {
       el.addEventListener("pointerdown", stop);
     }
 
+    if (track && !track.dataset.wheelBound) {
+      track.dataset.wheelBound = "1";
+      track.addEventListener(
+        "wheel",
+        (e) => {
+          if (track.scrollHeight <= track.clientHeight) return;
+          e.preventDefault();
+          e.stopPropagation();
+          track.scrollTop += e.deltaY;
+        },
+        { passive: false }
+      );
+    }
+
     if (!this._writerResizeObserver && typeof ResizeObserver !== "undefined") {
       this._writerResizeObserver = new ResizeObserver(() => scrollToSelected());
       this._writerResizeObserver.observe(this.scrollerMount);
