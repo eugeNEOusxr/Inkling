@@ -2,7 +2,6 @@
  * Bridges Inkling chat, notebook, and calendar writes into the WordWeaver timeline model.
  */
 import { addEntry, DEFAULT_TIMELINE_FORMAT } from "../data/timelineModel.js";
-import { emit } from "../utils/EventBus.js";
 import { parseNoteSlotKey } from "../utils/storage.js";
 
 /** @type {boolean} */
@@ -36,9 +35,7 @@ export function pushTimelineEntry(time, text, formatting = {}) {
   const trimmed = String(text ?? "").trim();
   if (!trimmed) return null;
 
-  const entry = addEntry(time, trimmed, mergeFormatting(formatting));
-  emit("timelineUpdated", { entries: [entry], source: "inkling-bridge" });
-  return entry;
+  return addEntry(time, trimmed, mergeFormatting(formatting));
 }
 
 /**

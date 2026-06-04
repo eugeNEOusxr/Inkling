@@ -1,5 +1,4 @@
-import { addTimelineEntry, loadTimeline } from "./timelineModel.js";
-import { emit } from "./EventBus.js";
+import { addTimelineEntry } from "./timelineModel.js";
 
 /**
  * Inkling → timeline pipeline (notes, timestamps, moments).
@@ -25,7 +24,6 @@ export function onInklingNoteCreated(payload) {
     weight: payload.weight
   });
 
-  emit("timelineUpdated", { entries: loadTimeline(), entry });
   return entry;
 }
 

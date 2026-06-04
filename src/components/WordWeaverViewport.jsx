@@ -4,7 +4,7 @@
  */
 import { TimelineRenderer } from "../wordweaver/TimelineRenderer.js";
 import { initInklingChatBridge } from "../inkling/InklingChatBridge.js";
-import { on } from "../utils/EventBus.js";
+import { onTimelineDataChange, disposeTimelineDataChange } from "../utils/EventBus.js";
 
 /** @type {TimelineRenderer | null} */
 let activeRenderer = null;
@@ -39,8 +39,8 @@ export function createWordWeaverViewport(props = {}) {
 }
 
 function bindTimelineRefresh() {
-  unsubscribeTimeline?.();
-  unsubscribeTimeline = on("timelineUpdated", () => {
+  if (unsubscribeTimeline) disposeTimelineDataChange(unsubscribeTimeline);
+  unsubscribeTimeline = onTimelineDataChange(() => {
     void TimelineRenderer.refresh();
   });
 }
@@ -78,7 +78,7 @@ export async function mountWordWeaverViewport(host) {
 
 /** Tear down the active renderer instance. */
 export function disposeWordWeaverViewport() {
-  unsubscribeTimeline?.();
+  if (unsubscribeTimeline) disposeTimelineDataChange(unsubscribeTimeline);
   unsubscribeTimeline = null;
   activeRenderer?.dispose();
   activeRenderer = null;

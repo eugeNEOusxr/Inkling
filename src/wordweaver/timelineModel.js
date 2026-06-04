@@ -11,7 +11,6 @@
  */
 
 import * as canonicalBus from "../utils/EventBus.js";
-import { emit as wwEmit } from "./EventBus.js";
 import { calendarRecordToUnifiedEvent, normalizeCategory } from "./timelineEventContract.js";
 import {
   loadSavedMonth,
@@ -968,7 +967,10 @@ function buildEventFromPartial(partial, opts = {}) {
  */
 function emitMutation(specEvent, payload) {
   canonicalBus.emit(specEvent, payload);
-  wwEmit("timelineUpdated", payload);
+  // TEMP DOM-compat shim (retire in Phase 4): legacy calendar/views/MonthView.js +
+  // WeekView.js still re-render on a `document` "timelineUpdated" event. Keep this
+  // until they migrate to the canonical bus (onTimelineDataChange). See 2.1.8.
+  // Module-bus convergence is unaffected — this is only the DOM event, not wwEmit.
   if (typeof document !== "undefined") {
     document.dispatchEvent(new CustomEvent("timelineUpdated", { detail: payload }));
   }
@@ -1262,7 +1264,11 @@ export function saveTimeline(entries) {
   if (!persistOrRollback(snapshot)) {
     throw new TimelineValidationError("Could not persist timeline (storage full).");
   }
-  emitMutation("timelineUpdated", { entries: loadTimeline() });
+  emitMutation("eventsBulkCreated", {
+    events: _events.map(eventToLegacyEntry),
+    count: _events.length,
+    legacyReplace: true
+  });
   return loadTimeline();
 }
 

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { loadTimeline } from "./timelineModel.js";
 import { Timeline3DScene } from "./timeline3d/Timeline3DScene.js";
-import { on } from "./EventBus.js";
+import { onTimelineDataChange, disposeTimelineDataChange } from "../utils/EventBus.js";
 
 const MOVE_SPEED = 5;
 
@@ -175,7 +175,7 @@ export function mountWordWeaverTimeline(opts) {
     fitSelected();
   };
 
-  on("timelineUpdated", onTimelineUpdated);
+  const timelineBusDisposers = onTimelineDataChange(onTimelineUpdated);
 
   if (domElement) {
     domElement.addEventListener("wheel", onWheel, { passive: false });
@@ -213,6 +213,7 @@ export function mountWordWeaverTimeline(opts) {
       controls?.update();
     },
     dispose() {
+      disposeTimelineDataChange(timelineBusDisposers);
       movement?.dispose();
       if (domElement) {
         domElement.removeEventListener("wheel", onWheel);

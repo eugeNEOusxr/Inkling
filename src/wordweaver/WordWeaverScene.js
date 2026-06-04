@@ -7,14 +7,15 @@ import { getCameraFrameForLayout } from "./layoutModes.js";
 import { WordWeaverAtomOrbits } from "./WordWeaverAtomOrbits.js";
 import { getActivePalette } from "../theme/appearancePalettes.js";
 import { mountWordWeaverTimeline } from "./WordWeaverTimelineViewport.js";
-import { on, off } from "./EventBus.js";
+import { onTimelineDataChange, disposeTimelineDataChange } from "../utils/EventBus.js";
 import {
   getInitialNotes,
-  getEventsForMonth,
+  getEventsForDay,
   getCategoryColor,
   todayIsoDate
 } from "./timelineModel.js";
-import { DayBlock } from "./DayBlock.js";
+import { DayBlock3D } from "./DayBlock3D.js";
+import { classifyEvent } from "../calendar/ai/AIBrain.js";
 import { AtomGlyph3D } from "./timeline3d/AtomGlyph3D.js";
 import { mountWordWeaverMainUI } from "../MainUI.js";
 import { getCalendarMode, onCalendarModeChange } from "./calendarMode.js";
@@ -113,8 +114,17 @@ export class WordWeaverScene {
     this._raycaster = new THREE.Raycaster();
     this._pointer = new THREE.Vector2();
     this._hovered = null;
-    /** @type {WordWeaverMonthLayout3D | null} */
-    this._monthLayout = null;
+    /** @type {WordWeaverYearLayout3D | null} */
+    this._yearLayout = null;
+    /** @type {{
+     *   startTarget: THREE.Vector3,
+     *   startCam: THREE.Vector3,
+     *   endTarget: THREE.Vector3,
+     *   endCam: THREE.Vector3,
+     *   startMs: number,
+     *   duration: number
+     * } | null} */
+    this._cameraFocus = null;
     this._raf = 0;
     this._resizeObserver = null;
     this._clock = new THREE.Clock();
@@ -141,12 +151,12 @@ export class WordWeaverScene {
     this._applyForegroundLayers();
     this._onTimelineUpdated = () => {
       this._applyForegroundLayers();
-      this._rebuildMonthLayout();
+      this._rebuildYearLayout();
     };
-    on("timelineUpdated", this._onTimelineUpdated);
+    this._timelineBusDisposers = onTimelineDataChange(this._onTimelineUpdated);
 
-    this._monthLayout = new WordWeaverMonthLayout3D(this.scene);
-    this._rebuildMonthLayout();
+    this._yearLayout = createYearLayout(this.scene, getInitialNotes());
+    this._rebuildYearLayout();
     getCalendar2D().mount(this.container);
     this._applyCalendarMode(getCalendarMode());
     this._offCalendarMode = onCalendarModeChange((mode) => this._applyCalendarMode(mode));
@@ -174,27 +184,89 @@ export class WordWeaverScene {
     this.scene.visible = is3d;
     this.canvas.style.display = is3d ? "block" : "none";
     this.canvas.style.pointerEvents = is3d ? "auto" : "none";
-    if (this._monthLayout?.root) {
-      this._monthLayout.root.visible = is3d;
+    if (this._yearLayout?.root) {
+      this._yearLayout.root.visible = is3d;
     }
     const cal2d = getCalendar2D();
     if (is3d) cal2d.hide();
     else cal2d.show();
   }
 
-  _rebuildMonthLayout() {
+  _rebuildYearLayout() {
     if (getCalendarMode() !== "3d") return;
     const timelineRoot = this._timelineViewport?.timeline3d?.root;
     if (timelineRoot) timelineRoot.visible = false;
-    this._monthLayout?.build(getInitialNotes());
-    this._frameMonthCamera();
+    this._yearLayout?.build(getInitialNotes());
+    this._frameYearCamera();
     this._applyForegroundLayers();
   }
 
-  _frameMonthCamera() {
-    this.controls.target.set(0, -2.5, 0);
-    this.camera.position.set(0, 2.2, 11);
+  _frameYearCamera() {
+    this.controls.maxDistance = 120;
+    this.controls.target.set(0, 0, 0);
+    this.camera.position.set(0, 18, 42);
     this.controls.update();
+  }
+
+  /**
+   * @param {number} monthIndex 0–11
+   */
+  focusOnMonth(monthIndex) {
+    const cluster = this._yearLayout?.monthClusters[monthIndex];
+    if (!cluster) return;
+    const world = new THREE.Vector3();
+    cluster.group.getWorldPosition(world);
+    this._startCameraFocus(world, 14, 2.5);
+  }
+
+  /**
+   * @param {number} monthIndex 0–11
+   * @param {number} dayIndex day of month (1–31)
+   */
+  focusOnDay(monthIndex, dayIndex) {
+    const block = this._yearLayout?.findDayBlock(monthIndex, dayIndex);
+    if (!block) return;
+    this._yearLayout.focusedDay = block;
+    const world = new THREE.Vector3();
+    block.group.getWorldPosition(world);
+    block.setProximity(true);
+    this._startCameraFocus(world, 5.5, 1.2);
+  }
+
+  /**
+   * @param {THREE.Vector3} worldTarget
+   * @param {number} distance
+   * @param {number} heightOffset
+   */
+  _startCameraFocus(worldTarget, distance, heightOffset = 0) {
+    const offset = new THREE.Vector3();
+    if (this.camera.position.distanceTo(worldTarget) > 0.01) {
+      offset.subVectors(this.camera.position, this.controls.target).normalize();
+    } else {
+      offset.set(0, 0.35, 1);
+    }
+    if (offset.lengthSq() < 1e-4) offset.set(0, 0.35, 1);
+    this._cameraFocus = {
+      startTarget: this.controls.target.clone(),
+      startCam: this.camera.position.clone(),
+      endTarget: worldTarget.clone(),
+      endCam: worldTarget
+        .clone()
+        .add(offset.multiplyScalar(distance))
+        .add(new THREE.Vector3(0, heightOffset, 0)),
+      startMs: performance.now(),
+      duration: 850
+    };
+  }
+
+  _updateCameraFocus(now) {
+    if (!this._cameraFocus) return;
+    const f = this._cameraFocus;
+    const t = Math.min(1, (now - f.startMs) / f.duration);
+    const ease = 1 - (1 - t) ** 3;
+    this.controls.target.lerpVectors(f.startTarget, f.endTarget, ease);
+    this.camera.position.lerpVectors(f.startCam, f.endCam, ease);
+    if (t >= 1) this._cameraFocus = null;
   }
 
   _loadEnvironmentGlb() {
@@ -233,8 +305,8 @@ export class WordWeaverScene {
     this.guideGroup?.layers.set(CONTENT_LAYER);
     const timelineRoot = this._timelineViewport?.timeline3d?.root;
     timelineRoot?.layers.set(CONTENT_LAYER);
-    this._monthLayout?.root?.layers.set(CONTENT_LAYER);
-    this._monthLayout?.root?.traverse((obj) => {
+    this._yearLayout?.root?.layers.set(CONTENT_LAYER);
+    this._yearLayout?.root?.traverse((obj) => {
       obj.layers.set(CONTENT_LAYER);
     });
     timelineRoot?.traverse((obj) => {
@@ -578,8 +650,8 @@ export class WordWeaverScene {
         if (obj instanceof THREE.Mesh) targets.push(obj);
       });
     }
-    for (const block of this._monthLayout?.dayBlocks ?? []) {
-      targets.push(block.panel, block.edge);
+    for (const block of this._yearLayout?.dayBlocks ?? []) {
+      targets.push(block.panel, block.noteSurface, block.eventGlow);
     }
     return targets;
   }
@@ -590,11 +662,10 @@ export class WordWeaverScene {
     const hits = this._raycaster.intersectObjects(this._collectClickTargets(), false);
     if (!hits.length) return null;
     let o = hits[0].object;
-    while (o && !o.userData?.node && !o.parent?.userData?.dayBlock && o.parent) {
+    while (o) {
+      if (o.userData?.dayBlock) return { dayBlock: o.userData.dayBlock };
+      if (o.userData?.node) break;
       o = o.parent;
-    }
-    if (o?.parent?.userData?.dayBlock) {
-      return { dayBlock: o.parent.userData.dayBlock };
     }
     while (o && !o.userData?.node && o.parent) o = o.parent;
     return o?.userData?.node ?? null;
@@ -616,7 +687,7 @@ export class WordWeaverScene {
     if (picked.dayBlock) {
       event.preventDefault();
       event.stopPropagation();
-      picked.dayBlock.setProximity(true);
+      this.focusOnDay(picked.dayBlock.monthIndex, picked.dayBlock.day);
       this.onNodeClick({
         date: picked.dayBlock.dateIso,
         time: "12:00",
@@ -656,7 +727,8 @@ export class WordWeaverScene {
 
     this._atomOrbits?.update(t);
     if (getCalendarMode() === "3d") {
-      this._monthLayout?.update(delta, t, this.camera);
+      this._updateCameraFocus(now);
+      this._yearLayout?.update(delta, t, this.camera);
       this._timelineViewport?.update(delta);
     }
 
@@ -680,10 +752,11 @@ export class WordWeaverScene {
   dispose() {
     this._offCalendarMode?.();
     this._offCalendarMode = null;
-    if (this._onTimelineUpdated) {
-      off("timelineUpdated", this._onTimelineUpdated);
-      this._onTimelineUpdated = null;
+    if (this._timelineBusDisposers) {
+      disposeTimelineDataChange(this._timelineBusDisposers);
+      this._timelineBusDisposers = null;
     }
+    this._onTimelineUpdated = null;
     cancelAnimationFrame(this._raf);
     window.removeEventListener("resize", this._onResize);
     this.canvas.removeEventListener("pointermove", this._onPointerMove);
@@ -691,8 +764,8 @@ export class WordWeaverScene {
     this._resizeObserver?.disconnect();
     this._atomOrbits?.dispose();
     this._atomOrbits = null;
-    this._monthLayout?.dispose();
-    this._monthLayout = null;
+    this._yearLayout?.dispose();
+    this._yearLayout = null;
     this._timelineViewport?.dispose();
     this._timelineViewport = null;
     this._disposeEnvironmentGlb();
@@ -708,25 +781,187 @@ export class WordWeaverScene {
 const COL_SPACING = 1.5;
 const ROW_SPACING = 2;
 const WEEK_HALO_HEX = ["#00ffff", "#aa00ff", "#0044ff", "#00ccff"];
+const YEAR_RING_RADIUS = 26;
+const MONTH_LABEL_Y = 5.2;
 
 /**
- * 3D month grid — day blocks, week halos, background atom glyphs.
+ * @param {string} monthName
+ * @param {number} year
  */
-class WordWeaverMonthLayout3D {
+function createMonthLabelMesh(monthName, year) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "rgba(0,0,0,0)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = "700 42px system-ui, sans-serif";
+    ctx.fillStyle = "#a8f6ff";
+    ctx.shadowColor = "#00ffff";
+    ctx.shadowBlur = 16;
+    ctx.fillText(monthName, 24, 52);
+    ctx.font = "600 28px system-ui, sans-serif";
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText(String(year), 24, 92);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  const mat = new THREE.MeshStandardMaterial({
+    map: tex,
+    transparent: true,
+    emissive: new THREE.Color("#00ffff"),
+    emissiveIntensity: 0.55,
+    depthWrite: false
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.8), mat);
+  mesh.renderOrder = 10;
+  mesh.userData.isMonthLabel = true;
+  return { mesh, mat, tex };
+}
+
+/**
+ * Build one month cluster (grid + halos + atoms + label).
+ * @param {THREE.Group} cluster
+ * @param {number} year
+ * @param {number} month 1–12
+ * @param {number} monthIndex 0–11
+ * @param {{ time: string, text: string, category: string }[]} initialNotes
+ * @param {import("./DayBlock3D.js").DayBlock3D[]} dayBlocksOut
+ * @param {AtomGlyph3D[]} atomsOut
+ * @param {THREE.Mesh[]} halosOut
+ */
+function enrichDayEvents(rawEvents) {
+  return rawEvents.map((ev) => {
+    const classified = classifyEvent(ev.text ?? "");
+    const cat = ev.category === "errand" ? "errands" : ev.category ?? classified.category;
+    return {
+      time: ev.time,
+      text: ev.text,
+      category: cat,
+      kind: ev.kind,
+      alertId: ev.alertId,
+      icon:
+        ev.alertId || ev.kind === "alarm" || ev.kind === "reminder"
+          ? "⏰"
+          : ev.kind === "appointment"
+            ? "📅"
+            : classified.icon,
+      color: classified.color,
+      priority: classified.priority
+    };
+  });
+}
+
+function populateMonthCluster(cluster, year, month, monthIndex, initialNotes, dayBlocksOut, atomsOut, halosOut) {
+  const today = todayIsoDate();
+  const first = new Date(year, month - 1, 1);
+  const monOffset = first.getDay() === 0 ? 6 : first.getDay() - 1;
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const weekCount = Math.ceil((monOffset + daysInMonth) / 7);
+
+  for (let w = 0; w < weekCount; w++) {
+    const colorHex = WEEK_HALO_HEX[w % WEEK_HALO_HEX.length];
+    const haloMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(colorHex),
+      transparent: true,
+      opacity: 0.13,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+    const halo = new THREE.Mesh(
+      new THREE.PlaneGeometry(7 * COL_SPACING + 0.6, ROW_SPACING * 0.85),
+      haloMat
+    );
+    halo.position.set(0, -w * ROW_SPACING, -0.15);
+    cluster.add(halo);
+    halosOut.push(halo);
+  }
+
+  const atomCount = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < atomCount; i++) {
+    const scale = 2 + Math.random() * 3;
+    const opacity = 0.1 + Math.random() * 0.1;
+    const atom = AtomGlyph3D.createBackground({
+      scale,
+      opacity,
+      position: new THREE.Vector3(
+        (Math.random() - 0.5) * 9,
+        -Math.random() * weekCount * ROW_SPACING * 0.4,
+        -2.5 - Math.random() * 2.5
+      )
+    });
+    cluster.add(atom.group);
+    atomsOut.push(atom);
+  }
+
+  const monthName = first.toLocaleDateString(undefined, { month: "long" });
+  const label = createMonthLabelMesh(monthName, year);
+  label.mesh.position.set(0, MONTH_LABEL_Y, 0.2);
+  cluster.add(label.mesh);
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    let dayEvents = enrichDayEvents(getEventsForDay(year, monthIndex, day));
+
+    if (iso === today && !dayEvents.length && initialNotes?.length) {
+      dayEvents = enrichDayEvents(
+        initialNotes.map((n) => ({
+          time: n.time,
+          text: n.text,
+          category: n.category,
+          kind: "timeline"
+        }))
+      );
+    }
+
+    const cellIndex = monOffset + day - 1;
+    const col = cellIndex % 7;
+    const row = Math.floor(cellIndex / 7);
+    const x = (col - 3) * COL_SPACING;
+    const y = -row * ROW_SPACING;
+    const cat = dayEvents[0]?.category ?? "personal";
+
+    const block = new DayBlock3D({
+      day,
+      dateIso: iso,
+      events: dayEvents,
+      glowColor: getCategoryColor(cat),
+      isToday: iso === today,
+      useSharedMaterials: true,
+      monthIndex
+    });
+    block.group.position.set(x, y, 0.05);
+    block.group.userData.dayBlock = block;
+    cluster.add(block.group);
+    dayBlocksOut.push(block);
+  }
+
+  return label;
+}
+
+/**
+ * Full 12-month ring layout for WordWeaver 3D mode.
+ */
+class WordWeaverYearLayout3D {
   /**
    * @param {THREE.Scene} scene
    */
   constructor(scene) {
     this.scene = scene;
     this.root = new THREE.Group();
-    this.root.name = "ww-month-layout-3d";
+    this.root.name = "ww-year-layout-3d";
     scene.add(this.root);
-    /** @type {DayBlock[]} */
+    /** @type {import("./DayBlock3D.js").DayBlock3D[]} */
     this.dayBlocks = [];
     /** @type {AtomGlyph3D[]} */
     this.bgAtoms = [];
     /** @type {THREE.Mesh[]} */
     this.weekHalos = [];
+    /** @type {Array<{ group: THREE.Group, monthIndex: number, label: THREE.Mesh }>} */
+    this.monthClusters = [];
+    /** @type {import("./DayBlock3D.js").DayBlock3D | null} */
+    this.focusedDay = null;
   }
 
   /**
@@ -734,88 +969,46 @@ class WordWeaverMonthLayout3D {
    */
   build(initialNotes) {
     this._clear();
+    const year = new Date().getFullYear();
 
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const today = todayIsoDate();
-    const events = getEventsForMonth(year, month);
+    for (let month = 1; month <= 12; month++) {
+      const monthIndex = month - 1;
+      const cluster = new THREE.Group();
+      cluster.name = `month-cluster-${month}`;
 
-    const first = new Date(year, month - 1, 1);
-    const monOffset = first.getDay() === 0 ? 6 : first.getDay() - 1;
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const totalCells = monOffset + daysInMonth;
-    const weekCount = Math.ceil(totalCells / 7);
-
-    for (let w = 0; w < weekCount; w++) {
-      const colorHex = WEEK_HALO_HEX[w % WEEK_HALO_HEX.length];
-      const haloMat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(colorHex),
-        transparent: true,
-        opacity: 0.13,
-        depthWrite: false,
-        side: THREE.DoubleSide
-      });
-      const halo = new THREE.Mesh(new THREE.PlaneGeometry(7 * COL_SPACING + 0.6, ROW_SPACING * 0.85), haloMat);
-      halo.position.set(0, -w * ROW_SPACING, -0.15);
-      halo.renderOrder = 0;
-      this.root.add(halo);
-      this.weekHalos.push(halo);
-    }
-
-    const atomCount = 3 + Math.floor(Math.random() * 5);
-    for (let i = 0; i < atomCount; i++) {
-      const scale = 3 + Math.random() * 3;
-      const opacity = 0.1 + Math.random() * 0.1;
-      const pos = new THREE.Vector3(
-        (Math.random() - 0.5) * 14,
-        -Math.random() * weekCount * ROW_SPACING * 0.5 - 1,
-        -4 - Math.random() * 4
+      const angle = (monthIndex / 12) * Math.PI * 2 - Math.PI / 2;
+      cluster.position.set(
+        Math.cos(angle) * YEAR_RING_RADIUS,
+        0,
+        Math.sin(angle) * YEAR_RING_RADIUS
       );
-      const atom = AtomGlyph3D.createBackground({ scale, opacity, position: pos });
-      this.root.add(atom.group);
-      this.bgAtoms.push(atom);
+      cluster.lookAt(0, 0, 0);
+
+      const label = populateMonthCluster(
+        cluster,
+        year,
+        month,
+        monthIndex,
+        initialNotes,
+        this.dayBlocks,
+        this.bgAtoms,
+        this.weekHalos
+      );
+
+      this.root.add(cluster);
+      this.monthClusters.push({ group: cluster, monthIndex, label: label.mesh });
     }
+  }
 
-    for (let day = 1; day <= daysInMonth; day++) {
-      const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      let dayEvents = events
-        .filter((ev) => ev.date === iso)
-        .map((ev) => ({
-          time: ev.time,
-          text: ev.text,
-          category: ev.category === "errand" ? "errands" : ev.category
-        }));
-
-      if (iso === today && !dayEvents.length && initialNotes?.length) {
-        dayEvents = initialNotes.map((n) => ({
-          time: n.time,
-          text: n.text,
-          category: n.category
-        }));
-      }
-
-      const cellIndex = monOffset + day - 1;
-      const col = cellIndex % 7;
-      const row = Math.floor(cellIndex / 7);
-      const x = (col - 3) * COL_SPACING;
-      const y = -row * ROW_SPACING;
-
-      const cat = dayEvents[0]?.category ?? "personal";
-      const glow = getCategoryColor(cat);
-
-      const block = new DayBlock({
-        day,
-        dateIso: iso,
-        events: dayEvents,
-        glowColor: glow,
-        isToday: iso === today
-      });
-      block.group.position.set(x, y, 0.05);
-      block.group.userData.dayBlock = block;
-      this.root.add(block.group);
-      this.dayBlocks.push(block);
-    }
+  /**
+   * @param {number} monthIndex 0–11
+   * @param {number} dayIndex 1–31
+   * @returns {import("./DayBlock3D.js").DayBlock3D | undefined}
+   */
+  findDayBlock(monthIndex, dayIndex) {
+    return this.dayBlocks.find(
+      (b) => b.monthIndex === monthIndex && b.day === dayIndex
+    );
   }
 
   /**
@@ -825,35 +1018,45 @@ class WordWeaverMonthLayout3D {
    */
   update(delta, elapsed, camera) {
     for (const atom of this.bgAtoms) atom.update(delta);
+
+    const bob = Math.sin(elapsed * 1.4) * 0.12;
+    for (const { label } of this.monthClusters) {
+      if (label) label.position.y = MONTH_LABEL_Y + bob;
+    }
+
     const camPos = camera.position;
     for (const block of this.dayBlocks) {
       const world = new THREE.Vector3();
       block.group.getWorldPosition(world);
       const dist = camPos.distanceTo(world);
-      block.setProximity(dist < 3.4);
-      block.update(delta, elapsed);
+      const isFocused = block === this.focusedDay;
+      block.setProximity(isFocused || dist < 4.2);
+      block.update(delta, elapsed, camera);
     }
   }
 
   _clear() {
+    this.focusedDay = null;
     for (const block of this.dayBlocks) {
       block.dispose();
-      this.root.remove(block.group);
     }
     this.dayBlocks = [];
 
     for (const atom of this.bgAtoms) {
       atom.dispose();
-      this.root.remove(atom.group);
     }
     this.bgAtoms = [];
 
     for (const halo of this.weekHalos) {
       halo.geometry.dispose();
       halo.material.dispose();
-      this.root.remove(halo);
     }
     this.weekHalos = [];
+
+    while (this.root.children.length) {
+      this.root.remove(this.root.children[0]);
+    }
+    this.monthClusters = [];
   }
 
   dispose() {
@@ -863,11 +1066,21 @@ class WordWeaverMonthLayout3D {
 }
 
 /**
+ * Create the full 3D year layout (12 month clusters in a ring).
+ * @param {THREE.Scene} scene
+ * @param {{ time: string, text: string, category: string }[]} initialNotes
+ * @returns {WordWeaverYearLayout3D}
+ */
+export function createYearLayout(scene, initialNotes) {
+  const layout = new WordWeaverYearLayout3D(scene);
+  layout.build(initialNotes);
+  return layout;
+}
+
+/**
  * @param {THREE.Scene} scene
  * @param {{ time: string, text: string, category: string }[]} initialNotes
  */
 export function loadMonthView(scene, initialNotes) {
-  const layout = new WordWeaverMonthLayout3D(scene);
-  layout.build(initialNotes);
-  return layout;
+  return createYearLayout(scene, initialNotes);
 }
