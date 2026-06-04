@@ -115,7 +115,22 @@ export default class DayScroller {
       el.addEventListener("pointerdown", stopBubble);
     }
 
-    const wheelTarget = this.inlineNotes && wrap ? wrap : track;
+    // Regression guard (enforced by scripts/check-dayscroller-scroll.mjs): the
+    // timeline time-slot list MUST stay vertically scrollable. CSS overrides have
+    // stripped this repeatedly — e.g. `max-height: none` on .notebook-writer-
+    // scroller-mount unbinds the flex height, so the track never overflows and the
+    // hours run off-screen instead of scrolling. Enforce it on the track itself
+    // with inline !important so no stylesheet edit can remove the scroll again.
+    if (this.inlineNotes && this.orientation === "vertical") {
+      track.style.setProperty("overflow-y", "auto", "important");
+      track.style.setProperty("max-height", "min(60dvh, 600px)", "important");
+      track.style.setProperty("-webkit-overflow-scrolling", "touch");
+      track.style.setProperty("touch-action", "pan-y");
+    }
+
+    // The track is the scroll element (the wrap is overflow:hidden in the
+    // notebook layout), so wheel events must scroll the track, not the wrap.
+    const wheelTarget = track;
     if (!wheelTarget.dataset.wheelBound) {
       wheelTarget.dataset.wheelBound = "1";
       wheelTarget.addEventListener(
