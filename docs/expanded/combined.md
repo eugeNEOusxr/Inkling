@@ -32,160 +32,190 @@
 
 # Phase 1 — Milestone 1.1: Timeline Model Core (Expanded)
 
-**Goal:** A solid, spec-compliant `timelineModel.js` with full CRUD and persistence.
-**Spec alignment:** §2.2, §3.1–3.5, §10 (timeline model is the single source of truth).
-**Sequencing:** This is the foundation milestone. Nothing else in the system may read or write event data until 1.1 is complete. Do tasks strictly in order; 1.1.5–1.1.8 depend on 1.1.3–1.1.4.
+**Goal:** Reconcile the **already-existing** [`src/wordweaver/timelineModel.js`](../../src/wordweaver/timelineModel.js) (605 lines, live, imported by **21 files**) toward the §3 spec — a single authoritative event model with validated CRUD (`createEvent`/`updateEvent`/`deleteEvent`/`bulkCreateEvents`), spec-shaped `Event` records, UUID ids, `createdAt`/`updatedAt`, and persistence to `inkling-timeline-v1`. This milestone is grounded against the live file and its companion [`timelineEventContract.js`](../../src/wordweaver/timelineEventContract.js) — so every task reconciles **built / gap / next-step**, not greenfield.
+
+> ⚠️ **Path note — read first.** The canonical spec names the model **`src/wordweaver/timelineModel.js`** (master_spec_expanded.md §28 line 1958). The roadmap `docs/UPGRADE_PATH.md` Task 1.1.1 says `src/timeline/timelineModel.js` — that path is **wrong**; it conflicts with the canonical spec and the 21 live importers. Do **not** create a new file: the model already exists and is wired into the whole app. Implement Phase 1 by **reconciling the existing file**, never by scaffolding a parallel one. (An orphan `src/timeline/timelineModel.js` was created in error and removed.)
+
+**Spec alignment:** §3.1 line 212-239 (the `Event` shape + field constraints: UUID `id`, `title` ≤120 trimmed-required, `body`, ISO `startTime` required, `endTime` null-or-after-start, `Category` literals default `personal`, `Priority` 0-3 default 1, `alerts[]`, `createdAt` set-once, `updatedAt` per-mutation, optional `aiMetadata`), §3.2 line 241-265 (derived helpers — pure, new arrays), §3.3 line 267-291 (single in-memory `_events: Event[]`, `init()` → read `inkling-timeline-v1` → sort by `startTime` → emit `initialized`; mutations `createEvent`/`updateEvent`/`deleteEvent`/`bulkCreateEvents` validate→persist→emit; `_writing` mutex; storage size guard), §3.4 line 293-301 (storage schema: `inkling-timeline-v1`, `inkling-has-user-notes`), §3.5 line 303+ (event lifecycle), §10 (validation lives in the model), §13.2 (the `initialized`/`eventCreated`/`eventUpdated`/`eventDeleted` catalog).
+
+**Sequencing:** Foundation milestone — everything else reads/writes through this model. Do tasks in order; the validation core (1.1.5) is reused by update (1.1.6) and bulk (1.1.8). **Central decision to make in 1.1.1 before any code:** the spec wants a single in-memory `_events: Event[]` of real `Event` objects; the live model is a **stateless read-through** federation of legacy *timeline entries* (localStorage) **+** *calendar day-nodes* (`loadSavedMonth`) projected to the `Event` shape **on read** via `calendarRecordToUnifiedEvent`. Reconciling fully is a migration, not a tweak — pick the target architecture first and let 1.1.2–1.1.10 follow it.
 
 ---
 
-## 1.1.1 — Create `timelineModel.js` file and scaffold module structure (no logic yet)
+## Current implementation status (reconciliation)
 
-- **Purpose:** Establish the single authoritative module that owns all event data, so no other file ever touches `localStorage` for events.
-- **Dependencies:** None. This is the first task in the project.
-- **Acceptance criteria:** File exists at the path the master spec names; exports stub functions (`init`, `createEvent`, `updateEvent`, `deleteEvent`, `bulkCreateEvents`, and the `getEventsFor*` helpers) that currently throw `NotImplemented`; imports cleanly with no side effects.
-- **Implementation notes:** Use a module-singleton pattern — a private `_events` array in module scope, never exported directly. Export only functions. Keep one top-of-file comment block declaring this file the sole writer of event data.
-- **Edge cases:** None yet (no logic), but design the export surface now so later tasks don't force a refactor.
-- **UI/UX considerations:** None — pure data layer.
-- **Data flow notes:** This module sits between persistence (`localStorage`) and every consumer (3D, 2D, Inkling, Scheduler). All arrows in §12 pass through here.
-- **Testing notes:** Add a smoke test that simply imports the module and asserts the expected exports exist.
-- **Performance notes:** None yet; just avoid running any code at import time.
+A working timeline model **already exists and is live** — but it implements a **fundamentally different architecture** than §3.3 describes, and the spec's `Event` shape exists only as a **read-time projection**, not the stored form. This is an upgrade/migration milestone, not greenfield.
+
+- **No in-memory `_events: Event[]` — the model is a stateless read-through store.** §3.3 line 269 mandates "a single in-memory array `_events: Event[]` … the authoritative state." The live model has **no such array**: `loadTimeline()` (timelineModel.js:262) reads + normalizes from `localStorage` on **every call**, `saveTimeline()` (:281) writes the whole list, and there is no module-scope authoritative state. `STORAGE_KEY = "inkling-timeline-v1"` (:14) ✓ matches §3.4. 1.1.3 must decide whether to introduce the authoritative `_events` array (spec) or formally bless the read-through model and update §3.3.
+- **The §3.1 `Event` shape exists — but only as a read-time adapter output, not the stored record.** `timelineEventContract.js` defines `UnifiedTimelineEvent` (timelineEventContract.js:17-31) which matches §3.1 `Event` **field-for-field** (id/type/title/body/startTime/endTime/category/priority/alerts/createdAt/updatedAt/aiMetadata) ✓. But it's produced **on read** by `calendarRecordToUnifiedEvent` (:72-98), which **synthesizes** the rich fields from the legacy record: `startTime` faked from `date + "T" + time + ":00"` (:75), **`endTime` always `null`** (:91), **`priority` always `1`** (:93), `title` = `body.slice(0,120)` (:88), **`createdAt` = `updatedAt` = `startTime`** (:95-96), `alerts` derived from an `alertId` flag (:81-83), **no `aiMetadata`**. So the spec fields are *projected*, never *stored* — the underlying records (`CalendarEventRecord` :16-25, `TimelineEntryRecord` :43-55) carry only a single `time`, no real `endTime`/`priority`/`createdAt`/`updatedAt`. This is the §3.1 storage gap (and the recurring `startTime`/`endTime` gap the Phase-4 specs flagged at the source). 1.1.2 reconciles the stored shape to §3.1.
+- **CRUD names + coverage diverge; there is no delete and no bulk.** §3.3 line 279-282 wants `createEvent`/`updateEvent`/`deleteEvent`/`bulkCreateEvents`. Live has `addTimelineEntry` (timelineModel.js:307), `updateTimelineEntry` (:387), and `saveNoteToTimeline` (:343, the main note-save path) — but **no `deleteEvent`/delete function anywhere** and **no `bulkCreateEvents`**. 1.1.5–1.1.8 reconcile names + add the missing delete/bulk paths.
+- **IDs are not UUIDs; no `createdAt`/`updatedAt`.** §3.1 line 230 wants `crypto.randomUUID()`; live `nextId()` (:292) returns `tw-${Date.now()}-${random}`. §3.1 line 222-223 mandates `createdAt` (set once) and `updatedAt` (per mutation) — the live records have **neither field**. 1.1.5/1.1.6 add UUID + timestamps.
+- **No `init()`; boot is lazy + side-effecting.** §3.3 line 271-275 wants an explicit `init()` that reads storage, sorts by `startTime`, and emits `initialized`. The live model has **no init** — it lazy-loads on the first `loadTimeline()` and runs **side-effecting imports** at module load (`TimePicker` :377-379; `alertsModel` dynamically in `saveNoteToTimeline` :356). 1.1.3 introduces an explicit, idempotent init.
+- **Validation is absent — only normalization exists.** §10 / §3.1 line 228-237 want write-time validation (reject empty title, `endTime` after `startTime`, `priority` ∈ 0-3, `category` ∈ literals). Live `normalizeEntry` (:220-238) only **defaults/normalizes** (time→`09:00`, category lowercased, label→`Note`) — it never **rejects** anything, and with no `endTime` there's no temporal validation. 1.1.5 introduces a real `_validate` (and `timelineEventContract.js` already has the normalizers `normalizeCategory`/`priorityLabelToNumber` to build on, :37/:61).
+- **Mutations emit on the wrong bus + wrong events.** §13.2 wants `initialized`/`eventCreated`/`eventUpdated`/`eventDeleted` on the Phase-2 bus. Live emits only `"timelineUpdated"` — via the **duplicate WordWeaver bus** (`emit` from `./EventBus.js`, :6/:361/:366) **and** `document.dispatchEvent("timelineUpdated")` (:287/:374). This is the same duplicate-bus gap the 5.1.9 finding raised. 1.1.9 reconciles the emits onto the §13.2 catalog + canonical bus.
+- **Reads federate two sources, not one array.** `getEventsForDate` (:517) merges **timeline entries** (`loadTimeline`) **+** **calendar day-nodes** (`loadSavedMonth` → `eventsFromDayNode` :447, which lifts appointments/reminders/alarms/threads from saved month state). So "the events for a day" come from **two stores**, not a single `_events`. This federation is real product behavior (the 2D calendar's day data) — 1.1.3/1.2 must decide whether to unify it into `_events` or keep it as a documented secondary source the helpers merge.
+- **What's already right (keep):** `STORAGE_KEY = "inkling-timeline-v1"` ✓ (§3.4); the `UnifiedTimelineEvent` contract matches §3.1 field-for-field ✓ (a ready-made target shape); `readStore` catches corrupt JSON → `null` (self-heals, :240-249) ✓ (partial §10); helpers return **new arrays** and sort, no caller mutation ✓ (§3.2 line 265); `getEventsForMonth`/`getEventsForDate`/`getUnifiedEventsForDate` exist ✓; category/priority normalizers exist in the contract ✓; the file already declares itself the design-contract owner with a §3 reference ✓ (:1-4).
+
+---
+
+## 1.1.1 — Decide the target architecture: authoritative `_events` array vs. read-through federation
+
+- **Purpose:** Before touching code, resolve the **central architectural fork** — adopt the spec's single in-memory `_events: Event[]` authoritative array (§3.3), or formally keep the live read-through federation (timeline entries + calendar day-nodes) and update §3.3 to match — so 1.1.2–1.1.10 build on one coherent model instead of fighting the existing one.
+- **Dependencies:** None (first task). Reads: the live `timelineModel.js`, `timelineEventContract.js`, `calendarState.js` (the day-node source); §3.3 line 267-291, §28 line 1958 (canonical path).
+- **Acceptance criteria:** A documented decision: either **(A)** introduce `_events: Event[]` as the authoritative state and migrate the legacy timeline-entry + day-node sources into it (closest to §3.3, larger change), or **(B)** keep the read-through federation, promote `UnifiedTimelineEvent` to the public read shape, and amend §3.3 to describe the actual model — with the migration cost, the 21 importers' exposure, and the day-node federation's fate all called out; the **canonical path stays `src/wordweaver/timelineModel.js`** (no new file); the decision names which subsequent tasks change and how.
+- **Implementation notes:** Recommend **(A) incrementally**: keep `src/wordweaver/timelineModel.js`, add the authoritative `_events` array + `init()` (1.1.3) and the spec CRUD names (1.1.5-1.1.8) as the new front door, while keeping the existing `addTimelineEntry`/`getEventsFor*` working as adapters during migration so the 21 importers don't break in one step. Treat the calendar day-node federation (`eventsFromDayNode`, :447) as a **secondary source** to fold in later (1.2), not a blocker. Do **not** rewrite from scratch.
+- **Edge cases:** 21 importers (2D views, 3D scene, alerts, AIBrain) read the current API — a hard cut would break them all at once; the day-node source is owned by `calendarState.js`, not this model — unifying it touches another subsystem; the duplicate WordWeaver `EventBus.js` (:6) vs the Phase-2 bus must be chosen here too (1.1.9).
+- **UI/UX considerations:** None directly; the choice determines how stable the app stays during Phase 1 (incremental migration keeps it runnable each step).
+- **Data flow notes:** Sets whether every consumer reads from one `_events` array (A) or keeps federating sources via helpers (B).
+- **Testing notes:** N/A (decision task) — but the decision must list the regression surface (the 21 importers) so later tasks can verify nothing breaks.
+- **Performance notes:** (A) removes the per-call `loadTimeline()` parse+normalize (a read-through cost today); (B) keeps it. Either is fine at expected scale; (A) is cleaner for §3.2's "pure helpers over an array."
 - **Mobile vs desktop:** Identical.
-- **Integration points:** Every other module depends on this contract. Lock the function signatures against §3.2 before proceeding.
+- **Integration points:** §3.3, §28 line 1958, all of 1.1, 1.2 (helpers), the 21 importers, `calendarState.js` (day-node source).
+- **Status:** **Architectural fork (live model diverges from §3.3).** Live = stateless read-through federation; spec = single in-memory `_events` array. **Next:** pick A (adopt `_events`, migrate incrementally) or B (bless federation, amend §3.3); keep the existing file; don't greenfield.
 
-## 1.1.2 — Implement `Event` typedefs exactly as in master spec
+## 1.1.2 — Reconcile the stored record to the §3.1 `Event` shape (adopt `UnifiedTimelineEvent`)
 
-- **Purpose:** Encode the atomic data unit so all code shares one definition and validation has a reference shape.
-- **Dependencies:** 1.1.1.
-- **Acceptance criteria:** `EventType`, `Category`, `Priority`, `Alert`, `AIMetadata`, and `Event` are defined exactly matching §3.1 (field names, optionality, literal unions). No extra or missing fields.
-- **Implementation notes:** If plain JS, express these as JSDoc `@typedef` blocks so editors get autocomplete without a build step; if TS, use `interface`/`type`. Keep the literal unions (`Category`, `Priority`) in one place to reuse in validation.
-- **Edge cases:** `endTime` is `string | null`; `aiMetadata` is optional — model both precisely so validation can distinguish "absent" from "null".
-- **UI/UX considerations:** Category and Priority literals drive color/icon choices later (§21–22); keep their names stable.
-- **Data flow notes:** This shape is the contract for the event bus payloads in §13.2.
-- **Testing notes:** No runtime test needed for types; add one fixture object that satisfies the full `Event` shape for reuse in later tests.
-- **Performance notes:** None.
+- **Purpose:** Close the §3.1 gap where the `Event` shape exists only as a **read-time projection** — make the *stored* record carry the real fields (`startTime`/`endTime`/`priority`/`body`/`title`/`createdAt`/`updatedAt`/`aiMetadata`) instead of synthesizing them from a single `time` on every read.
+- **Dependencies:** 1.1.1 (target architecture); §3.1 line 212-239, the existing `UnifiedTimelineEvent`/adapter (timelineEventContract.js:17-31/:72-98).
+- **Acceptance criteria:** The persisted record conforms to §3.1 (`id`, `type`, `title` ≤120, `body`, ISO `startTime`, `endTime|null`, `Category`, `Priority`, `alerts[]`, `createdAt`, `updatedAt`, optional `aiMetadata`) — reusing `UnifiedTimelineEvent` as the canonical type rather than defining a third shape; a **migration/adapter** maps existing legacy records (`CalendarEventRecord`/`TimelineEntryRecord` with single `time`) into the new shape on load (real `startTime` from date+time, `endTime` null unless known, `priority` default 1, `createdAt`/`updatedAt` backfilled to now-or-startTime) so existing stored data isn't lost; the synthesize-on-read shortcuts (`endTime:null` always, `priority:1` always — timelineEventContract.js:91/93) become stored, editable fields.
+- **Implementation notes:** Promote `UnifiedTimelineEvent` (timelineEventContract.js:17-31) to the model's record type; keep `calendarRecordToUnifiedEvent` (:72-98) as the **one-time/legacy migration** path (and for the day-node federation), not the per-read default; preserve `normalizeCategory`/`kindToEventType`/`priorityLabelToNumber` (:37/49/61) as the field normalizers. Keep `formatTimelineDisplayTime` (timelineModel.js:93) for *display*, but store ISO `startTime`, not a bucket/`HH:MM` string.
+- **Edge cases:** Existing stored entries have no `endTime`/`priority`/timestamps — backfill deterministically on first load (don't drop data); `time` strings vs ISO `startTime` — the migration must parse both (the adapter already handles a `"T"` in the date, :75); the `TimelineEntryRecord` display fields (color/fontSize/weight/timeBucket, :43-55) are WordWeaver render hints, not §3.1 — keep them as a separate render concern, don't force them into `Event`.
+- **UI/UX considerations:** Real `endTime`/`priority`/`body` unlock the Phase-4 week/day positioning, priority indicators, and body previews that are currently impossible with a single `time`.
+- **Data flow notes:** One canonical `Event` type flows to all 21 consumers (and the §13.2 payloads), instead of legacy-record-in / unified-out.
+- **Testing notes:** A stored record round-trips through §3.1 fields; legacy data migrates without loss; `endTime`/`priority` are now real (not constant null/1); `title`/`body` are distinct (not `title = body.slice(0,120)`).
+- **Performance notes:** Storing the real shape removes per-read synthesis; migration runs once.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.1 is the source of truth. Any deviation here propagates everywhere — cross-check field-by-field.
+- **Integration points:** §3.1, `timelineEventContract.js` (the target type + adapters), 1.1.1, 1.1.5/1.1.6 (write the real fields), Phase-4 week/day specs (consumers of `endTime`/`priority`).
+- **Status:** **Projected-not-stored.** §3.1 shape exists as `UnifiedTimelineEvent` but is synthesized on read (`endTime` always null, `priority` always 1, no real timestamps). **Next:** adopt `UnifiedTimelineEvent` as the stored record + migrate legacy data; stop synthesizing.
 
-## 1.1.3 — Implement in-memory `_events` array and `initTimelineModel()`
+## 1.1.3 — Introduce authoritative state + idempotent `init()` (read → sort → emit `initialized`)
 
-- **Purpose:** Create the authoritative in-memory state and a single initialization entry point.
-- **Dependencies:** 1.1.2.
-- **Acceptance criteria:** `_events: Event[]` exists in module scope; `init()` populates it, sorts by `startTime` ascending, and emits `timelineInitialized` (wired in 1.1.9 / Milestone 1.3); calling `init()` twice is safe (idempotent).
-- **Implementation notes:** Sort once on init and maintain order on insert rather than re-sorting the whole array each write. Guard against double-init with an `_initialized` flag.
-- **Edge cases:** Empty store (first run) — leave `_events` empty here; starter data loading is Milestone 1.3, not this task. Corrupt/partial persisted data is handled in 1.1.4.
-- **UI/UX considerations:** Views must not render before `init()` completes; emit the init event so they know when to draw.
-- **Data flow notes:** `init()` is the first call in app boot, before any view mounts (§12.1 boot order).
-- **Testing notes:** Test that init sorts unsorted input and that a second init() does not duplicate events.
-- **Performance notes:** Sorting is O(n log n) once at boot — acceptable. Avoid per-call sorting elsewhere.
+- **Purpose:** Reconcile boot to §3.3 line 271-275 — an explicit `init()` that loads `inkling-timeline-v1`, populates the authoritative state, sorts by `startTime` ascending, and emits `initialized` — replacing the live lazy-load-on-first-read + side-effecting module imports.
+- **Dependencies:** 1.1.1 (array vs federation), 1.1.2 (the record shape to hold/sort); §3.3 line 271-275, §13.2 (`initialized`).
+- **Acceptance criteria:** If architecture (A): `_events: Event[]` exists in module scope, `init()` populates + sorts it once and is **idempotent** (second call is a no-op, guarded by an `_initialized` flag); if (B): `init()` still exists as the explicit boot hook (priming caches / migration) even over the federation; either way `init()` emits `initialized` on the canonical bus (1.1.9) and is the documented first call in app boot (before any view mounts); the side-effecting module-load imports (`TimePicker` timelineModel.js:377-379) are moved out of import-time into `init()` or their owners.
+- **Implementation notes:** Add `init()` near the top of the module; sort by `startTime` (now a real ISO field per 1.1.2) ascending; guard double-init. Keep `loadTimeline()`/`saveTimeline()` working during migration but have them delegate to the authoritative state once it exists. Relocate the `TimePicker` side-effect import (:377) — modules shouldn't trigger UI loads as a side effect of importing the data model.
+- **Edge cases:** Empty store (first run) → `_events` empty here; **starter data loading is Milestone 1.3**, not this task; corrupt/partial persisted data → handled in 1.1.4; calling a helper before `init()` — decide: auto-init lazily or require boot order (document which, §12 boot sequence).
+- **UI/UX considerations:** Views must not render before `init()` completes — the `initialized` emit is their go-signal (the current lazy model has no such signal, so views read whenever).
+- **Data flow notes:** `init()` is the first call in app boot; pairs with 1.1.4 (load step) and 1.3 (starter seeding).
+- **Testing notes:** `init()` sorts unsorted input; a second `init()` doesn't duplicate; emits `initialized` exactly once; no UI side effects fire merely from importing the module.
+- **Performance notes:** One O(n log n) sort at boot; avoid per-call sorting elsewhere (helpers stay pure reads).
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.3 "Initialization" sequence. Pairs with 1.1.4 for the load step.
+- **Integration points:** §3.3 init sequence, §13.2 `initialized`, 1.1.4 (load), 1.3 (starter), §12 boot order.
+- **Status:** **Missing (lazy + side-effecting).** No `init()`, no authoritative state, no `initialized` emit; module-load triggers `TimePicker` import. **Next:** explicit idempotent `init()` (load→sort→emit), authoritative state per 1.1.1, relocate side-effect imports.
 
-## 1.1.4 — Implement `loadFromStorage()` and `saveToStorage()` using spec keys
+## 1.1.4 — Harden `loadFromStorage`/`saveToStorage` on the spec key (build on `readStore`/`writeStore`)
 
-- **Purpose:** Persist and restore the event array through the one storage key the spec defines.
-- **Dependencies:** 1.1.3.
-- **Acceptance criteria:** Reads/writes `inkling-timeline-v1`; `save` serializes the full `_events` array to JSON synchronously; `load` parses it back into validated `Event[]`; malformed JSON is caught and treated as empty, not a crash.
-- **Implementation notes:** Wrap `JSON.parse` in try/catch. On parse failure, log (dev-only) and return `[]` so the app self-heals rather than white-screening. Keep the storage key as a named constant.
-- **Edge cases:** Quota exceeded on save (handled fully in Milestone 1.4 — here just don't crash); absent key on load → empty array; non-array parsed value → treat as empty.
-- **UI/UX considerations:** A corrupt store should degrade to "empty calendar," never a broken screen (§10.15 error boundaries).
-- **Data flow notes:** Only this module touches `localStorage` for events (§2.4, §10.3). Enforce by code review.
-- **Testing notes:** Round-trip test (save then load equals original); corrupt-string test returns `[]`.
-- **Performance notes:** Full-array serialization is fine at expected sizes; the size guard in Milestone 1.4 protects the ceiling.
-- **Mobile vs desktop:** Identical; mobile Safari private mode may throw on write — catch it.
-- **Integration points:** §3.3 "Persistence", §3.4 storage schema.
+- **Purpose:** Reconcile persistence to §3.3 line 284-285 / §3.4 — read/write the full event list through the one key `inkling-timeline-v1`, parsing malformed JSON to empty (self-heal) rather than crashing — building on the live `readStore`/`writeStore` rather than replacing them.
+- **Dependencies:** 1.1.3 (the state being persisted), 1.1.2 (record shape); §3.3 line 284-285, §3.4 line 297, §10 (corrupt-store recovery).
+- **Acceptance criteria:** Reads/writes `inkling-timeline-v1` (live `STORAGE_KEY` :14 ✓); `save` serializes the full list synchronously **before** any emit (§3.3 line 285); `load` parses into validated `Event[]` (1.1.2 migration applied); malformed JSON → treated as empty, logged dev-only, **never** a crash (live `readStore` already returns `null` on parse error :246-248 ✓ — extend to non-array → empty); the storage key stays a named constant.
+- **Implementation notes:** Keep `readStore`/`writeStore` (timelineModel.js:240-257) as the low-level IO; the live `writeStore` already try/catches and `console.warn`s on failure (:254-255) ✓ — keep that, and layer the size guard (1.4) on top. On load, run the 1.1.2 legacy→`Event` migration. Persist must complete before the §13.2 emit (1.1.9), so subscribers never see unpersisted state.
+- **Edge cases:** Quota exceeded on save → handled fully in Milestone 1.4 (here, just don't crash — the live catch already prevents a throw); absent key → empty array (live returns `null` → treat as empty); non-array parsed value → empty (live already guards `Array.isArray` :245 ✓); private-mode Safari throwing on write → caught (the live try/catch covers it).
+- **UI/UX considerations:** A corrupt store degrades to an empty calendar, never a broken screen (§10 error boundaries) — the live self-heal already does this for reads.
+- **Data flow notes:** Only this module touches `localStorage` for events (§10) — enforce by review; the day-node federation reads `calendarState`'s own storage separately (document the boundary).
+- **Testing notes:** Round-trip (save→load equals original, post-migration); corrupt string → `[]`; non-array → `[]`; absent key → `[]`.
+- **Performance notes:** Full-array serialize is fine at expected sizes; the 1.4 size guard protects the ceiling.
+- **Mobile vs desktop:** Identical; mobile Safari private mode may throw on write — already caught.
+- **Integration points:** §3.3 persistence, §3.4 schema, 1.1.2 (migration), 1.4 (size guard), 1.1.9 (persist-before-emit).
+- **Status:** **Partial (read self-heals; no validated load, no size guard).** `readStore`/`writeStore` exist with corrupt-JSON guard ✓; but load doesn't migrate/validate to §3.1 and there's no quota guard. **Next:** apply the 1.1.2 migration on load, keep the self-heal, layer the 1.4 size guard, persist-before-emit.
 
-## 1.1.5 — Implement `createEvent(partial)` with validation, `id`, `createdAt`, `updatedAt`
+## 1.1.5 — `createEvent(partial)`: validation core, UUID `id`, `createdAt`/`updatedAt` (rename from `addTimelineEntry`)
 
-- **Purpose:** The single validated path for adding an event.
-- **Dependencies:** 1.1.4.
-- **Acceptance criteria:** Validates required fields (§3.1 rules); assigns `id` via `crypto.randomUUID()`, sets `createdAt`/`updatedAt`; inserts in sorted position; persists; emits `eventCreated`; returns the created `Event`. Invalid input throws a typed validation error and does **not** mutate state.
-- **Implementation notes:** Validate before mutating so a rejected create leaves `_events` untouched. Centralize validation in a private `_validate(event)` reused by update.
-- **Edge cases:** Empty/whitespace title → reject; `endTime` before `startTime` → reject; unknown `category` → reject (or default to `"personal"` per §3.1 — follow spec: default, don't reject); missing `priority` → default 1.
-- **UI/UX considerations:** Validation errors must carry a human-readable `message` the form/Inkling can surface (§4.7, §6.7).
-- **Data flow notes:** This is the write path entry in §12.1 and the AI write path §12.3.
-- **Testing notes:** Valid create returns event with ids/timestamps; each invalid rule throws and leaves state unchanged.
-- **Performance notes:** Insert-in-order is O(n); acceptable. Don't re-sort the whole array.
+- **Purpose:** Reconcile the add path to §3.3 line 279 / §3.1 — a single **validated** `createEvent` that assigns a UUID `id`, sets `createdAt`/`updatedAt`, inserts in sorted position, persists, and emits `eventCreated` — replacing/renaming the live `addTimelineEntry` (which has no validation, no UUID, no timestamps).
+- **Dependencies:** 1.1.4 (persist), 1.1.2 (shape); §3.1 line 228-239, §3.3 line 279, §10.
+- **Acceptance criteria:** Validates per §3.1 (empty/whitespace `title` → reject; `endTime` before `startTime` → reject; `priority` ∉ 0-3 → reject/clamp per spec; unknown `category` → **default `personal`**, not reject, §3.1 line 235); assigns `id` via `crypto.randomUUID()` (replacing `nextId()`'s `tw-…` :292); sets `createdAt` and `updatedAt`; inserts in sorted-by-`startTime` position; persists; emits `eventCreated` (1.1.9); returns the created `Event`; **invalid input throws a typed validation error and does not mutate state**; a private `_validate(event)` is introduced and reused by 1.1.6/1.1.8.
+- **Implementation notes:** Build on `addTimelineEntry` (timelineModel.js:307-321) and `saveNoteToTimeline` (:343) — keep them as thin adapters that call `createEvent` during migration (so the 21 importers and the note-save UI keep working). Reuse `timelineEventContract.js` normalizers (`normalizeCategory` :37, `priorityLabelToNumber` :61) inside `_validate`. Validate **before** mutating so a rejected create leaves state untouched.
+- **Edge cases:** Empty title → reject; `endTime` < `startTime` → reject; unknown category → default `personal`; missing priority → default 1; `saveNoteToTimeline`'s auto-alert attach (:356-364) must still work (route through `updateEvent` 1.1.6).
+- **UI/UX considerations:** Validation errors carry a human-readable `message` the note form / Inkling can surface (§4/§6); the note-entry flow (`saveNoteToTimeline`) is the live user write path — keep it functional.
+- **Data flow notes:** The write-path entry for UI and AI; emits `eventCreated` → 2D/3D/alerts react (§13.2).
+- **Testing notes:** Valid create returns event with UUID + timestamps + sorted insert; each invalid rule throws and leaves state unchanged; the legacy `addTimelineEntry`/`saveNoteToTimeline` adapters still produce a valid event.
+- **Performance notes:** Insert-in-order O(n); don't re-sort the whole array per write.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.1 constraints, §3.3 mutations.
+- **Integration points:** §3.1/§3.3, `timelineEventContract.js` normalizers, the live `addTimelineEntry`/`saveNoteToTimeline` (adapter targets), 1.1.6/1.1.8 (reuse `_validate`), 1.1.9 (emit).
+- **Status:** **Divergent (no validation/UUID/timestamps).** Live `addTimelineEntry` (:307) + `nextId()` `tw-…` (:292), no validation, no `createdAt`/`updatedAt`. **Next:** `createEvent` with `_validate` + `crypto.randomUUID()` + timestamps + sorted insert + `eventCreated`; keep `addTimelineEntry`/`saveNoteToTimeline` as adapters.
 
-## 1.1.6 — Implement `updateEvent(id, changes)` with validation and `updatedAt`
+## 1.1.6 — `updateEvent(id, changes)`: merge-then-validate, refresh `updatedAt` (rename from `updateTimelineEntry`)
 
-- **Purpose:** The single validated path for editing an event.
-- **Dependencies:** 1.1.5.
-- **Acceptance criteria:** Merges `changes` into the existing event, re-validates the merged result, refreshes `updatedAt`, never alters `createdAt` or `id`, re-sorts if `startTime` changed, persists, emits `eventUpdated`, returns the updated event. Unknown `id` throws.
-- **Implementation notes:** Merge first, then validate the merged object (not the partial) so cross-field rules like `endTime > startTime` are checked against final state. Reuse `_validate`.
-- **Edge cases:** `id` not found → throw; changing `startTime` must re-position in the sorted array; caller attempting to set `id`/`createdAt`/`updatedAt` → ignore those keys.
-- **UI/UX considerations:** Used by inline edit (§6.6) and Inkling edits (§4.5); both rely on the returned event to refresh their view.
-- **Data flow notes:** Also the path the Scheduler uses to mark alerts `triggered`/`dismissed` (§7.2).
-- **Testing notes:** Update preserves `createdAt`, bumps `updatedAt`; invalid merge throws and leaves original intact; startTime change re-sorts.
-- **Performance notes:** Find-by-id is O(n); fine at expected scale. A future id→index map is a Phase 9 optimization, not now.
+- **Purpose:** Reconcile the edit path to §3.3 line 280 / §3.1 — a single validated `updateEvent` that merges changes, re-validates the **merged** result, refreshes `updatedAt`, never alters `id`/`createdAt`, re-sorts if `startTime` changed, persists, and emits `eventUpdated` — building on the live `updateTimelineEntry`.
+- **Dependencies:** 1.1.5 (`_validate`, shape); §3.1, §3.3 line 280, §7.2 (alert-state writes go through here).
+- **Acceptance criteria:** Merges `changes` into the existing event, validates the **merged** object (so `endTime > startTime` is checked against final state), refreshes `updatedAt`, leaves `createdAt`/`id` untouched (ignores attempts to set them), re-positions in the sorted array if `startTime` changed, persists, emits `eventUpdated`, returns the updated event; **unknown `id` throws** (live `updateTimelineEntry` returns `null` :390 — reconcile to throw or document the null-return choice).
+- **Implementation notes:** Build on `updateTimelineEntry` (timelineModel.js:387-394) — it already finds-by-id, merges, normalizes, and saves; add the merge-**then**-validate (reuse `_validate`), the `updatedAt` refresh, the `createdAt`/`id` protection, and the §13.2 emit. The alert-attach flow (`saveNoteToTimeline` → `updateTimelineEntry(entry.id, { alertId })` :361) is a real caller — keep it working.
+- **Edge cases:** `id` not found → throw (or documented null); changing `startTime` re-sorts; caller setting `id`/`createdAt`/`updatedAt` → ignored; the Scheduler marking alerts `triggered`/`dismissed` (§7.2) routes through here.
+- **UI/UX considerations:** Used by inline edit (§6) and Inkling edits (§4); both rely on the returned event to refresh.
+- **Data flow notes:** Also the Scheduler's alert-state write path (§7.2); emits `eventUpdated` → consumers refresh.
+- **Testing notes:** Update preserves `createdAt`, bumps `updatedAt`; invalid merge throws and leaves original intact; `startTime` change re-sorts; unknown id throws (or null per decision).
+- **Performance notes:** Find-by-id O(n); fine at scale (an id→index map is a Phase-9 optimization).
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.3 mutations, §7.2 alert state writes.
+- **Integration points:** §3.3 mutations, §7.2 alert writes, the live `updateTimelineEntry` (build-on target), 1.1.5 (`_validate`), 1.1.9 (emit).
+- **Status:** **Partial (merges + saves; no validate/timestamps/emit).** Live `updateTimelineEntry` (:387) merges+normalizes+saves and returns null on miss; no merge-validate, no `updatedAt`, no `eventUpdated`. **Next:** add merge-then-validate, `updatedAt` refresh, `createdAt`/`id` protection, re-sort, `eventUpdated`; reconcile unknown-id behavior.
 
-## 1.1.7 — Implement `deleteEvent(id)`
+## 1.1.7 — `deleteEvent(id)` (NEW — no delete path exists)
 
-- **Purpose:** The single path for removing an event.
-- **Dependencies:** 1.1.6.
-- **Acceptance criteria:** Removes the event with the given `id`, persists, emits `eventDeleted` with `{ id }`; deleting a non-existent id is a no-op (no throw, no emit) or throws per spec preference — default to silent no-op with a dev-log.
-- **Implementation notes:** Filter or splice by id. Emit only if something was actually removed, so subscribers don't churn on phantom deletes.
-- **Edge cases:** Unknown id → no-op; deleting the last event → `_events` becomes empty, persist the empty array.
-- **UI/UX considerations:** Destructive — the UI must confirm before calling this (§10.13); the model itself does not prompt.
-- **Data flow notes:** Emits `eventDeleted` → 3D/2D drop the cell, Scheduler cancels alerts (§13.2).
-- **Testing notes:** Delete removes exactly one event and emits once; unknown id emits zero times.
+- **Purpose:** Add the §3.3 line 281 delete path the live model **entirely lacks** — remove the event by `id`, persist, and emit `eventDeleted { id }` — so the system has a single, validated removal route.
+- **Dependencies:** 1.1.6 (shape, persist, emit pattern); §3.3 line 281, §13.2 (`eventDeleted`).
+- **Acceptance criteria:** Removes the event with the given `id`, persists, emits `eventDeleted` with `{ id }`; deleting a non-existent id is a **no-op** (no throw, no emit — emit only if something was actually removed); deleting the last event persists an empty array; routes through the authoritative state (1.1.1/1.1.3).
+- **Implementation notes:** There is **no delete function today** — add `deleteEvent(id)` (splice/filter by id on the authoritative state or the persisted list); emit only when a removal happened so subscribers don't churn on phantom deletes. Note the **federated day-node source** (appointments/reminders/alarms from `calendarState`, :447) is **not** deletable through this model — document that those are owned by `calendarState` and deleting them is out of scope here (or route to that owner).
+- **Edge cases:** Unknown id → no-op; deleting the last event → empty persisted array; attempting to delete a federated day-node event (not in the timeline store) → no-op here, document the boundary.
+- **UI/UX considerations:** Destructive — the UI confirms before calling (§10); the model itself does not prompt.
+- **Data flow notes:** Emits `eventDeleted` → 2D/3D drop the cell, Scheduler cancels the alert (§13.2).
+- **Testing notes:** Delete removes exactly one event and emits once; unknown id emits zero times; last-delete leaves an empty store.
 - **Performance notes:** O(n) filter; acceptable.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §13.2 `eventDeleted` subscribers.
+- **Integration points:** §13.2 `eventDeleted` subscribers, 1.1.1/1.1.3 (state), the day-node boundary (`calendarState`).
+- **Status:** **Missing entirely.** No delete/remove function anywhere in the live model. **Next:** add `deleteEvent(id)` (no-op on miss, emit `eventDeleted` only on real removal); document the federated day-node boundary.
 
-## 1.1.8 — Implement `bulkCreateEvents(partials)` for starter data
+## 1.1.8 — `bulkCreateEvents(partials)` (NEW — for starter data & import)
 
-- **Purpose:** Efficiently insert many events at once (starter data, future import) without N separate persists/emits.
-- **Dependencies:** 1.1.7.
-- **Acceptance criteria:** Validates and inserts all `partials`, persists **once** at the end, emits a single batched signal (or `eventCreated` per item per spec — prefer one persist, then emit `timelineInitialized`/batch to avoid render thrash); returns the created events.
-- **Implementation notes:** Set the `_writing` mutex (Milestone 1.4) during the batch so each insert doesn't trigger a separate save. Validate every item before committing any (all-or-nothing) to avoid half-imported state.
-- **Edge cases:** One invalid item in the batch → reject the whole batch with a clear error, or skip-and-report per spec; default to all-or-nothing for predictability.
-- **UI/UX considerations:** Used at first run for starter data (§9) and future JSON import (§8.4); both want a single re-render, not 12.
-- **Data flow notes:** Single persist + single batched emit keeps 3D/2D from re-rendering once per item.
-- **Testing notes:** Bulk-create N events results in one save call and N events present; invalid item rejects batch.
-- **Performance notes:** Critical that this does one serialize, not N — N serializes of a growing array is O(n²).
+- **Purpose:** Add the §3.3 line 282 batch path the live model lacks — validate and insert many events with **one** persist + **one** batched emit — so starter seeding (1.3) and future import don't trigger N saves/re-renders.
+- **Dependencies:** 1.1.5 (`createEvent`/`_validate`), 1.1.4 (persist), the `_writing` mutex (1.4); §3.3 line 282, §9 (starter data).
+- **Acceptance criteria:** Validates **every** item before committing any (all-or-nothing), inserts all, persists **once**, emits a single batched signal (prefer one persist then `initialized`/a batch event over N `eventCreated`); returns the created events; sets the `_writing` mutex (1.4) during the batch so per-insert saves are suppressed.
+- **Implementation notes:** New function (none exists). Reuse `createEvent`'s `_validate` per item but defer persist/emit to the end. This is what **1.3 starter seeding** should call instead of the live per-note `buildStarterTimelineEntries` + per-entry save (:190-205) loop.
+- **Edge cases:** One invalid item → reject the whole batch with a clear error (all-or-nothing for predictability); empty input → no-op; very large import → the size guard (1.4) still applies before the single write.
+- **UI/UX considerations:** First-run starter data (§9) and future JSON import (§8) want a **single** re-render, not 8-12.
+- **Data flow notes:** Single persist + single batched emit keeps 2D/3D from re-rendering per item.
+- **Testing notes:** Bulk-create N → one save call, N events present; one invalid item rejects the batch.
+- **Performance notes:** Must do **one** serialize, not N (N serializes of a growing array is O(n²)).
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.3 `bulkCreateEvents`, §9 starter data, Milestone 1.4 mutex.
+- **Integration points:** §3.3 `bulkCreateEvents`, §9 starter (1.3 calls this), 1.4 mutex, 1.1.5 (`_validate`).
+- **Status:** **Missing entirely.** No bulk path; starter entries are built/saved per-item (:190-205). **Next:** add `bulkCreateEvents` (all-or-nothing validate, one persist, one batched emit, `_writing` mutex); 1.3 seeds through it.
 
-## 1.1.9 — Wire event bus emits: `eventCreated`, `eventUpdated`, `eventDeleted`
+## 1.1.9 — Reconcile mutation emits onto §13.2 (`initialized`/`eventCreated`/`eventUpdated`/`eventDeleted`) + canonical bus
 
-- **Purpose:** Notify the rest of the system of every mutation through the one permitted channel.
-- **Dependencies:** 1.1.5–1.1.8 and `eventBus.js` (Milestone 2.1). If the bus isn't built yet, stub a minimal emit and replace in Phase 2.
-- **Acceptance criteria:** Each mutation emits exactly once, after persistence succeeds, with the payload shape from §13.2 (`Event` for create/update, `{ id }` for delete). No emit on validation failure.
-- **Implementation notes:** Emit *after* `saveToStorage()` returns, so subscribers never see state that isn't persisted. Keep emit calls at the end of each mutation function, not scattered.
-- **Edge cases:** Save fails (quota) → do **not** emit success; emit `storageFull` instead (Milestone 1.4).
-- **UI/UX considerations:** These emits drive every visible update; getting the order (persist → emit) right prevents ghost UI.
-- **Data flow notes:** This is the spine of §12 and §13 — all rendering reacts to these.
-- **Testing notes:** Spy on the bus: each mutation emits the right name/payload exactly once; failed validation emits nothing.
-- **Performance notes:** Synchronous emit per §13.1; handlers must return immediately. Keep payloads small (the event, not the whole array).
+- **Purpose:** Reconcile the model's events to the §13.2 catalog on the **Phase-2 bus** — emit `initialized`/`eventCreated`/`eventUpdated`/`eventDeleted` after each persist — replacing the live single `"timelineUpdated"` emitted on the **duplicate WordWeaver bus** + a `document` CustomEvent.
+- **Dependencies:** 1.1.5-1.1.8 (the mutations that emit), the Phase-2 `EventBus` (Milestone 2.1 — if not built yet, stub and replace); §13.2, §3.3 line 285 (persist-before-emit).
+- **Acceptance criteria:** Each mutation emits **exactly once, after persistence succeeds**, with the §13.2 payload (`Event` for create/update, `{ id }` for delete); `init()` emits `initialized`; emits go on the **canonical Phase-2 bus** (`src/utils/EventBus.js`), not the duplicate `src/wordweaver/EventBus.js` (:6) — the same convergence the 5.1.9 finding calls for; the legacy `"timelineUpdated"` emit (:287/:361/:366/:374) is mapped to the §13.2 events (or kept as a temporary compatibility shim during migration, documented); no emit on validation failure or failed save.
+- **Implementation notes:** Replace `emit("timelineUpdated", …)` (from `./EventBus.js`) and `document.dispatchEvent(new CustomEvent("timelineUpdated"))` (:287/:374) with the §13.2 emits on the canonical bus. During migration, a shim can also fire the old `timelineUpdated` so the ~21 importers + WordWeaverScene's `timelineUpdated` listener keep working until they migrate (the 5.1.9/Phase-4 bus-convergence thread). Emit **after** `saveToStorage()` returns.
+- **Edge cases:** Save fails (quota) → do **not** emit success; emit `storageFull` instead (1.4); the duplicate-bus consumers (WordWeaverScene listens `timelineUpdated`) must be migrated or shimmed — don't silently drop their signal; batched bulk (1.1.8) emits once, not per item.
+- **UI/UX considerations:** These emits drive every visible update; persist→emit ordering prevents ghost UI (showing state that didn't save).
+- **Data flow notes:** The spine of §12/§13 — all rendering reacts to these; converging the bus is what lets 2D/3D/top-bar stay in sync (the recurring Phase-4/5 gap).
+- **Testing notes:** Spy the bus: each mutation emits the right §13.2 name/payload exactly once, after persist; failed validation/save emits nothing (or `storageFull`); `init()` emits `initialized`.
+- **Performance notes:** Synchronous emit (§13.1); keep payloads small (the event, not the whole array).
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §13.2 event catalog, §2.4 communication rules.
+- **Integration points:** §13.2 catalog, Phase-2 `EventBus` (2.1), 5.1.9 (bus convergence), the duplicate `wordweaver/EventBus.js` + WordWeaverScene's `timelineUpdated` listener (migration targets).
+- **Status:** **Divergent (wrong bus + wrong events).** Live emits only `"timelineUpdated"` on the duplicate WordWeaver bus + a `document` CustomEvent; no §13.2 events. **Next:** emit `initialized`/`eventCreated`/`eventUpdated`/`eventDeleted` on the canonical Phase-2 bus after persist; shim `timelineUpdated` during migration.
 
-## 1.1.10 — Add basic unit tests / harness for create/update/delete and persistence
+## 1.1.10 — Tests / harness for the reconciled model (CRUD, persistence, migration, emits)
 
-- **Purpose:** Lock the foundation's behavior so later phases can't silently break it.
-- **Dependencies:** 1.1.1–1.1.9.
-- **Acceptance criteria:** Tests cover: create (valid + each invalid rule), update (preserves createdAt, bumps updatedAt, re-sorts), delete (removes + emits once), persistence round-trip, and corrupt-storage recovery. All pass.
-- **Implementation notes:** If no test runner is set up, a minimal in-file harness that logs pass/fail is acceptable for now; prefer a real runner (Vitest/Jest) if the project has one. Mock `localStorage` with a simple in-memory object.
-- **Edge cases:** Ensure tests reset `_events` and mock storage between cases so they don't leak state.
-- **UI/UX considerations:** None — but these tests are the safety net for every UI built on top.
-- **Data flow notes:** Tests exercise the full write path in isolation from rendering.
-- **Testing notes:** This *is* the testing task; aim for behavior coverage of the public API, not internals.
-- **Performance notes:** Add the O(n²) regression guard from 1.2.10 here too if convenient (bulk-create timing).
-- **Mobile vs desktop:** Run headless; behavior is platform-independent.
-- **Integration points:** §10.11 (validation lives in the model), §28 testing plan.
+- **Purpose:** Lock the reconciled model's behavior so later phases (and the migration) can't silently regress it — covering the new validated CRUD, persistence round-trip, the legacy→§3.1 migration (1.1.2), and the §13.2 emits.
+- **Dependencies:** 1.1.1-1.1.9; §10 (validation in the model), §28 (testing plan).
+- **Acceptance criteria:** Tests cover: `createEvent` (valid + each invalid rule + UUID/timestamps), `updateEvent` (preserves `createdAt`, bumps `updatedAt`, re-sorts, unknown-id behavior), `deleteEvent` (removes + emits once, no-op on miss), `bulkCreateEvents` (one persist, all-or-nothing), persistence round-trip, **legacy-record migration** (1.1.2 — old single-`time` data loads as valid `Event`s without loss), corrupt-storage recovery (→ empty), and §13.2 emit names/payloads; all pass; `localStorage` is mocked with an in-memory object and `_events`/mock storage reset between cases.
+- **Implementation notes:** Use the project's runner if one exists (else a minimal in-file harness); the **migration test is the highest-value addition** vs the old greenfield spec — it guards the 21 importers' data through the shape change. Add a fixture `Event` (full §3.1 shape) for reuse.
+- **Edge cases:** Tests must reset state + mock storage between cases (no leakage); include a legacy-data fixture (single `time`, no timestamps) to exercise migration.
+- **UI/UX considerations:** None — but this is the safety net for every UI built on the model and for the migration.
+- **Data flow notes:** Exercises the full write path + migration in isolation from rendering.
+- **Testing notes:** This *is* the testing task; cover the public API + migration, not internals.
+- **Performance notes:** Include the bulk-create one-serialize assertion (guards the O(n²) regression).
+- **Mobile vs desktop:** Headless; platform-independent.
+- **Integration points:** §10, §28, 1.1.2 (migration under test), 1.1.9 (emit assertions).
+- **Status:** **Missing.** No tests for the model today. **Next:** behavior tests for validated CRUD + persistence + the legacy→§3.1 migration + §13.2 emits; mock `localStorage`.
 
 ---
 
 ### Milestone 1.1 — Definition of Done
-- `timelineModel.js` exports the full §3.2 API; `_events` is private; no other module writes event storage.
-- Every mutation validates, persists, then emits exactly once in the §13.2 shape.
-- Corrupt or absent storage degrades to an empty calendar, never a crash.
-- Tests cover the public API including invalid-input paths.
-- **Next:** Milestone 1.2 — Derived Views & Helpers (read side).
+- `src/wordweaver/timelineModel.js` (the **canonical** file — no new `src/timeline/`) exposes the §3.2/§3.3 API (`createEvent`/`updateEvent`/`deleteEvent`/`bulkCreateEvents` + helpers), with the §3.1 record shape (`UnifiedTimelineEvent`) stored, not just projected.
+- The architectural decision (1.1.1) is recorded; the 21 importers stay working through migration adapters.
+- Every mutation validates, persists, then emits the §13.2 event exactly once on the canonical bus; legacy data migrates without loss.
+- Corrupt/absent storage degrades to an empty calendar; tests cover CRUD + persistence + migration + emits.
+- **Next:** Milestone 1.2 — Derived Views & Helpers (reconcile the read side: `getEventsFor*` signatures, add `getEventsForYear`/`getUpcomingAlerts`, fold in the day-node federation).
 
 
 ---
@@ -194,158 +224,186 @@
 
 # Phase 1 — Milestone 1.2: Derived Views & Helpers (Expanded)
 
-**Goal:** All read helpers for day/week/month/year, pure and performant.
-**Spec alignment:** §3.2 (derived structures), §3.5, §10.3.
-**Sequencing:** Depends on Milestone 1.1 (the `_events` array and CRUD must exist). Everything in Phases 4–6 that renders or summarizes data reads through these helpers, so correctness here is load-bearing.
+**Goal:** Reconcile the **already-existing** read helpers in [`src/wordweaver/timelineModel.js`](../../src/wordweaver/timelineModel.js) toward §3.2 — pure day/week/month/year reads with consistent signatures — and add the two **missing** helpers (`getEventsForYear`, `getUpcomingAlerts`). Grounded against the live file: several helpers exist but with **diverged signatures** and a real **per-day full re-scan** performance trap.
+
+**Spec alignment:** §3.2 line 253-265 (the seven helpers + their signatures; **pure, return new arrays, never mutate**), §3.5 (lifecycle), §10 line 968-969 (model is SSOT; 2D/3D share the same helpers).
+
+**Sequencing:** Depends on 1.1 (the record shape + `startTime`, and the architecture decision 1.1.1). Everything in Phases 4–6 that renders or summarizes reads through these helpers, so signature consistency and the local-time-boundary semantics here are load-bearing. **Carry-forward from 1.1:** boundary semantics depend on whether real `startTime` is stored (1.1.2) — today the helpers match on a **date string**, not a local-time window over `startTime`.
 
 ---
 
-## 1.2.1 — Implement `getEventsForDate(date: Date): Event[]`
+## Current implementation status (reconciliation)
 
-- **Purpose:** Return every event whose `startTime` falls on a given calendar date — the primitive all other day reads build on.
-- **Dependencies:** 1.1.3 (`_events`).
-- **Acceptance criteria:** Returns a new array of events where `startTime` is within 00:00:00–23:59:59 **local** time of `date`; empty array when none; never mutates `_events`.
-- **Implementation notes:** Compare on local day boundaries, not UTC, or events drift across midnight by timezone offset. Build day start/end once, filter, return a copy.
-- **Edge cases:** Events exactly at 00:00 belong to that day; events at 23:59:59 too; DST transition days (23 or 25 hours) — rely on Date arithmetic, not fixed 86,400,000ms.
-- **UI/UX considerations:** Drives DayBlock3D content (§5.4) and 2D day cells (§6.5); wrong boundaries show events on the wrong day.
-- **Data flow notes:** Read-only; consumers call this, never touch `_events`.
-- **Testing notes:** Events at midnight, end-of-day, and adjacent days land in the correct bucket; DST day returns correct set.
-- **Performance notes:** O(n) scan; fine. If profiling later shows hot paths, a date-bucketed index is a Phase 9 task — not now.
+Most read helpers **already exist and are live**, but with **signatures that diverge from §3.2**, **date-string matching instead of local-time `startTime` windows**, a **federated two-source read** (timeline entries + calendar day-nodes), and a **per-day full-reload performance trap**. Two helpers are missing entirely.
+
+- **`getEventsForDate` exists but takes an ISO string, not a `Date`, and matches by date-string equality.** §3.2 line 256 signs it `getEventsForDate(date: Date)`. Live `getEventsForDate(dateIso)` (timelineModel.js:517) takes a `"YYYY-MM-DD"` string and selects entries by `entry.date === dateIso` (:524) — **not** a local-time window over `startTime` (line §3.2's day = events whose `startTime` falls in 00:00–23:59:59 local). Since the store has no real `startTime` (1.1.2), there's no window to apply yet. It also **federates two sources**: timeline entries (`loadTimeline`) **+** calendar day-nodes (`loadSavedMonth` → `eventsFromDayNode` :447). 1.2.1 reconciles the signature + boundary once `startTime` is real, and documents the federation.
+- **`getEventsForDay` exists but `month` is 0-based.** Live `getEventsForDay(year, monthIndex, dayIndex)` (:511) treats arg 2 as **0-based** (`const month = monthIndex + 1`, :512). §3.2 line 257 signs `getEventsForDay(year, month, day)` without stating the base — the existing 21 callers assume 0-based. 1.2.2 documents/reconciles one convention everywhere (a classic off-by-one-month risk).
+- **`getEventsForWeek` exists but takes a Monday ISO date, not `(year, isoWeek)`.** §3.2 line 258 signs `getEventsForWeek(year, isoWeek)`. Live `getEventsForWeek(weekStartDate)` (:557) takes an ISO Monday string and walks 7 days (`getWeekStartMonday` :426 produces it). 1.2.3 either adds ISO-week-number resolution to match the spec signature or reconciles the spec to the (working) Monday-date signature — and fixes the per-day reload (1.2.10).
+- **`getEventsForMonth` matches the spec signature.** Live `getEventsForMonth(year, month)` with `month` 1-based (:574) ✓ matches §3.2 line 259 — but it iterates every day calling `getEventsForDate` (:578-581), the perf trap (1.2.10).
+- **`getEventsForYear` is missing entirely.** §3.2 line 260 requires it; there is **no** `getEventsForYear` in the live model. 1.2.5 adds it (the Year View / heatmap read).
+- **`getUpcomingAlerts` is missing entirely.** §3.2 line 261 requires `getUpcomingAlerts(withinMinutes): { event, alert }[]`; the live model has **no** such function (alert info is only an `alertId` flag on entries, and the actual alert objects live in `alertsModel.js`, Phase 2). 1.2.6 adds it (the Scheduler + Alerts UI read), coordinated with the Phase-2 alerts model.
+- **`getUnifiedEventsForDate` exists and is the shared 2D/3D read.** Live `getUnifiedEventsForDate(dateIso)` (:590) + `getUnifiedEventsForDay` (:600) map records through `calendarRecordToUnifiedEvent` ✓ (§3.2 line 262). Signature is ISO-string (reconcile with 1.2.1's `Date` decision). This is the right single-read seam for §18 2D/3D sync.
+- **Performance trap: month/week re-scan the entire store per day.** `getEventsForMonth` calls `getEventsForDate` once per day (28–31×, :578), and `getEventsForWeek` 7× (:561-565) — and **each** `getEventsForDate` call re-runs `loadTimeline()` (full localStorage parse + normalize + sort) **and** `loadSavedMonth()` + `createCalendarState` (:537-543). So a month read is ~30 full-store reloads — the exact O(days×entries) blowup 1.2.10 warns about, and it's **present in the live code**, not hypothetical. 1.2.10 fixes it (load once, group).
+- **What's already right (keep):** helpers return **new arrays** and sort copies (`[...entries].sort` :144, `list.sort` :548) — no caller-mutation of stored state ✓ (§3.2 line 265, and there's no `_events` to leak a reference into); `getEventsForMonth`'s `(year, month)` 1-based signature ✓; the `getUnified*` shared-read seam exists ✓; sorting by time-of-day is in place (will become sort-by-`startTime` once stored, 1.1.2).
+
+---
+
+## 1.2.1 — Reconcile `getEventsForDate`: `Date` signature + local-time boundary + documented federation
+
+- **Purpose:** Align the day primitive to §3.2 line 256 — accept a `Date` (or document the ISO-string choice), select by a **local-time window over `startTime`** (once stored, 1.1.2), and document that it federates timeline entries + calendar day-nodes — so every other day read builds on one correct primitive.
+- **Dependencies:** 1.1.2 (real `startTime` to window on), 1.1.1 (single source vs federation); §3.2 line 245/256.
+- **Acceptance criteria:** Signature matches §3.2 (`Date`) **or** the ISO-string form is kept and §3.2 updated to match (pick one, document — the 21 callers pass ISO strings today, so reconciling the spec may be cheaper); selection uses the local-day window (00:00:00–23:59:59 local) over `startTime` once 1.1.2 lands (until then, date-string match is the documented interim); the **federation** (timeline entries + day-nodes) is documented as intentional or folded into one source per 1.1.1; returns a new sorted array; empty when none.
+- **Implementation notes:** Build on the live `getEventsForDate` (timelineModel.js:517-551); keep the two-source merge (:522 timeline, :546 day-nodes) but reconcile the boundary from `entry.date === dateIso` (:524) to a `startTime`-window once real. Sort by `startTime` (1.1.2) instead of `parseTimeMinutes(time)` (:549).
+- **Edge cases:** Events at 00:00 belong to that day; 23:59:59 too; DST days (23/25h) — use Date arithmetic, not fixed ms; the day-node source uses `hourToTimeString(hour)` (:438) — reconcile to ISO once 1.1.2 lands; legacy entries with only `date` (no time) default to start-of-day.
+- **UI/UX considerations:** Drives DayBlock3D (§5) and 2D day cells (§6); wrong boundaries show events on the wrong day.
+- **Data flow notes:** The primitive all day reads build on; consumers call this, never the raw stores.
+- **Testing notes:** Midnight/end-of-day/adjacent-day events bucket correctly; DST day correct; federated day-node events appear alongside timeline entries.
+- **Performance notes:** O(n) scan — but **don't** let callers invoke it per-day in a loop (1.2.10); the federation's `loadSavedMonth` reload is the cost to hoist.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.2 "Day", basis for 1.2.2 and 1.2.7.
+- **Integration points:** §3.2 Day, 1.1.1/1.1.2, basis for 1.2.2/1.2.3/1.2.4/1.2.7, the day-node source (`calendarState`).
+- **Status:** **Divergent (ISO-string sig, date-string match) + federated.** Live `getEventsForDate(dateIso)` matches by `entry.date === dateIso`, merges timeline + day-nodes, sorts by time-of-day. **Next:** reconcile signature (Date vs documented ISO), local-time window over real `startTime` (1.1.2), document the federation.
 
-## 1.2.2 — Implement `getEventsForDay(year, month, day): Event[]`
+## 1.2.2 — Reconcile `getEventsForDay` month convention (live is 0-based)
 
-- **Purpose:** Same as 1.2.1 but addressed by numeric Y/M/D, the form callers usually have.
-- **Dependencies:** 1.2.1.
-- **Acceptance criteria:** Constructs the local date and delegates to `getEventsForDate`; `month` convention (0- or 1-based) is documented and consistent everywhere.
-- **Implementation notes:** Pick one month convention (JS Date is 0-based) and state it in JSDoc; mismatches here are a classic off-by-one-month bug.
-- **Edge cases:** Invalid day (e.g., Feb 30) → Date normalizes; decide whether to accept or reject — prefer rejecting with a clear error to catch caller bugs.
+- **Purpose:** Reconcile `getEventsForDay` to one documented month convention — the live code is **0-based** (`monthIndex`) while §3.2 leaves it unstated — so callers and grids never hit an off-by-one-month bug.
+- **Dependencies:** 1.2.1; §3.2 line 257.
+- **Acceptance criteria:** The month base (0- or 1-based) is **documented in JSDoc and consistent** with all 21 callers; live `getEventsForDay(year, monthIndex 0-11, dayIndex)` (timelineModel.js:511-515) keeps working; delegates to `getEventsForDate`; same date via both yields identical results.
+- **Implementation notes:** The live signature is **0-based** (`const month = monthIndex + 1`, :512) and callers (e.g. WordWeaverScene `populateMonthCluster`, the 2D grids) pass 0-based month indices — keep 0-based and document it, rather than flipping it and breaking 21 callers. State the convention loudly in JSDoc.
+- **Edge cases:** Invalid day (Feb 30) → `Date` normalizes; decide accept vs reject (prefer reject to catch caller bugs) — but don't change behavior the 21 callers rely on without checking them.
 - **UI/UX considerations:** Grid cells pass Y/M/D; consistency prevents "events on wrong cell."
-- **Data flow notes:** Thin wrapper; no separate logic to drift from 1.2.1.
-- **Testing notes:** Same date via `getEventsForDate` and `getEventsForDay` returns identical results.
+- **Data flow notes:** Thin wrapper over 1.2.1.
+- **Testing notes:** `getEventsForDate` and `getEventsForDay` return identical results for the same day; 0-based month verified against a known caller.
 - **Performance notes:** Delegates; same O(n).
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.2 helpers list.
+- **Integration points:** §3.2 helpers, the 21 callers (convention consumers).
+- **Status:** **Divergent-but-working (undocumented 0-based).** Live arg 2 is 0-based `monthIndex`; spec base unstated. **Next:** document 0-based in JSDoc, keep it (don't break 21 callers), verify consistency.
 
-## 1.2.3 — Implement `getEventsForWeek(year, isoWeek): Event[]`
+## 1.2.3 — Reconcile `getEventsForWeek` signature (`(weekStart)` vs `(year, isoWeek)`)
 
-- **Purpose:** Return all events in a 7-day ISO week for Week View and weekly summaries.
-- **Dependencies:** 1.2.1.
-- **Acceptance criteria:** Resolves ISO week → Monday start date, collects the 7 days, returns merged sorted array; respects ISO-8601 week numbering.
-- **Implementation notes:** ISO weeks start Monday and week 1 contains the first Thursday — implement the conversion carefully or use a small tested helper. Note: §3.2 says Monday start even though UI may offer Sunday-first display (§8.1) — keep data weeks ISO, handle display preference in the view.
-- **Edge cases:** Year-boundary weeks (week 1 / week 52–53) spanning December/January; week 53 years.
+- **Purpose:** Reconcile the week read to §3.2 line 258 — either add `(year, isoWeek)` resolution or formalize the live `(weekStartDate)` Monday-date form — and fix its per-day reload (1.2.10).
+- **Dependencies:** 1.2.1, `getWeekStartMonday` (timelineModel.js:426); §3.2 line 247/258.
+- **Acceptance criteria:** A documented signature decision: either implement `getEventsForWeek(year, isoWeek)` with ISO-8601 week→Monday resolution (week 1 contains the first Thursday) **or** keep the working `getEventsForWeek(weekStartDate)` and update §3.2 to the Monday-date form (the Phase-4 Week View already thinks in week-start dates, 4.3); the 7-day collection stays Monday-start (§3.2 line 247) regardless of any Sunday-first **display** preference (handled in the view); returns a merged sorted array.
+- **Implementation notes:** Live `getEventsForWeek(weekStartDate)` (:557-567) walks 7 days from a Monday ISO via `getEventsForDate`. If adopting `(year, isoWeek)`, add a small tested ISO-week→date helper; otherwise document the Monday-date form. Either way, hoist the per-day reload (1.2.10) so the 7 day-reads don't each reload the store.
+- **Edge cases:** Year-boundary weeks (week 1 / 52–53) spanning Dec/Jan; week-53 years; the Monday-start data week vs a Sunday-first display (§8) — keep data ISO, handle display in the view (the Phase-4 4.3 week-start preference seam).
 - **UI/UX considerations:** Drives Week View (§6.4); off-by-one week misaligns the whole grid.
-- **Data flow notes:** Aggregates 7 day-reads; keep it derived, never cached.
-- **Testing notes:** Known dates map to known ISO weeks; cross-year week returns events from both years.
-- **Performance notes:** 7× day filter = O(n); fine.
+- **Data flow notes:** Aggregates 7 day-reads; derived, never cached.
+- **Testing notes:** Known dates → known ISO weeks (if resolved); cross-year week returns both years' events.
+- **Performance notes:** 7× day filter — but currently 7× **full store reload** (1.2.10 fix).
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.2 "Week", weekly summary (§4.5).
+- **Integration points:** §3.2 Week, Phase-4 4.3 (Week View week-start), 1.2.10 (reload fix).
+- **Status:** **Divergent (signature).** Live `getEventsForWeek(weekStartDate)` (Monday ISO), not `(year, isoWeek)`; 7× store reload. **Next:** decide signature (add ISO-week resolution or formalize Monday-date), keep Monday-start data, fix the reload.
 
-## 1.2.4 — Implement `getEventsForMonth(year, month): Event[]`
+## 1.2.4 — Confirm `getEventsForMonth` (signature ✓; fix per-day reload)
 
-- **Purpose:** All events in a calendar month for Month View and monthly summaries.
-- **Dependencies:** 1.2.1.
-- **Acceptance criteria:** Returns events whose `startTime` is in the given month/year, sorted; new array; same month convention as 1.2.2.
-- **Implementation notes:** Filter by year+month directly rather than iterating every day, for clarity and speed.
-- **Edge cases:** Leap-year February; months with 28–31 days handled by Date, not hardcoded.
-- **UI/UX considerations:** Drives Month View pills (§6.3) and 3D month clusters (§5.3).
+- **Purpose:** Confirm `getEventsForMonth(year, month)` matches §3.2 line 259 (it does) and fix its **per-day full-store reload** so a month read is one pass, not ~30.
+- **Dependencies:** 1.2.1, 1.2.10; §3.2 line 249/259.
+- **Acceptance criteria:** Signature stays `(year, month)` 1-based (live :574 ✓); returns events in the month sorted, new array; **the implementation loads the store once and groups by day** instead of calling `getEventsForDate` per day (each of which reloads everything today, :578-581).
+- **Implementation notes:** Live `getEventsForMonth` (timelineModel.js:574-583) loops `day = 1..last` calling `getEventsForDate(iso)` — each reloads `loadTimeline()` + `loadSavedMonth()`. Reconcile to: load the timeline + month state **once**, then filter/group to the month (1.2.10 is where this lands centrally). Keep the 1-based `(year, month)` signature.
+- **Edge cases:** Leap-year Feb; 28–31-day months via `Date`; the day-node federation's month state is already month-scoped (`loadSavedMonth`) — load it once.
+- **UI/UX considerations:** Drives Month View pills (§6.3) and 3D month clusters (§5.3 — `populateMonthCluster` reads per-day, a related per-day-read pattern to watch).
 - **Data flow notes:** Read-only aggregate.
-- **Testing notes:** Events on the 1st and last day included; adjacent-month events excluded.
-- **Performance notes:** Single O(n) filter.
+- **Testing notes:** 1st and last day included; adjacent-month excluded; result identical before/after the reload fix.
+- **Performance notes:** From ~30 store reloads to **one** — the 1.2.10 win, most visible here.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.2 "Month".
+- **Integration points:** §3.2 Month, 1.2.10 (reload fix), §5.3/§6.3 consumers.
+- **Status:** **Signature ✓ / costly impl.** `(year, month)` 1-based matches spec; but iterates `getEventsForDate` per day = ~30 full reloads. **Next:** keep signature, load once + group (1.2.10).
 
-## 1.2.5 — Implement `getEventsForYear(year): Event[]`
+## 1.2.5 — Add `getEventsForYear(year)` (MISSING)
 
-- **Purpose:** All events in a year for Year View heatmaps and yearly stats.
-- **Dependencies:** 1.2.1.
-- **Acceptance criteria:** Returns sorted events in the given calendar year; new array.
-- **Implementation notes:** Filter by year on parsed `startTime`; reuse a shared `parseStart(event)` helper across 1.2.x to avoid repeated parsing logic.
-- **Edge cases:** Year boundaries (Dec 31 23:59 vs Jan 1 00:00) land in the correct year by local time.
-- **UI/UX considerations:** Feeds the 12-month mini grid (§6.2) and density heatmap tints.
-- **Data flow notes:** Largest aggregate; still derived, never stored.
-- **Testing notes:** Boundary events on Jan 1 and Dec 31 bucket correctly.
-- **Performance notes:** O(n) once per render; acceptable. Year View should request this once and reuse, not per-cell.
+- **Purpose:** Add the §3.2 line 260 year read the live model lacks — all events in a calendar year — for the Year View 12-month grid / density heatmap.
+- **Dependencies:** 1.2.1, 1.2.10 (load-once); §3.2 line 251/260.
+- **Acceptance criteria:** New `getEventsForYear(year)` returns sorted events in the given calendar year as a new array; loads the store **once** and filters by year (not 365 per-day reloads); boundary events (Dec 31 23:59 / Jan 1 00:00) bucket by local time.
+- **Implementation notes:** None exists — add it. Filter by year on the parsed `startTime` (1.1.2); reuse a shared `parseStart(event)` helper (1.2.10) so Year/Month/Week share one parse path. **Critically**, do not implement it as a per-day loop (the Year View renders 365 cells — fetch the year once and group, never call `getEventsForDate` 365×).
+- **Edge cases:** Year boundaries by local time; the day-node federation spans only the saved month — a full-year read may only have day-node data for the saved month (document the limitation until the federation is unified, 1.1.1).
+- **UI/UX considerations:** Feeds the 12-month mini grid (§6.2 / Phase-4 4.1) and 3D year ring density (§5.2).
+- **Data flow notes:** Largest aggregate; derived, never stored.
+- **Testing notes:** Jan 1 / Dec 31 boundary events bucket correctly; one store load, not 365.
+- **Performance notes:** O(n) once per render; Year View requests it once and reuses, not per-cell.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.2 "Year".
+- **Integration points:** §3.2 Year, Phase-4 4.1 (Year View), §5.2 (3D ring), 1.2.10.
+- **Status:** **Missing.** No `getEventsForYear` in the live model. **Next:** add it as a single-pass year filter (not per-day), shared `parseStart`.
 
-## 1.2.6 — Implement `getUpcomingAlerts(withinMinutes)`
+## 1.2.6 — Add `getUpcomingAlerts(withinMinutes)` (MISSING — coordinate with Phase-2 alerts)
 
-- **Purpose:** Return `{ event, alert }` pairs for alerts firing within a window — the Scheduler and Alerts UI both need this.
-- **Dependencies:** 1.1.3; the `Alert` shape from 1.1.2.
-- **Acceptance criteria:** Returns pairs where `alert.time` is between now and now+`withinMinutes`, excluding `triggered`/`dismissed` alerts, sorted by `alert.time` ascending.
-- **Implementation notes:** Flatten events→alerts into pairs so callers keep the parent event reference (needed for titles/navigation). Compare against `Date.now()` at call time.
-- **Edge cases:** Already-passed-but-untriggered alerts (missed alerts, §7.6) — include or separate per caller need; document the boundary (inclusive of now).
-- **UI/UX considerations:** Powers the Alerts dropdown list and badge count (§7.3).
+- **Purpose:** Add the §3.2 line 261 helper the live model lacks — `{ event, alert }` pairs for alerts firing within a window — the read the Scheduler and Alerts UI both need.
+- **Dependencies:** 1.1 (`Event` + `alerts[]` shape), the Phase-2 `alertsModel.js` (where alert objects live today); §3.2 line 261, §7.2 (Scheduler), §7.3 (badge).
+- **Acceptance criteria:** New `getUpcomingAlerts(withinMinutes)` returns `{ event, alert }[]` where `alert.time` is between now and now+`withinMinutes`, **excluding** `triggered`/`dismissed` alerts, sorted by `alert.time` ascending; keeps the parent `event` reference (for titles/navigation); compares against `Date.now()` at call time.
+- **Implementation notes:** Live events carry only an `alertId` flag (timelineModel.js:23/532), and the real alert objects live in `alertsModel.js` (dynamically imported at :356). Reconcile where alerts live (1.1.2's `Event.alerts[]` per §3.1, or the separate alertsModel) — this helper must read whichever is canonical. Coordinate the §7.2 horizon (Scheduler scans 7d; the badge window is 24h, §7.3 — intentionally different, per the Phase-2 carry-forward).
+- **Edge cases:** Already-passed-but-untriggered (missed) alerts (§7.6) — include or separate per caller; document the now-boundary (inclusive); no alerts → empty array.
+- **UI/UX considerations:** Powers the Alerts dropdown list + badge count (§7.3).
 - **Data flow notes:** Read-only; the Scheduler uses it to pick the next timer (§7.2).
-- **Testing notes:** Triggered/dismissed excluded; window boundaries inclusive/exclusive as documented; sort order correct.
-- **Performance notes:** O(total alerts); fine. Scheduler calls it on each mutation — keep it allocation-light.
+- **Testing notes:** Triggered/dismissed excluded; window boundaries per doc; sort correct; with a fake clock.
+- **Performance notes:** O(total alerts); the Scheduler calls it on each mutation — keep allocation-light.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §7.2 Scheduler, §3.2 helper.
+- **Integration points:** §3.2 helper, §7.2/§7.3, Phase-2 `alertsModel.js`, 1.1.2 (`Event.alerts[]`).
+- **Status:** **Missing.** No `getUpcomingAlerts`; alerts are only an `alertId` flag + separate `alertsModel`. **Next:** add it, reconciled with where alert objects canonically live; exclude triggered/dismissed; sort ascending.
 
-## 1.2.7 — Implement `getUnifiedEventsForDate(date)` for shared 2D/3D use
+## 1.2.7 — Confirm `getUnifiedEventsForDate` as the single shared 2D/3D read
 
-- **Purpose:** A single canonical day-read both renderers call, guaranteeing 2D and 3D never diverge.
-- **Dependencies:** 1.2.1.
-- **Acceptance criteria:** Returns the same data as `getEventsForDate` plus any unified ordering/shape both renderers expect (e.g., sorted by `startTime`, then priority); both 3D and 2D consume only this for a day.
-- **Implementation notes:** If 3D and 2D ever need slightly different ordering, resolve it here once — do not let each renderer sort differently, or the views disagree (violates §10.4).
-- **Edge cases:** Same as 1.2.1; plus stable sort for equal start times (tiebreak by priority then title).
-- **UI/UX considerations:** Guarantees the day looks identical switching 2D↔3D (§6.8 sync).
-- **Data flow notes:** The one read path for per-day rendering in both systems.
-- **Testing notes:** 2D and 3D given the same date receive byte-identical arrays.
-- **Performance notes:** Delegates to 1.2.1 plus one sort; O(n + k log k).
+- **Purpose:** Confirm and harden the §3.2 line 262 shared read — one canonical day-read both renderers call — so 2D and 3D never diverge (§18 sync).
+- **Dependencies:** 1.2.1; §3.2 line 262, §10 line 969, §18.
+- **Acceptance criteria:** `getUnifiedEventsForDate` (live :590) returns the same data as `getEventsForDate` mapped to `UnifiedTimelineEvent`, with a **stable** unified ordering both renderers rely on (sort by `startTime`, tiebreak priority then title); both 3D and 2D consume **only** this for a day; signature reconciled with 1.2.1 (Date vs ISO).
+- **Implementation notes:** Live `getUnifiedEventsForDate(dateIso)` (:590-592) maps via `calendarRecordToUnifiedEvent` ✓; add the explicit stable tiebreak sort so equal start times order identically in both views; keep `getUnifiedEventsForDay` (:600) consistent. Resolve any 3D-vs-2D ordering difference **here once**, never per-renderer (§10 line 969).
+- **Edge cases:** Stable sort for equal `startTime` (tiebreak priority then title); same boundary cases as 1.2.1.
+- **UI/UX considerations:** Guarantees the day looks identical switching 2D↔3D (§18).
+- **Data flow notes:** The one per-day read path for both render systems.
+- **Testing notes:** 2D and 3D given the same date receive identical arrays (same order).
+- **Performance notes:** Delegates to 1.2.1 + one sort; O(n + k log k).
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §2.3 shared data contract, §11.2 data flow ownership.
+- **Integration points:** §3.2, §18 sync, §11 data-flow ownership, 1.2.1.
+- **Status:** **Present (needs stable tiebreak + sig reconcile).** `getUnifiedEventsForDate`/`Day` exist and map to the unified shape. **Next:** add the explicit stable ordering, reconcile signature with 1.2.1, confirm both renderers use only this.
 
-## 1.2.8 — Ensure all helpers are pure and return new arrays
+## 1.2.8 — Confirm helper purity (no shared mutable references)
 
-- **Purpose:** Guarantee reads can never mutate stored state — a core integrity rule.
-- **Dependencies:** 1.2.1–1.2.7.
-- **Acceptance criteria:** No helper returns a reference into `_events`; mutating a returned array/event does not affect stored data; helpers have no side effects (no writes, no emits, no caching).
-- **Implementation notes:** Return `.filter()`/`.map()` results (new arrays). Decide on shallow vs deep copy: shallow is fine if consumers treat events as read-only (enforce via convention + review). If any consumer mutates events in place, switch to returning frozen objects.
-- **Edge cases:** A consumer accidentally mutating a returned event — consider `Object.freeze` in dev builds to catch it.
-- **UI/UX considerations:** Prevents subtle "the calendar changed without a save" bugs.
-- **Data flow notes:** Reinforces §10.3 (model is the only writer).
-- **Testing notes:** Mutating a returned array and re-reading shows the store unchanged.
-- **Performance notes:** New-array allocation is negligible at expected scale.
+- **Purpose:** Confirm the §3.2 line 265 purity rule — reads never mutate stored state — holds across all helpers (it largely does today) and harden it against the 1.1 architecture change.
+- **Dependencies:** 1.2.1–1.2.7, 1.1.1 (if `_events` is introduced, purity means not leaking a reference into it); §3.2 line 265, §10 line 968.
+- **Acceptance criteria:** No helper returns a reference into the authoritative state (today there's no `_events`; the helpers build fresh arrays from `loadTimeline()` copies — keep that); mutating a returned array/event does not affect stored data; helpers have **no side effects** (no writes, no emits, no caching).
+- **Implementation notes:** Live helpers already `[...].sort` / `list.push…return list.sort` (new arrays) ✓. If 1.1.1 introduces `_events`, switch helpers to `.filter()/.map()` over it (new arrays) and consider `Object.freeze` in dev builds to catch accidental consumer mutation. Ensure no helper emits or writes.
+- **Edge cases:** A consumer mutating a returned event in place — dev-build `Object.freeze` catches it; the `getUnified*` adapter already returns fresh objects ✓.
+- **UI/UX considerations:** Prevents "the calendar changed without a save" bugs.
+- **Data flow notes:** Reinforces §10 (model is the only writer).
+- **Testing notes:** Mutating a returned array/event and re-reading shows the store unchanged.
+- **Performance notes:** New-array allocation negligible at scale.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.2 "must be pure".
+- **Integration points:** §3.2 purity, §10, 1.1.1.
+- **Status:** **Largely satisfied.** Helpers return fresh sorted arrays; no `_events` reference to leak today. **Next:** preserve purity if 1.1.1 adds `_events`; add dev-build freeze; confirm no emits/writes in reads.
 
-## 1.2.9 — Add tests for each helper with sample data
+## 1.2.9 — Tests for each helper (incl. the missing two + federation)
 
-- **Purpose:** Pin down read behavior, especially date-boundary correctness.
-- **Dependencies:** 1.2.1–1.2.8.
-- **Acceptance criteria:** Each helper has tests covering empty, single, multiple, and boundary cases; all pass against a shared fixture set.
-- **Implementation notes:** Build one fixture of ~15 events spanning two months and a year boundary; reuse across helper tests. Freeze "now" with a fake clock for `getUpcomingAlerts`.
-- **Edge cases:** Same boundary cases named in each task above (midnight, year/week boundaries, DST, leap day).
-- **UI/UX considerations:** None directly; these guard the data feeding every view.
-- **Data flow notes:** Tests confirm purity (1.2.8) by asserting `_events` unchanged after reads.
-- **Testing notes:** This is the testing task for the read layer.
+- **Purpose:** Pin down read behavior — especially date-boundary correctness, the two new helpers, and the federated day-node merge — so regressions can't drift the data feeding every view.
+- **Dependencies:** 1.2.1–1.2.8; §28.
+- **Acceptance criteria:** Each helper has tests for empty/single/multiple/boundary cases against a shared fixture; `getEventsForYear` and `getUpcomingAlerts` (the new ones) are covered; the day-node federation merge is tested (timeline + saved-month data appear together); a fake clock freezes "now" for `getUpcomingAlerts`; all pass.
+- **Implementation notes:** Build one fixture (~15 events across two months + a year boundary) reused across helpers; mock `localStorage` **and** the saved-month source (`loadSavedMonth`) so the federation is exercised deterministically.
+- **Edge cases:** Midnight/year/week boundaries, DST, leap day; federation (an event only in the day-node source still appears).
+- **UI/UX considerations:** None directly; guards the data feeding every view.
+- **Data flow notes:** Tests confirm purity (1.2.8) by asserting the store is unchanged after reads.
+- **Testing notes:** This is the read-layer testing task.
 - **Performance notes:** Include the 1.2.10 timing assertion here if convenient.
-- **Mobile vs desktop:** Headless; platform-independent.
-- **Integration points:** §28 testing plan.
+- **Mobile vs desktop:** Headless.
+- **Integration points:** §28, the day-node source.
+- **Status:** **Missing.** No helper tests today. **Next:** shared-fixture tests incl. the two new helpers + the federation merge + a fake clock.
 
-## 1.2.10 — Add performance notes (no O(n²) loops on every call)
+## 1.2.10 — Fix the per-day reload trap: load once, group (the real O(days×entries) bug)
 
-- **Purpose:** Document and enforce that reads stay linear, preventing accidental quadratic blowups as data grows.
-- **Dependencies:** 1.2.1–1.2.9.
-- **Acceptance criteria:** Each helper has a comment stating its complexity; no helper calls another helper inside a loop in a way that produces O(n²); a test asserts bulk reads stay within a sane time budget on a large fixture.
-- **Implementation notes:** Watch for the trap of `getEventsForWeek` calling `getEventsForDate` 7× (that's fine, still O(n)) versus a view calling `getEventsForDate` once per cell inside a 365-cell loop (that's O(n·cells)). Push aggregation into one pass where it matters.
-- **Edge cases:** Year View rendering 365 days — fetch the year once and group, don't call per-day 365 times.
-- **UI/UX considerations:** Keeps large calendars responsive (§20 performance plan).
+- **Purpose:** Reconcile reads to §3.2's "computed on demand" intent **and** §20 performance — eliminate the **live** per-day full-store reload where `getEventsForMonth`/`getEventsForWeek`/(future)`getEventsForYear` call `getEventsForDate` per day, each re-running `loadTimeline()` + `loadSavedMonth()`.
+- **Dependencies:** 1.2.1–1.2.5; §3.2, §20, §16 (perf budget).
+- **Acceptance criteria:** Month/week/year reads **load the timeline + saved-month state once** and group/filter in a single pass, instead of N delegated `getEventsForDate` calls that each reload everything (live: `getEventsForMonth` :578 ~30×, `getEventsForWeek` :561 7×); a shared internal helper (e.g. `loadAllOnce()` + a `parseStart` accessor) backs the aggregates; a timing test on a ~1,000-event fixture asserts month/year reads stay within a sane (mobile-aware) budget; no helper produces O(days×entries) reloads.
+- **Implementation notes:** Today every `getEventsForDate` (timelineModel.js:517) calls `loadTimeline()` (full parse+normalize+sort) **and** `loadSavedMonth()` + `createCalendarState` (:537-543). Introduce a single load per aggregate call (load timeline + month state once, then bucket by day/week/year). Keep `getEventsForDate` itself for single-day callers, but have the aggregates **not** route through it per day. Watch the related per-day-read pattern in `populateMonthCluster` (§5.2) — same lesson.
+- **Edge cases:** Aggregates spanning multiple saved months (the day-node source is one month at a time) — load the relevant month state(s) once; a year read touching 12 months needs a documented strategy (timeline events are all loaded once; day-node data may be month-limited).
+- **UI/UX considerations:** Keeps large calendars responsive (§20); the Year View (365 cells) is the worst case the single-pass rule protects.
 - **Data flow notes:** Establishes the read-cost contract Phase 9 optimizes against.
-- **Testing notes:** Timing test on ~1,000-event fixture stays under budget.
-- **Performance notes:** This *is* the performance task; sets the baseline.
-- **Mobile vs desktop:** Mobile is more sensitive — the budget should reflect mobile CPU.
-- **Integration points:** §20, Phase 9 profiling.
+- **Testing notes:** Timing test on ~1,000 events stays under budget; instrument that a month read does **one** `loadTimeline()`, not ~30.
+- **Performance notes:** This **is** the perf task — turns the live ~30-reload month read into one pass.
+- **Mobile vs desktop:** Mobile is more sensitive; the budget reflects mobile CPU.
+- **Integration points:** §20, §16, Phase 9 profiling, 1.2.4/1.2.5 (consumers of the single-load path).
+- **Status:** **Real bug present.** `getEventsForMonth`/`Week` call `getEventsForDate` per day, each reloading the whole store (~30×/7×). **Next:** load timeline + month state once, group in one pass, shared `parseStart`, timing test.
 
 ---
 
 ### Milestone 1.2 — Definition of Done
-- All seven read helpers implemented, pure, returning new arrays, with documented local-time boundaries.
-- `getUnifiedEventsForDate` is the single per-day read for both 2D and 3D.
-- Tests cover empty/boundary/DST/year-edge cases; complexity is documented and linear.
+- The seven §3.2 helpers exist with documented signatures (incl. the two added: `getEventsForYear`, `getUpcomingAlerts`), pure, returning new arrays, with local-time boundaries once `startTime` is stored (1.1.2).
+- `getUnifiedEventsForDate` is the single per-day read for both 2D and 3D, with a stable order.
+- The per-day reload trap is fixed (load once, group); tests cover boundaries, the two new helpers, and the federation.
 - **Next:** Milestone 1.3 — Starter Data & Flags.
 
 
@@ -355,159 +413,184 @@
 
 # Phase 1 — Milestone 1.3: Starter Data & Flags (Expanded)
 
-**Goal:** First-run starter events that feel real, and clean removal once the user adds their own.
-**Spec alignment:** §9 (starter data), §3.3 (init), §3.4 (storage keys).
-**Sequencing:** Depends on 1.1 (CRUD, `bulkCreateEvents`) and 1.2 (reads). Runs as part of init. Must be invisible/clean once the user is real.
+**Goal:** Reconcile the **already-existing** starter-data + first-run-flag logic in [`src/wordweaver/timelineModel.js`](../../src/wordweaver/timelineModel.js) toward §9 — realistic first-run events and a clean one-way removal once the user is real. Grounded against the live `starterNotes` / `getInitialNotes` / `markUserNotesStarted` / `buildStarterTimelineEntries`: the concept exists but with **too few, wrong-shaped** notes, the **wrong storage key**, and **implicit** (not explicit, un-emitted) removal.
+
+**Spec alignment:** §9.0 line 928-961 (starter `starterNotes` = **8–12 `Event` objects** spread across current+adjacent months, varied type/category; load on empty `init()` + set `hasUserNotes=false`; on first **real** `createEvent` remove starter, set `inkling-has-user-notes="true"`, persist, **emit `starterDataCleared`**, re-render; §9.5 Inkling "sample view" note), §3.3 (init/seed), §3.4 line 299 (key `inkling-has-user-notes`), §13.2 (`starterDataCleared`, `initialized`).
+
+**Sequencing:** Depends on 1.1 (CRUD + `bulkCreateEvents` + `createEvent`) and 1.2 (reads). Runs as part of `init()` (1.1.3). **Carry-forward:** the live first-run flag uses key **`"hasUserNotes"`**, not the spec's **`inkling-has-user-notes`** — fixing it needs a migration so existing users don't re-see starter data (1.3.2).
 
 ---
 
-## 1.3.1 — Create `starterEvents` constant with a realistic week/month of events
+## Current implementation status (reconciliation)
 
-- **Purpose:** Show new users a populated calendar that feels natural, not placeholder.
-- **Dependencies:** 1.1.2 (`Event` shape).
-- **Acceptance criteria:** 8–12 events spanning the current and adjacent months, varied across type and category, with realistic titles/bodies; all satisfy the `Event` validation rules.
-- **Implementation notes:** Compute dates relative to "now" at load time (e.g., "+2 days") so starter data always looks current, never stuck in a past month. Keep the constant data-only — no logic.
-- **Edge cases:** Generated near month/year boundaries — relative offsets must not produce invalid dates; alerts in starter data should be in the near future, not already-passed.
-- **UI/UX considerations:** Mix of categories so colors/icons (§21–22) showcase variety; include one high-priority item so priority styling is visible.
-- **Data flow notes:** Loaded via `bulkCreateEvents` (1.1.8), single persist + single render.
-- **Testing notes:** Every starter event passes `_validate`; dates land in current/adjacent months relative to a fixed clock.
+A starter-data + first-run-flag system **already exists and is live**, but it diverges from §9 on **count/shape** (5 partial notes vs 8–12 `Event`s), uses the **wrong storage key**, seeds via a **per-entry build** instead of `bulkCreateEvents`, and removes starter data **implicitly** (by not re-seeding) rather than the spec's **explicit removal + `starterDataCleared` emit**.
+
+- **`starterNotes` is 5 partial notes, not 8–12 `Event`s, all dated today.** §9.2 line 936 wants **8–12 `Event` objects** spread across current+adjacent months, varied in type (note/task/appointment/alert). Live `starterNotes` (timelineModel.js:154-160) is **5** items of `{ time, text, category }` only (no `type`/`title`/`body`/`startTime`/`priority`), and `buildStarterTimelineEntries` (:190-205) dates them **all to `todayIsoDate()`** (:191). 1.3.1 expands to 8–12, reshapes to the §3.1 `Event`, and spreads dates relative to now.
+- **The first-run flag uses the WRONG key (`"hasUserNotes"`, not `inkling-has-user-notes`).** §3.4 line 299 names the key **`inkling-has-user-notes`**. Live uses `HAS_USER_NOTES_KEY = "hasUserNotes"` (timelineModel.js:152). This is a real spec-compliance bug — and changing it needs a **one-time migration** (read old key → write new) so existing users aren't treated as first-run (which would re-show starter data). 1.3.2 fixes the key + migrates.
+- **Seeding is a per-entry build, not `bulkCreateEvents`.** §9.3 wants starter loaded into the model on empty `init()`. Live `loadTimeline()` (:262-274) seeds by calling `buildStarterTimelineEntries()` (per-entry `normalizeEntry`) when the store is empty and the flag is unset — there's no `bulkCreateEvents` (it doesn't exist yet, 1.1.8). 1.3.3 reconciles seeding to a single `bulkCreateEvents` call inside `init()` (one persist, one render).
+- **Removal is implicit (not re-seeding), with no `starterDataCleared` emit.** §9.4 line 948-956 wants, on first real create: **remove** starter events from the store, set the flag, persist, **emit `starterDataCleared`**, re-render. Live never explicitly removes starter: `loadTimeline()` just **returns `[]`** when the flag is set and the store is empty (:270-272) — i.e. starter is "gone" because it's not re-seeded, not because it was removed and announced. There is **no `starterDataCleared` emit** anywhere. 1.3.5 implements explicit removal + the emit.
+- **The flag is set by `addTimelineEntry`, but there's no `initialized` emit.** Live `addTimelineEntry` calls `markUserNotesStarted()` (:318) on every add — so the first real create does latch the flag ✓ (1.3.4 concept present), but starter entries are built **outside** `addTimelineEntry` (via `buildStarterTimelineEntries`) so they don't trip it ✓. However there is **no `init()`** and thus **no `initialized`/`timelineInitialized` emit** (1.3.7).
+- **A starter marker already exists.** `buildStarterTimelineEntries` ids entries `starter-${i}` (:192) — a usable marker for **precise** removal (1.3.5), so removal need not guess from content.
+- **What's already right (keep):** the **latch concept** exists (`markUserNotesStarted` :207, `getInitialNotes` :178 returns starter-until-real, `addTimelineEntry`→latch :318) ✓; **seed-on-empty** exists (:264-274) ✓; starter entries carry a stable **`starter-` id marker** ✓; `getInitialNotes` correctly returns starter only until the flag is set ✓ (the §9.3 gate, just on the wrong key).
+
+---
+
+## 1.3.1 — Expand `starterNotes` to 8–12 §3.1 `Event`s spread across months
+
+- **Purpose:** Reconcile `starterNotes` to §9.2 — **8–12** `Event` objects, varied in type and category, with realistic titles/bodies, spread across the current and adjacent months — replacing the 5 partial `{time,text,category}` notes all dated today.
+- **Dependencies:** 1.1.2 (`Event` shape), 1.1.5 (`_validate`); §9.2 line 934-940.
+- **Acceptance criteria:** 8–12 entries; each is a full §3.1 `Event` (type/title/body/startTime/category/priority/...) that **passes `_validate`** (1.1.5); dates computed **relative to now** (e.g. "+2 days", "-3 days") so starter always looks current; spread across current + adjacent months; varied type (note/task/appointment/alert) and category (study/work/health/personal/creative); at least one high-priority item (so priority styling shows) and one with a near-future alert (not already-passed).
+- **Implementation notes:** Replace the live `starterNotes` (timelineModel.js:154-160) array + `buildStarterTimelineEntries` (:190-205, which hard-dates to today, :191) with relative-offset date computation at seed time; keep the data **declarative** (no logic). Reuse `normalizeCategory` for category literals.
+- **Edge cases:** Offsets near month/year boundaries must not produce invalid dates; alert times in the near future, not passed; relative dates computed at seed time, not import time (so a long-open tab still seeds "current" data).
+- **UI/UX considerations:** Variety showcases category colors/icons (§21–22) and priority styling; a populated calendar feels alive on first run (§9.1).
+- **Data flow notes:** Loaded via `bulkCreateEvents` (1.3.3 / 1.1.8) — one persist, one render.
+- **Testing notes:** Every starter event passes `_validate`; count is 8–12; dates land in current/adjacent months relative to a fixed clock; one high-priority + one near-future alert present.
 - **Performance notes:** Trivial; one bulk insert.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §9.2 starter notes definition.
+- **Integration points:** §9.2, 1.1.2 (shape), 1.1.5 (`_validate`), 1.3.3 (seed via bulk).
+- **Status:** **Divergent (5 partial notes, all today).** Live `starterNotes` = 5 `{time,text,category}`, dated today. **Next:** 8–12 full `Event`s, varied type/category, spread relative to now, validate-passing.
 
-## 1.3.2 — Implement `hasUserNotes` flag logic using `inkling-has-user-notes`
+## 1.3.2 — Fix the first-run flag key (`hasUserNotes` → `inkling-has-user-notes`) + migrate
 
-- **Purpose:** Track whether the user has created any real event, to decide whether starter data shows.
-- **Dependencies:** 1.1.4 (storage access).
-- **Acceptance criteria:** Reads/writes `inkling-has-user-notes`; absent/`"false"` ⇒ false, `"true"` ⇒ true; exposed via a small getter the init logic uses.
-- **Implementation notes:** Treat the key as a one-way latch — once `"true"`, never flips back (even if the user deletes all events, starter data does not return).
-- **Edge cases:** Corrupt/unexpected value → treat as false (show starter) only if no real events exist; if real events exist but flag is missing, set the flag to true (self-heal).
-- **UI/UX considerations:** Prevents starter data reappearing and confusing returning users.
-- **Data flow notes:** Read at init, written on first real create (1.3.4).
-- **Testing notes:** Latch behavior: setting true then attempting false stays true.
-- **Performance notes:** Single key read at boot.
+- **Purpose:** Reconcile the first-run flag to §3.4 line 299 — key **`inkling-has-user-notes`** — replacing the live `"hasUserNotes"`, with a one-time migration so existing users aren't mistaken for first-run (which would wrongly re-show starter data).
+- **Dependencies:** 1.1.4 (storage access); §3.4 line 299, §9.3, §10 (self-heal).
+- **Acceptance criteria:** Reads/writes **`inkling-has-user-notes`**; a **one-time migration** copies the old `"hasUserNotes"` value (if present) to the new key on `init()` (and may clear the old); absent/`"false"` ⇒ false, `"true"` ⇒ true via a small getter `init()` uses; the flag is a **one-way latch** (once true, never flips back, even if the user deletes all events).
+- **Implementation notes:** Live `HAS_USER_NOTES_KEY = "hasUserNotes"` (timelineModel.js:152) is referenced by `getInitialNotes` (:180), `markUserNotesStarted` (:209), `loadTimeline` (:270). Change the constant to `inkling-has-user-notes` and add the migration read of the old key in `init()` (1.1.3) before the seed check, so a returning user with `"hasUserNotes"="true"` is recognized and **not** re-seeded.
+- **Edge cases:** Corrupt/unexpected value → treat as false **only if no real events exist** (else self-heal to true); real events present but flag missing → set true (self-heal); the migration must run **before** the first seed decision or a returning user briefly re-seeds.
+- **UI/UX considerations:** Prevents starter data reappearing for returning users (the bug the wrong key would cause after this rename without migration).
+- **Data flow notes:** Read at init (after migration), written on first real create (1.3.4).
+- **Testing notes:** Old-key `"true"` migrates to new key and suppresses seeding; latch holds (true then attempted-false stays true); missing-flag-with-real-events self-heals to true.
+- **Performance notes:** One key read (+ a one-time migration write) at boot.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.4 storage schema, §9.3–9.4.
+- **Integration points:** §3.4, §9.3, 1.1.3 (migration runs in init), 1.3.3/1.3.4.
+- **Status:** **Divergent (wrong key).** Live key is `"hasUserNotes"`; spec is `inkling-has-user-notes`. **Next:** rename to the spec key + one-time migration from the old key in `init()`; keep the one-way latch.
 
-## 1.3.3 — On first run (no data), load `starterEvents` via `bulkCreateEvents`
+## 1.3.3 — Seed starter via `bulkCreateEvents` on empty `init()`
 
-- **Purpose:** Populate an empty calendar on the very first launch.
-- **Dependencies:** 1.3.1, 1.3.2, 1.1.8.
-- **Acceptance criteria:** When `inkling-timeline-v1` is absent AND `hasUserNotes` is false, load starter events through `bulkCreateEvents`; do not load them otherwise.
-- **Implementation notes:** Check both the timeline key and the flag; starter load happens inside init, after `loadFromStorage` returns empty. Mark these as starter (e.g., an internal flag or known id prefix) so 1.3.5 can remove them precisely.
-- **Edge cases:** Storage present but empty array → still first-run visually; decide whether to seed (prefer not to seed if the key exists, to respect a user who deleted everything).
-- **UI/UX considerations:** New users immediately see a living calendar (§9.1).
-- **Data flow notes:** Single bulk insert → single render via batched emit.
-- **Testing notes:** Empty store seeds starter; existing store does not.
-- **Performance notes:** One bulk write.
+- **Purpose:** Reconcile first-run seeding to §9.3 — when `inkling-timeline-v1` is absent **and** the flag is false, load starter through **`bulkCreateEvents`** (one persist, one render) inside `init()` — replacing the live per-entry `buildStarterTimelineEntries`.
+- **Dependencies:** 1.3.1, 1.3.2, 1.1.8 (`bulkCreateEvents`), 1.1.3 (`init`); §9.3 line 942-946.
+- **Acceptance criteria:** When the timeline key is absent AND `inkling-has-user-notes` is false, `init()` seeds `starterNotes` via `bulkCreateEvents`; does **not** seed otherwise (store present, or flag true); starter events keep the `starter-` id marker (1.3.5 removal) and are flagged "seeding" so they don't trip the latch (1.3.4).
+- **Implementation notes:** Live seeding is implicit in `loadTimeline()` (timelineModel.js:264-274) — move it into the explicit `init()` (1.1.3): after `loadFromStorage` returns empty + flag false, call `bulkCreateEvents(starterNotes)` with a `_seeding` flag set so `createEvent`'s latch (1.3.4) is bypassed. Preserve the `starter-${i}` id marker (:192).
+- **Edge cases:** Store present but empty array → do **not** seed (respect a user who deleted everything — only seed when the key is **absent**); seeding must set `_seeding` so 1.3.4 doesn't latch; the day-node federation (saved-month data) is separate — don't double-seed it.
+- **UI/UX considerations:** New users immediately see a living calendar (§9.1), rendered once (not 8–12 times).
+- **Data flow notes:** Single `bulkCreateEvents` → single persist → single batched emit.
+- **Testing notes:** Absent key + false flag → seeds; present key → no seed; flag true → no seed; one persist.
+- **Performance notes:** One bulk write (vs the live per-entry path).
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §9.3 load behavior.
+- **Integration points:** §9.3, 1.1.8 (bulk), 1.1.3 (init), 1.3.1 (data), 1.3.5 (marker).
+- **Status:** **Partial (seeds, but per-entry + implicit).** Live seeds on empty via `buildStarterTimelineEntries`, not `bulkCreateEvents`, inside `loadTimeline`. **Next:** seed via `bulkCreateEvents` in `init()`, only when the key is absent, with a `_seeding` flag + `starter-` marker.
 
-## 1.3.4 — When user creates first real event, set `hasUserNotes = true`
+## 1.3.4 — First real `createEvent` sets the latch (exempt the starter seed)
 
-- **Purpose:** Detect the transition from "sample" to "real" calendar.
-- **Dependencies:** 1.1.5 (`createEvent`), 1.3.2.
-- **Acceptance criteria:** The first `createEvent` that originates from the user (not the starter bulk load) sets `inkling-has-user-notes = "true"`.
-- **Implementation notes:** Distinguish user creates from starter creates — e.g., `bulkCreateEvents` sets an internal "seeding" flag so it doesn't trip this latch. Set the flag before/at the same persist as the new event.
-- **Edge cases:** User's first action is an *import* (bulk) rather than a single create — treat a user-initiated bulk import as real too; only the starter seed is exempt.
-- **UI/UX considerations:** This is the moment starter data should disappear (1.3.5) so the user sees only their event.
+- **Purpose:** Reconcile the latch trigger to §9.4 line 950 — the first **user** `createEvent` (not the starter seed) sets `inkling-has-user-notes="true"` — building on the live `addTimelineEntry`→`markUserNotesStarted` behavior.
+- **Dependencies:** 1.1.5 (`createEvent`), 1.3.2 (the flag), 1.3.3 (the `_seeding` exemption); §9.4 line 950-953.
+- **Acceptance criteria:** The first `createEvent` originating from the **user** sets the flag true; the **starter seed** (1.3.3, `_seeding`) does **not** set it; a user-initiated **import** (bulk) counts as real too (only the starter seed is exempt); the flag set happens in the same persist as the new event.
+- **Implementation notes:** Live `addTimelineEntry` already calls `markUserNotesStarted()` (timelineModel.js:318) — reconcile this into `createEvent` (1.1.5) and gate it on `!_seeding` so the starter bulk (1.3.3) doesn't latch. Keep `saveNoteToTimeline` (the note UI path, :343) routing through `createEvent` so it latches.
+- **Edge cases:** User's first action is an import (bulk) → treat as real (latch); only the starter seed is exempt; setting the flag must precede/accompany the removal (1.3.5) in one persist.
+- **UI/UX considerations:** This is the moment starter data disappears (1.3.5) so the user sees only their event.
 - **Data flow notes:** Triggers 1.3.5 removal in the same flow.
-- **Testing notes:** Starter seed does not set the flag; the first user create does.
+- **Testing notes:** Starter seed does not latch; first user create does; user import latches.
 - **Performance notes:** Negligible.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §9.4 removal behavior.
+- **Integration points:** §9.4, 1.1.5 (createEvent), 1.3.2/1.3.3/1.3.5.
+- **Status:** **Partial (latches, but no seed exemption boundary yet).** Live `addTimelineEntry`→`markUserNotesStarted` latches on add; starter built outside it so it doesn't latch — but no explicit `_seeding` gate. **Next:** latch in `createEvent` gated on `!_seeding`; user-import counts as real.
 
-## 1.3.5 — Hide starter events once `hasUserNotes` is true
+## 1.3.5 — Explicit starter removal + `starterDataCleared` emit on first real create
 
-- **Purpose:** Remove the sample data so it never mixes with real events.
-- **Dependencies:** 1.3.4.
-- **Acceptance criteria:** When the flag flips true, all starter-marked events are removed from `_events`, the cleaned array is persisted once, and `starterDataCleared` is emitted; the user's new event remains.
-- **Implementation notes:** Remove by the starter marker from 1.3.3, not by guessing from content. Do the removal and the new-event insert in one persist to avoid a flash of "starter + new" together.
-- **Edge cases:** User somehow edited a starter event before creating their own — decide policy: simplest is starter events are read-only-ish and still removed; if you allowed editing, treat an edited starter event as adopted (don't delete it). Pick one and document.
+- **Purpose:** Reconcile starter removal to §9.4 line 952-956 — when the latch flips, **explicitly remove** the `starter-`marked events, persist once, and **emit `starterDataCleared`** — replacing the live **implicit** removal (just not re-seeding) which never announces the change.
+- **Dependencies:** 1.3.4 (latch trigger), 1.1.7 (removal mechanics), 1.1.9 (emit); §9.4 line 952-956, §13.2 (`starterDataCleared`).
+- **Acceptance criteria:** When the flag flips true on the first real create, **all `starter-`marked events are removed** from the store, the cleaned array is persisted **once** (together with the user's new event — no flash of "starter + new"), and **`starterDataCleared` is emitted**; the user's new event remains; removal is by the `starter-` **marker** (timelineModel.js:192), not by guessing from content.
+- **Implementation notes:** Live has **no explicit removal and no emit** — starter just isn't re-seeded by `loadTimeline` when the flag is set (:270). Add explicit removal in the first-real-create flow: filter out `id.startsWith("starter-")`, persist the cleaned array + new event in one write, emit `starterDataCleared` on the canonical bus (1.1.9). Do the removal + insert in **one persist**.
+- **Edge cases:** User edited a starter event before creating their own — decide policy (simplest: starter is removed regardless; if editing adopted it, treat edited starter as real and keep — pick one, document); deleting all real events later must **not** bring starter back (the latch holds, 1.3.2).
 - **UI/UX considerations:** Clean transition — no half-second where both sample and real events show (§9.4).
-- **Data flow notes:** `starterDataCleared` → 3D/2D re-render showing only real data.
-- **Testing notes:** After first real create, zero starter-marked events remain; the new event is present.
+- **Data flow notes:** `starterDataCleared` → 2D/3D re-render showing only real data.
+- **Testing notes:** After first real create, zero `starter-`marked events remain; the new event is present; `starterDataCleared` emits once.
 - **Performance notes:** Single filter + single persist.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §9.4, §13.2 `starterDataCleared`.
+- **Integration points:** §9.4, §13.2 `starterDataCleared`, 1.1.7/1.1.9, the `starter-` marker.
+- **Status:** **Implicit / un-emitted.** Live "removes" starter by not re-seeding when the flag is set; no explicit removal, no `starterDataCleared`. **Next:** explicit marker-based removal + single persist + `starterDataCleared` emit.
 
-## 1.3.6 — Add tests for starter data lifecycle
+## 1.3.6 — Tests for the starter lifecycle (incl. the key migration)
 
-- **Purpose:** Lock the seed→use→clear flow so regressions can't reintroduce sample data.
-- **Dependencies:** 1.3.1–1.3.5.
-- **Acceptance criteria:** Tests cover: fresh install seeds starter; second launch (store present) does not reseed; first user create clears starter and sets the latch; deleting all real events does not bring starter back.
-- **Implementation notes:** Use a fake clock and mocked storage; reset both between cases.
-- **Edge cases:** All the boundary cases from 1.3.2–1.3.5 (corrupt flag, edited starter, import-first).
+- **Purpose:** Lock the seed→use→clear flow — including the **wrong-key migration** (1.3.2) — so regressions can't reintroduce sample data or mis-detect returning users.
+- **Dependencies:** 1.3.1–1.3.5; §28.
+- **Acceptance criteria:** Tests cover: fresh install seeds starter (8–12, validate-passing); second launch (store present) does not reseed; **old-key→new-key migration** suppresses reseeding for a returning user; first user create clears starter + sets the latch + emits `starterDataCleared`; deleting all real events does not bring starter back; with a fake clock + mocked storage, reset between cases.
+- **Implementation notes:** The **migration test is the highest-value addition** vs the old greenfield spec — it guards returning users through the key rename. Use a fake clock for the relative starter dates (1.3.1).
+- **Edge cases:** Corrupt flag; edited starter; import-first; old-key present/new-key absent.
 - **UI/UX considerations:** None directly.
-- **Data flow notes:** Asserts the right emits fire (`starterDataCleared`).
+- **Data flow notes:** Asserts `starterDataCleared` fires once.
 - **Testing notes:** This is the lifecycle testing task.
 - **Performance notes:** N/A.
 - **Mobile vs desktop:** Headless.
-- **Integration points:** §28.
+- **Integration points:** §28, 1.3.2 (migration under test).
+- **Status:** **Missing.** No starter-lifecycle tests. **Next:** seed/reseed/migration/clear/latch tests with fake clock + mocked storage.
 
-## 1.3.7 — Add event bus emit `timelineInitialized`
+## 1.3.7 — Emit `initialized` after init/seed (MISSING)
 
-- **Purpose:** Signal that the model is ready so views and the Scheduler can start.
-- **Dependencies:** 1.1.9 (emit wiring), 1.3.3.
-- **Acceptance criteria:** After init completes (load or seed), `timelineInitialized` is emitted exactly once with `{ eventCount }`; emitted after persistence is settled.
-- **Implementation notes:** Emit at the very end of `init()`, after any starter seed. Ensure it fires once even if init is guarded against double-call.
-- **Edge cases:** Seed path vs load path both end in exactly one emit.
-- **UI/UX considerations:** Views should subscribe and render on this, avoiding a blank first frame.
-- **Data flow notes:** Kicks off Scheduler's initial alert scan (§7.2) and first renders.
-- **Testing notes:** Exactly one emit per init; payload count matches `_events.length`.
+- **Purpose:** Add the §3.3/§13.2 `initialized` emit the live model lacks — signal that the model is ready (after load or seed) so views and the Scheduler can start — replacing the live lazy no-signal boot.
+- **Dependencies:** 1.1.9 (emit wiring), 1.1.3 (`init`), 1.3.3 (seed); §13.2 (`initialized`), §7.2.
+- **Acceptance criteria:** After `init()` completes (load **or** seed), `initialized` is emitted **exactly once** with `{ eventCount }`, after persistence is settled; fires once even though `init()` is idempotent (1.1.3); both the seed path and the load path end in exactly one emit.
+- **Implementation notes:** Live has no init and no such emit. Emit at the very end of `init()` (1.1.3), after any starter seed (1.3.3), on the canonical bus (1.1.9). (The roadmap calls this `timelineInitialized`; §13.2 uses `initialized` — Phase 2 reconciled to `initialized`; use `initialized`.)
+- **Edge cases:** Seed path vs load path both end in exactly one emit; double-`init()` (guarded) still emits once.
+- **UI/UX considerations:** Views subscribe and render on this, avoiding a blank first frame (the live lazy model has no such go-signal).
+- **Data flow notes:** Kicks off the Scheduler's initial alert scan (§7.2) and first renders.
+- **Testing notes:** Exactly one emit per init; payload count matches the loaded/seeded count.
 - **Performance notes:** N/A.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §13.2 (`initialized`/`timelineInitialized`), §7.2.
+- **Integration points:** §13.2 `initialized`, §7.2, 1.1.3/1.1.9, 1.3.3.
+- **Status:** **Missing.** No `init()`, no `initialized` emit. **Next:** emit `initialized { eventCount }` once at the end of `init()` (after seed), on the canonical bus.
 
-## 1.3.8 — Document starter data behavior in comments
+## 1.3.8 — Document the starter/flag behavior in `timelineModel.js`
 
-- **Purpose:** Make the seed/clear logic obvious to future contributors (and Cursor) so no one "fixes" it wrongly.
-- **Dependencies:** 1.3.1–1.3.7.
-- **Acceptance criteria:** A comment block in `timelineModel.js` explains the flag latch, the seed condition, the removal trigger, and why starter data never returns.
-- **Implementation notes:** Keep it concise and co-located with the logic, not in a separate doc that drifts.
-- **Edge cases:** Document the "edited starter event" and "import-first" decisions explicitly.
+- **Purpose:** Make the seed/latch/removal/migration logic obvious to future contributors (and Cursor) so no one "fixes" it wrongly (e.g. reverting the key migration or re-seeding for returning users).
+- **Dependencies:** 1.3.1–1.3.7; §9, §10 line 967.
+- **Acceptance criteria:** A comment block in `timelineModel.js` explains: the one-way latch, the **new** key + the migration from the old `"hasUserNotes"` key, the seed condition (key absent + flag false), the marker-based removal trigger, the `starterDataCleared`/`initialized` emits, and why starter never returns.
+- **Implementation notes:** Co-locate with the logic, not a separate drifting doc; explicitly note the key migration so it isn't "cleaned up" later.
+- **Edge cases:** Document the "edited starter" and "import-first" decisions (1.3.4/1.3.5).
 - **UI/UX considerations:** None.
 - **Data flow notes:** Note which emits fire and when.
 - **Testing notes:** N/A.
 - **Performance notes:** N/A.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §9, §10.2 (align with spec).
+- **Integration points:** §9, §10, the key migration (1.3.2).
+- **Status:** **Partial.** Live has light JSDoc but nothing on the latch/key/removal rationale. **Next:** a co-located comment block covering latch + key migration + seed/removal/emit rules.
 
-## 1.3.9 — Ensure no starter data leaks into export/backup (future)
+## 1.3.9 — Guard starter data out of future export/backup
 
-- **Purpose:** Guarantee that when export/import lands (§8.4), sample data never ends up in a user's backup.
-- **Dependencies:** 1.3.5.
-- **Acceptance criteria:** Because starter data is removed on first real create, a real user's store contains no starter events; add a guard/comment so a future export feature also filters starter-marked events if any somehow remain.
-- **Implementation notes:** Keep the starter marker available to a future exporter; add a TODO at the (future) export site referencing this rule.
-- **Edge cases:** A user who never created a real event exports while starter data still shows — decide: either block export until they have real data, or strip starter on export. Prefer stripping with a note.
-- **UI/UX considerations:** Prevents confusing "why are these sample events in my backup?" reports.
-- **Data flow notes:** Forward-looking; ties to Phase 9/§8.4.
-- **Testing notes:** When export exists, exporting with only starter data yields an empty (or clearly-sample-free) file.
+- **Purpose:** Ensure that when export/import lands (§8), sample data never ends up in a user's backup — relying on the explicit removal (1.3.5) plus a guard.
+- **Dependencies:** 1.3.5; §8 (future export).
+- **Acceptance criteria:** Because starter is removed on first real create (1.3.5), a real user's store has no `starter-`marked events; a TODO/guard at the (future) export site filters `starter-`marked events if any remain; documented.
+- **Implementation notes:** Keep the `starter-` marker available to a future exporter; add a TODO at the future export site referencing this rule.
+- **Edge cases:** A user who never created a real event exports while starter still shows — prefer stripping starter on export (with a note) over blocking.
+- **UI/UX considerations:** Prevents "why are sample events in my backup?" confusion.
+- **Data flow notes:** Forward-looking; ties to §8 / Phase 10.
+- **Testing notes:** When export exists, exporting with only starter yields a sample-free file.
 - **Performance notes:** N/A.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §8.4 data section (future).
+- **Integration points:** §8 (future), the `starter-` marker.
+- **Status:** **Future (guard only).** No export yet; the marker enables a future filter. **Next:** leave a marker-aware TODO at the future export seam.
 
-## 1.3.10 — Confirm behavior matches master spec
+## 1.3.10 — Cross-check against §9 (incl. §9.5 Inkling sample-view note → Phase 6)
 
-- **Purpose:** Final cross-check that the implementation matches §9 exactly.
-- **Dependencies:** 1.3.1–1.3.9.
-- **Acceptance criteria:** Each statement in §9.1–9.5 maps to implemented behavior; any deviation is either fixed or documented with rationale.
-- **Implementation notes:** Walk §9 line by line against the code; pay attention to §9.5 (Inkling prefixing summaries with a "sample view" note when only starter data is present) — that's a cross-module obligation to flag for Phase 6.
-- **Edge cases:** §9.5 Inkling behavior is implemented in Phase 6; leave a tracked TODO so it isn't forgotten.
+- **Purpose:** Final cross-check that the reconciled implementation matches §9 line-by-line, and track the cross-module §9.5 obligation for Phase 6.
+- **Dependencies:** 1.3.1–1.3.9; §9, §10 line 967.
+- **Acceptance criteria:** Each statement in §9.1–9.5 maps to implemented behavior; deviations are fixed or documented; §9.5 (Inkling prefixes summaries with "Here's a sample view — add your first event to get started." when only starter data is present) is captured as a **Phase-6 TODO** (it lives in `AIBrain.js`, not this model).
+- **Implementation notes:** Walk §9 against the code; §9.5 is an Inkling/AI obligation — leave a tracked TODO referencing Phase 6 (AI integration), not implemented here.
+- **Edge cases:** §9.5 is Phase-6; don't implement in Phase 1 — just track it.
 - **UI/UX considerations:** Matches the intended new-user experience.
-- **Data flow notes:** Confirms emits and removal match spec.
+- **Data flow notes:** Confirms emits + removal match spec.
 - **Testing notes:** Spec-to-test traceability checklist passes.
 - **Performance notes:** N/A.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §9 in full, §10.2.
+- **Integration points:** §9 in full, §9.5 (Phase 6 `AIBrain.js`).
+- **Status:** **Open (cross-check + §9.5 TODO).** **Next:** line-by-line §9 check; track §9.5 as a Phase-6 Inkling TODO.
 
 ---
 
 ### Milestone 1.3 — Definition of Done
-- Fresh installs see realistic, current-dated starter events; returning users never do.
-- `hasUserNotes` is a one-way latch; first real create clears starter data in a single clean persist.
-- `timelineInitialized` fires once; lifecycle is tested and documented.
-- §9.5 Inkling "sample view" note is tracked as a Phase 6 TODO.
+- Fresh installs see 8–12 realistic, current-dated starter `Event`s; returning users never do (key migrated from `hasUserNotes` → `inkling-has-user-notes`).
+- The latch is one-way; first real create explicitly removes `starter-`marked events in a single persist and emits `starterDataCleared`; `initialized` fires once.
+- Lifecycle (incl. migration) is tested and documented; §9.5 Inkling note tracked for Phase 6.
 - **Next:** Milestone 1.4 — Storage Safety & Limits.
 
 
@@ -517,159 +600,186 @@
 
 # Phase 1 — Milestone 1.4: Storage Safety & Limits (Expanded)
 
-**Goal:** Never lose user data to `localStorage` limits or re-entrant writes.
-**Spec alignment:** §3.3 (concurrency, storage-size guard), §3.4, §10.3.
-**Sequencing:** Depends on 1.1 (mutations and persistence). Hardens the write path before later phases add high-volume features.
+**Goal:** Reconcile the **already-existing** persistence in [`src/wordweaver/timelineModel.js`](../../src/wordweaver/timelineModel.js) toward §3.3's storage-safety contract — never lose user data to `localStorage` limits or re-entrant writes. Grounded against the live `writeStore`/`readStore`: today the write path **silently swallows quota errors** (`console.warn` and continues), so a failed save **loses the user's latest change without telling them** — the single biggest gap in Phase 1.
+
+**Spec alignment:** §3.3 line 287-291 (concurrency `_writing` mutex; storage-size guard: warn near 4.5MB via `storageWarning`, reject above 4.9MB via `storageFull`), §3.4 line 293-301 (storage keys), §10 line 968 (only the model writes event data), §13.2 (`storageWarning`/`storageFull`).
+
+**Sequencing:** Depends on 1.1 (mutations + persistence) and 1.1.8 (the bulk path the mutex protects). Hardens the write path before later phases add higher-volume features. **Carry-forward:** the §10.3 "single writer" rule must be scoped to the **event key** — the repo has **28 `localStorage.setItem` callers**, and several are **parallel event-ish stores** (the federation), so 1.4.8 can't naively forbid all writes.
 
 ---
 
-## 1.4.1 — Implement storage size estimation before writes
+## Current implementation status (reconciliation)
 
-- **Purpose:** Know how big the serialized store is before committing, so we can warn or block near the limit.
-- **Dependencies:** 1.1.4 (`saveToStorage`).
-- **Acceptance criteria:** Before each write, compute the byte size of the JSON to be stored; expose it for the warning/block checks in 1.4.2–1.4.3.
-- **Implementation notes:** Estimate bytes via the serialized string length (UTF-16 chars ≈ approximate; for accuracy use `new Blob([json]).size` or `TextEncoder().encode(json).length`). Compute once per write and reuse for both checks.
-- **Edge cases:** Multi-byte characters (emoji, non-Latin) inflate byte size beyond character count — use a byte-accurate measure, not `.length`.
-- **UI/UX considerations:** Feeds user-facing warnings (§3.3) so they can export/prune before hitting the wall.
+Persistence **exists and is live**, but the safety contract of §3.3 is **almost entirely absent**, and the one behavior that *is* present — catching write failures — is implemented in the **worst possible way**: it swallows the error and continues, so the user believes a lost edit was saved.
+
+- **`writeStore` silently swallows quota errors — a data-loss bug.** §3.3 line 291 wants: estimate size, `storageWarning` near 4.5MB, **reject + `storageFull` above 4.9MB**, and never leave memory holding unpersisted state. Live `writeStore` (timelineModel.js:251-257) does `try { localStorage.setItem(...) } catch (err) { console.warn(...) }` — on `QuotaExceededError` it **logs and returns as if it succeeded**, the caller emits success, and the user's change is **gone**. This is the highest-priority fix in Phase 1. 1.4.1–1.4.3 add estimation, warning, and a hard reject with rollback + a real-throw backstop.
+- **No size estimation before writes.** There is no byte-size measure anywhere; §3.3 line 290 wants one before each write. 1.4.1 adds it (`TextEncoder`/`Blob` byte size, not `.length` — multi-byte chars).
+- **No `storageWarning` / `storageFull` emits.** Neither §13.2 event exists in the model. 1.4.2/1.4.3 add them on the canonical bus.
+- **No `_writing` mutex.** §3.3 line 288 wants a `_writing` flag so batch operations persist once. There's no batch path today (1.1.8 adds `bulkCreateEvents`) and no mutex. 1.4.4 adds it (with `try/finally` so an exception mid-batch still clears it).
+- **Corrupt-read self-heal exists (the one good half).** `readStore` (timelineModel.js:240-249) catches malformed JSON and returns `null` (→ treated as empty) ✓ — the read path self-heals. The **write** path is the unguarded one.
+- **The "single writer" rule is already not literally true — there's a federation of event-ish stores.** §10 line 968 says no component writes event data except the model. In reality there are **28 `localStorage.setItem` callers**, and several persist event-ish data: `calendarState.js` (the saved-month day-nodes the model federates in, :537), `alertsModel.js` (alert objects), and `inkling-core/timelineStorage.js` (a parallel timeline store). 1.4.8 must scope the rule to the **`inkling-timeline-v1` event key** and document the other stores as the federation, not pretend one writer exists.
+- **Wrong flag key (carries from 1.3.2).** The first-run flag writes `"hasUserNotes"` (timelineModel.js:209), not the §3.4 `inkling-has-user-notes` — a §3.4 key-compliance miss verified here too (1.4.10).
+- **What's already right (keep):** `readStore` corrupt-JSON self-heal → `null`/empty ✓ (§10); `writeStore` is **already the single choke-point** for the event key (all event writes go through `saveTimeline`→`writeStore`) ✓ — so adding the guard in one place protects every event write; `STORAGE_KEY = "inkling-timeline-v1"` constant ✓ (§3.4 line 297).
+
+---
+
+## 1.4.1 — Estimate serialized size before each write
+
+- **Purpose:** Add the §3.3 line 290 pre-write byte estimate the model lacks — so the warning (1.4.2) and the hard block (1.4.3) have a size to check, before committing a write that might silently fail.
+- **Dependencies:** 1.1.4 (`saveToStorage`/`writeStore`); §3.3 line 290.
+- **Acceptance criteria:** Before each write, compute the **byte** size of the JSON to be stored (not character count) and expose it to 1.4.2/1.4.3; computed once per write and reused for both checks; serialize once, measure that string, store that string (no double-serialize).
+- **Implementation notes:** In/around `writeStore` (timelineModel.js:251), measure via `new Blob([json]).size` or `new TextEncoder().encode(json).length` — `.length` undercounts multi-byte (emoji, non-Latin). Compute the JSON string once, measure it, and pass the same string to `setItem`.
+- **Edge cases:** Multi-byte characters inflate byte size beyond char count — use a byte-accurate measure; very large stores — the estimate itself is O(size) but acceptable.
+- **UI/UX considerations:** Feeds the user-facing warning (§3.3) so they can export/prune before the wall.
 - **Data flow notes:** Runs inside the persist step, before the actual `setItem`.
 - **Testing notes:** Known payloads report expected byte sizes; multi-byte content measured correctly.
-- **Performance notes:** Encoding the string each write is O(size); acceptable, but avoid double-serializing — serialize once, measure that string, store that string.
-- **Mobile vs desktop:** Mobile browsers may have lower quotas; the same guard protects both.
-- **Integration points:** §3.3 storage-size guard.
+- **Performance notes:** Encode once per write; avoid double-serializing.
+- **Mobile vs desktop:** Mobile quotas may be lower; the same guard protects both.
+- **Integration points:** §3.3 size guard, 1.4.2/1.4.3 (consumers).
+- **Status:** **Missing.** No size estimate before writes. **Next:** byte-accurate estimate (TextEncoder/Blob), once per write, reused by the warning/block.
 
-## 1.4.2 — Emit `storageWarning` when approaching 4.5MB
+## 1.4.2 — Emit `storageWarning` near 4.5MB
 
-- **Purpose:** Warn the user before they hit the hard limit.
-- **Dependencies:** 1.4.1.
-- **Acceptance criteria:** When estimated size ≥ 4.5MB, emit `storageWarning` with `{ usedBytes }`; the write still proceeds (warning, not block).
-- **Implementation notes:** Make the threshold a named constant. Debounce so the user isn't spammed on every keystroke-driven save — emit once per session crossing, or at most occasionally.
-- **Edge cases:** Crossing back below after deletes — allow the warning to re-arm so a later re-crossing warns again.
+- **Purpose:** Add the §3.3 warning the model lacks — when the estimated size approaches 4.5MB, emit `storageWarning` (write still proceeds) — so users can act before the hard limit.
+- **Dependencies:** 1.4.1; §3.3 line 291, §13.2 (`storageWarning`).
+- **Acceptance criteria:** When estimated size ≥ 4.5MB, emit `storageWarning { usedBytes }` on the canonical bus; the write **still proceeds** (warning, not block); threshold is a named constant; debounced so the user isn't spammed on every save (once per session crossing, or re-armed after dropping below).
+- **Implementation notes:** None exists — add the check after the 1.4.1 estimate, before `setItem`. Named constant `STORAGE_WARN_BYTES = 4.5 * 1024 * 1024`. Debounce via a module flag that re-arms when size drops below after deletes.
+- **Edge cases:** Crossing back below after deletes → re-arm so a later re-crossing warns again; exactly-at-threshold → emit.
 - **UI/UX considerations:** UIShell shows a non-blocking toast (§13.2) suggesting export/cleanup.
 - **Data flow notes:** `storageWarning` → UIShell toast.
-- **Testing notes:** Size just under threshold → no emit; at/over → emit once.
+- **Testing notes:** Just under threshold → no emit; at/over → emit once (then debounced).
 - **Performance notes:** Negligible.
-- **Mobile vs desktop:** Identical logic; copy may differ per platform.
-- **Integration points:** §13.2 `storageWarning`.
+- **Mobile vs desktop:** Same logic; copy may differ.
+- **Integration points:** §13.2 `storageWarning`, 1.4.1.
+- **Status:** **Missing.** No warning emit. **Next:** `storageWarning { usedBytes }` at ≥4.5MB, write proceeds, debounced + re-arming.
 
-## 1.4.3 — Emit `storageFull` and reject writes above ~4.9MB
+## 1.4.3 — Reject + roll back + `storageFull` above ~4.9MB (fix the silent-swallow data-loss bug)
 
-- **Purpose:** Prevent a failed `setItem` from silently losing the user's latest change.
-- **Dependencies:** 1.4.1, 1.4.2.
-- **Acceptance criteria:** When estimated size > ~4.9MB, do **not** write; emit `storageFull` with `{ usedBytes }`; the in-memory `_events` change that triggered it is rolled back so memory and storage stay consistent.
-- **Implementation notes:** Check size on the *would-be* serialized state before mutating in memory, or snapshot and roll back if the guard trips — never leave `_events` holding data that isn't persisted. Also wrap the real `setItem` in try/catch for actual `QuotaExceededError` as a backstop.
-- **Edge cases:** Browser quota lower than 5MB (Safari, private mode) — the try/catch backstop catches the real throw even if the estimate said OK.
-- **UI/UX considerations:** UIShell shows a blocking error explaining the save failed and offering export (§13.2); the user must not believe a lost edit was saved.
-- **Data flow notes:** On block, no `eventCreated`/`eventUpdated` success emit fires (ties to 1.1.9 ordering).
-- **Testing notes:** Oversized write is rejected, state rolls back, `storageFull` emits, no success emit fires.
+- **Purpose:** Replace the live **silent-swallow** write (`console.warn` and continue, losing the change) with the §3.3 line 291 contract — above ~4.9MB **do not write**, emit `storageFull`, and **roll back** the in-memory change so memory and storage stay consistent — plus a real `QuotaExceededError` backstop.
+- **Dependencies:** 1.4.1, 1.4.2, 1.1.9 (no success emit on failed save); §3.3 line 291, §13.2 (`storageFull`).
+- **Acceptance criteria:** When estimated size > ~4.9MB, **do not** `setItem`; emit `storageFull { usedBytes }`; the mutation that triggered it is **rolled back** (memory never holds committed-but-unpersisted state); the real `setItem` is still wrapped in try/catch for an actual `QuotaExceededError` (Safari/private-mode quotas below 5MB) as a backstop that **also** rolls back + emits `storageFull`; on block, **no** `eventCreated`/`eventUpdated` success emit fires (1.1.9 ordering).
+- **Implementation notes:** This **replaces** the live `writeStore` catch that swallows + warns (timelineModel.js:254-255). Check size on the would-be serialized state **before** mutating in memory, or snapshot + roll back if the guard trips — never leave the store holding data that didn't persist. Keep the try/catch but make its catch **roll back + emit `storageFull`**, not silently warn.
+- **Edge cases:** Browser quota lower than 5MB (Safari/private) — the try/catch backstop catches the real throw even when the estimate said OK; a mid-batch (1.1.8) failure must roll back the whole batch.
+- **UI/UX considerations:** UIShell shows a **blocking** error explaining the save failed + offering export (§13.2); the user must never believe a lost edit was saved (exactly what the live code does today).
+- **Data flow notes:** On block, no success emit; `storageFull` → UIShell error.
+- **Testing notes:** Oversized write rejected, state rolls back, `storageFull` emits, **no** success emit; simulated `QuotaExceededError` hits the backstop + rolls back.
 - **Performance notes:** Negligible.
-- **Mobile vs desktop:** Critical on mobile where quotas are tighter.
-- **Integration points:** §3.3 (reject above 4.9MB), §13.2 `storageFull`.
+- **Mobile vs desktop:** Critical on mobile (tighter quotas).
+- **Integration points:** §3.3 (reject >4.9MB), §13.2 `storageFull`, 1.1.9 (emit ordering), 1.4.1/1.4.2.
+- **Status:** **Broken (silent data loss).** Live `writeStore` catches quota errors with `console.warn` and continues — the change is lost, the caller emits success. **Next:** estimate-block >4.9MB + rollback + `storageFull`, keep a real-throw backstop that also rolls back; never emit success on a failed save.
 
-## 1.4.4 — Add `_writing` mutex to prevent re-entrant writes
+## 1.4.4 — Add the `_writing` mutex (single persist per batch)
 
-- **Purpose:** Stop overlapping writes (e.g., during `bulkCreateEvents`) from each serializing and persisting.
-- **Dependencies:** 1.1.8.
-- **Acceptance criteria:** A `_writing` flag guards the persist step; batch operations set it, do their inserts, then persist once and clear it; nested writes during a batch do not each hit storage.
-- **Implementation notes:** Single-tab app, so this is a simple boolean, not a real lock. `bulkCreateEvents` sets `_writing = true`, performs all inserts (which skip individual persists while the flag is set), then persists once and clears the flag.
-- **Edge cases:** An exception mid-batch must still clear the flag (use try/finally) or the app silently stops persisting.
-- **UI/UX considerations:** Prevents jank from repeated synchronous serialization during imports.
-- **Data flow notes:** Ties directly to 1.1.8's single-persist requirement.
-- **Testing notes:** Bulk insert of N items results in exactly one `setItem`; an error mid-batch still clears `_writing`.
-- **Performance notes:** This is the guard that turns a potential O(n²) batch into O(n).
+- **Purpose:** Add the §3.3 line 288 `_writing` mutex the model lacks — so `bulkCreateEvents` (1.1.8) inserts many events but persists **once**, not per item.
+- **Dependencies:** 1.1.8 (the batch path); §3.3 line 288.
+- **Acceptance criteria:** A `_writing` boolean guards the persist step; `bulkCreateEvents` sets it, performs all inserts (which **skip** individual persists while set), then persists once and clears it; an exception mid-batch still clears it (`try/finally`); nested writes during a batch don't each hit storage.
+- **Implementation notes:** None exists. Single-tab app → a simple boolean, not a real lock. `saveTimeline`/`writeStore` (timelineModel.js:281/251) check `_writing` and no-op the actual `setItem` while a batch is in progress; the batch does the single final write. Wrap in `try/finally` so the flag always clears.
+- **Edge cases:** Exception mid-batch must clear the flag (`try/finally`) or the app silently stops persisting; re-entrant single writes during a batch are coalesced.
+- **UI/UX considerations:** Prevents jank from repeated synchronous serialization during imports/seeding.
+- **Data flow notes:** Ties to 1.1.8's single-persist requirement (and 1.3.3 starter seed).
+- **Testing notes:** Bulk insert of N → exactly one `setItem`; an error mid-batch still clears `_writing`.
+- **Performance notes:** Turns a potential O(n²) batch into O(n).
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.3 concurrency, 1.1.8.
+- **Integration points:** §3.3 concurrency, 1.1.8 (bulk), 1.3.3 (seed).
+- **Status:** **Missing.** No mutex, no batch path today. **Next:** `_writing` flag gating persist, set/cleared by `bulkCreateEvents` via `try/finally`.
 
-## 1.4.5 — Add logging hooks (dev-only) for storage issues
+## 1.4.5 — Dev-only logging for storage issues (replace bare `console.warn`)
 
-- **Purpose:** Make storage warnings/failures visible during development without leaking to users.
-- **Dependencies:** 1.4.2–1.4.3.
-- **Acceptance criteria:** A dev-only logger records estimated sizes, warning/full events, and rollbacks; silent in production builds.
-- **Implementation notes:** Gate behind a build flag or a `DEBUG` constant; never `console.error` raw storage details to end users (§4.7 spirit: no raw codes shown).
+- **Purpose:** Make storage warnings/failures/rollbacks visible in development without leaking to users — replacing the live bare `console.warn` in the write catch (which both leaks in prod and hides the data loss).
+- **Dependencies:** 1.4.2–1.4.3; §10 (graceful handling).
+- **Acceptance criteria:** A dev-only logger records estimated sizes, `storageWarning`/`storageFull`, and rollbacks; silent in production; the live unconditional `console.warn` (timelineModel.js:255) is folded into this gated logger (so prod doesn't log raw storage details, and dev sees the rollback).
+- **Implementation notes:** Gate behind a `DEBUG`/build flag; never surface raw codes to end users (§4 spirit). Replace the bare `console.warn("[timelineModel] save failed", err)` (:255) with the gated logger.
 - **Edge cases:** Logging must not itself throw or block the write path.
 - **UI/UX considerations:** None in production.
-- **Data flow notes:** Observability only; no behavior change.
-- **Testing notes:** Logger fires in dev mode, no-ops in prod mode.
+- **Data flow notes:** Observability only.
+- **Testing notes:** Logger fires in dev, no-ops in prod.
 - **Performance notes:** Cheap; guarded out of prod.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §10.15 (graceful handling), dev tooling.
+- **Integration points:** §10, 1.4.2/1.4.3.
+- **Status:** **Partial (bare warn).** Live logs an unconditional `console.warn` on save failure (and continues). **Next:** dev-gated logger covering sizes/warnings/full/rollback; remove the prod-leaking bare warn.
 
-## 1.4.6 — Add tests simulating large event sets
+## 1.4.6 — Tests for large event sets + the quota backstop
 
-- **Purpose:** Prove the guards fire at the right thresholds and data is never lost.
-- **Dependencies:** 1.4.1–1.4.5.
-- **Acceptance criteria:** Tests generate payloads near 4.5MB and >4.9MB and assert `storageWarning` / `storageFull` fire, rollback occurs, and `_events` matches storage afterward.
-- **Implementation notes:** Build large fixtures by padding `body` text; use a mocked storage that can simulate `QuotaExceededError` to test the backstop path.
-- **Edge cases:** Exactly-at-threshold; multi-byte payloads; quota-throw despite passing estimate.
+- **Purpose:** Prove the guards fire at the right thresholds and **data is never lost** — the regression net for the data-loss bug 1.4.3 fixes.
+- **Dependencies:** 1.4.1–1.4.5; §28.
+- **Acceptance criteria:** Tests generate payloads near 4.5MB and >4.9MB and assert `storageWarning` / `storageFull` fire, rollback occurs, and `_events`/store match afterward; a mocked storage simulates `QuotaExceededError` to exercise the backstop; the **no-success-emit-on-failed-save** invariant is asserted.
+- **Implementation notes:** Build large fixtures by padding `body` text; use a mock `localStorage` that can throw `QuotaExceededError`. The backstop + rollback test is the highest-value one (it guards the live data-loss bug from returning).
+- **Edge cases:** Exactly-at-threshold; multi-byte payloads; quota-throw despite a passing estimate.
 - **UI/UX considerations:** None directly.
-- **Data flow notes:** Confirms memory↔storage consistency invariant.
-- **Testing notes:** This is the stress-test task for storage safety.
-- **Performance notes:** Keep fixtures generated, not committed as huge files.
+- **Data flow notes:** Confirms the memory↔storage consistency invariant.
+- **Testing notes:** This is the storage-safety stress task.
+- **Performance notes:** Generate fixtures, don't commit huge files.
 - **Mobile vs desktop:** Headless.
-- **Integration points:** §28.
+- **Integration points:** §28, 1.4.3 (backstop under test).
+- **Status:** **Missing.** No storage-safety tests. **Next:** threshold + rollback + quota-backstop tests asserting no data loss and no false success emit.
 
-## 1.4.7 — Document storage behavior in `timelineModel.js`
+## 1.4.7 — Document the storage contract in `timelineModel.js`
 
-- **Purpose:** Record the thresholds, rollback rule, and mutex so contributors don't weaken them.
-- **Dependencies:** 1.4.1–1.4.6.
-- **Acceptance criteria:** A comment block documents the 4.5/4.9MB thresholds, the persist-then-emit ordering, the rollback-on-full rule, and the `_writing` mutex.
-- **Implementation notes:** Co-locate with the persist function; state the invariant "memory never holds unpersisted committed state."
+- **Purpose:** Record the thresholds, rollback rule, persist-then-emit ordering, and mutex so contributors (and Cursor) don't weaken them — and so the silent-swallow bug isn't reintroduced.
+- **Dependencies:** 1.4.1–1.4.6; §3.3–3.4, §10.
+- **Acceptance criteria:** A comment block documents the 4.5/4.9MB thresholds, persist-before-emit, rollback-on-full, the `_writing` mutex, and the **invariant "memory never holds unpersisted committed state"**; explicitly notes the private-mode/quota-throw backstop.
+- **Implementation notes:** Co-locate with the persist function; call out that a failed save must **roll back and surface**, never silently warn (the anti-pattern being replaced).
 - **Edge cases:** Note the private-mode/quota-throw backstop explicitly.
 - **UI/UX considerations:** None.
 - **Data flow notes:** Documents the write-path contract for §12.
 - **Testing notes:** N/A.
 - **Performance notes:** N/A.
 - **Mobile vs desktop:** Note tighter mobile quotas.
-- **Integration points:** §3.3–3.4, §10.3.
+- **Integration points:** §3.3–3.4, §10.
+- **Status:** **Missing.** No storage-contract comment. **Next:** co-located block documenting thresholds/rollback/mutex/ordering + the no-silent-swallow rule.
 
-## 1.4.8 — Ensure no direct `localStorage` writes outside timeline model
+## 1.4.8 — Scope the single-writer rule to the event key (document the federation)
 
-- **Purpose:** Enforce the single-writer rule that all safety guards depend on.
-- **Dependencies:** 1.4.1–1.4.7.
-- **Acceptance criteria:** No module other than `timelineModel.js` (and the separate preferences module) calls `localStorage.setItem` for event data; verified by search/lint.
-- **Implementation notes:** Add a lint rule or a simple repo grep in CI for `localStorage.setItem` outside the allowed files. Preferences (§8.4) use their own key and module — that's allowed; event data is not.
-- **Edge cases:** Future contributors adding a "quick" direct write — the lint/CI check is what catches it.
+- **Purpose:** Reconcile §10 line 968 ("only the model writes event data") to reality — there are **28 `localStorage.setItem` callers** and several **parallel event-ish stores** — by scoping the rule to the **`inkling-timeline-v1` event key** and documenting the other stores, rather than pretending one writer exists.
+- **Dependencies:** 1.4.1–1.4.7; §10 line 968, §3.4.
+- **Acceptance criteria:** Only `timelineModel.js` writes the **`inkling-timeline-v1`** key (verified by search/lint) — this is **already true** (all event writes funnel through `saveTimeline`→`writeStore`); the **other** event-ish stores are documented as the federation, not violations: `calendarState.js` (saved-month day-nodes the model reads at :537), `alertsModel.js` (alert objects), `inkling-core/timelineStorage.js` (a parallel timeline store) — each owns its **own** key; a lint/CI grep flags any **new** writer of `inkling-timeline-v1` outside the model; preferences/mode/theme keys (the bulk of the 28 writers) are explicitly allowed (they're not event data).
+- **Implementation notes:** Add a CI/lint check for `localStorage.setItem(...inkling-timeline-v1...)` outside `timelineModel.js`. **Do not** forbid all `localStorage.setItem` — 28 legitimate callers exist (mode, theme, auth, notifications, etc.). The real reconciliation question is whether the **parallel event-ish stores** (`inkling-core/timelineStorage.js`, `calendarState`, `alertsModel`) should converge into the model (ties to 1.1.1's federation decision) — flag it, don't force it here.
+- **Edge cases:** A future contributor adding a "quick" direct write to the event key — the scoped lint catches it; the parallel stores are intentional today — document, don't break them.
 - **UI/UX considerations:** None.
-- **Data flow notes:** Guarantees every event write goes through the guards (§2.4, §10.3).
-- **Testing notes:** CI check fails if a disallowed direct write is introduced.
+- **Data flow notes:** Guarantees every **event-key** write goes through the guards (1.4.1–1.4.3); the federation's stores have their own lifecycles.
+- **Testing notes:** CI check fails on a new `inkling-timeline-v1` writer outside the model; the federation stores are listed/documented.
 - **Performance notes:** N/A.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §10.3, §2.4 communication rules.
+- **Integration points:** §10, §3.4, 1.1.1 (federation decision), the parallel stores.
+- **Status:** **Already true for the event key / federation undocumented.** All `inkling-timeline-v1` writes go through the model ✓; but 28 writers exist and ≥3 are parallel event-ish stores. **Next:** scope the lint to the event key, document the federation, flag convergence for 1.1.1 — don't forbid all writes.
 
-## 1.4.9 — Add TODO for future cloud sync integration
+## 1.4.9 — TODO for future cloud sync seam
 
-- **Purpose:** Mark where sync metadata/hooks will attach without building them now.
-- **Dependencies:** 1.4.7.
-- **Acceptance criteria:** A clearly-scoped TODO at the persist boundary notes where a future sync layer would observe writes (e.g., after local persist succeeds), referencing Phase 10.
-- **Implementation notes:** Don't add abstraction now — just a comment so the future author knows the chosen seam (post-persist emit is the natural sync trigger).
+- **Purpose:** Mark where a future sync layer attaches (post-persist) without building it now — noting the app already has `cloudSync.js`/`wordweaverCloudSync.js` so the seam should align with those.
+- **Dependencies:** 1.4.7; §30 (roadmap), Phase 10.
+- **Acceptance criteria:** A scoped TODO at the persist boundary notes where a future sync layer observes writes (after local persist succeeds — the same post-persist emit the §13.2 mutations fire), referencing Phase 10 and the existing `src/auth/cloudSync.js` / `src/wordweaver/wordweaverCloudSync.js`.
+- **Implementation notes:** No abstraction now — just a comment naming the post-persist emit as the sync trigger and pointing at the existing cloud-sync modules so a future author reconciles rather than forks.
 - **Edge cases:** None now.
 - **UI/UX considerations:** None.
-- **Data flow notes:** Sync would subscribe to the same mutation emits, not bypass the model.
+- **Data flow notes:** Sync subscribes to mutation emits, never bypasses the model.
 - **Testing notes:** N/A.
 - **Performance notes:** N/A.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §30 future roadmap, Phase 10.
+- **Integration points:** §30, Phase 10, existing cloud-sync modules.
+- **Status:** **Missing (forward marker).** No sync TODO; cloud-sync modules already exist to align with. **Next:** post-persist TODO referencing Phase 10 + the existing cloud-sync modules.
 
-## 1.4.10 — Cross-check with spec §3.3–3.4
+## 1.4.10 — Cross-check §3.3–3.4 (thresholds, ordering, keys — incl. the wrong flag key)
 
-- **Purpose:** Confirm storage safety matches the spec exactly.
-- **Dependencies:** 1.4.1–1.4.9.
-- **Acceptance criteria:** Every storage rule in §3.3 (mutex, size guard, persist-before-emit) and §3.4 (key names) is implemented and matches; deviations fixed or documented.
-- **Implementation notes:** Verify the exact storage key strings against §3.4 — a typo'd key silently splits a user's data across two stores.
-- **Edge cases:** Key-name mismatches; threshold values differing from spec.
+- **Purpose:** Confirm storage safety matches §3.3–3.4 exactly — including catching the **wrong flag key** (`hasUserNotes` vs `inkling-has-user-notes`, the 1.3.2 fix) verified here against §3.4.
+- **Dependencies:** 1.4.1–1.4.9, 1.3.2 (key fix); §3.3–3.4, §10.
+- **Acceptance criteria:** Every §3.3 storage rule (mutex, size guard, persist-before-emit) and §3.4 key name is implemented and matches; the storage keys are verified against §3.4 string-for-string — `inkling-timeline-v1` ✓, and `inkling-has-user-notes` (after the 1.3.2 rename from `hasUserNotes`); any deviation is fixed or documented.
+- **Implementation notes:** Verify exact key strings against §3.4 (a typo splits a user's data across two stores — exactly the `hasUserNotes` bug); confirm persist-before-emit ordering (1.1.9) and the thresholds (1.4.2/1.4.3).
+- **Edge cases:** Key-name mismatches (the flag key); threshold values differing from spec.
 - **UI/UX considerations:** None.
 - **Data flow notes:** Confirms the write path matches §12.1.
-- **Testing notes:** Spec-to-implementation checklist passes.
+- **Testing notes:** Spec-to-implementation checklist passes; both storage keys match §3.4.
 - **Performance notes:** N/A.
 - **Mobile vs desktop:** Identical.
-- **Integration points:** §3.3–3.4, §10.2.
+- **Integration points:** §3.3–3.4, §10, 1.3.2 (key fix verified here).
+- **Status:** **Open (one known key mismatch).** `inkling-timeline-v1` ✓; `hasUserNotes` ✗ (should be `inkling-has-user-notes`). **Next:** verify all keys/thresholds/ordering against §3.3–3.4; confirm the 1.3.2 key fix.
 
 ---
 
 ### Milestone 1.4 — Definition of Done
-- Writes estimate size first; warn at 4.5MB, block-and-roll-back above 4.9MB, with a real `QuotaExceededError` backstop.
-- `_writing` mutex makes batch operations persist once; try/finally guarantees the flag clears.
-- Storage keys match §3.4 exactly; no event writes occur outside the model (enforced in CI).
-- **Phase 1 complete.** Next: Phase 2, Milestone 2.1 — Event Bus.
+- Writes estimate size first; warn at 4.5MB, **block-and-roll-back above 4.9MB** with a real `QuotaExceededError` backstop — the silent-swallow data-loss bug is gone; no success emit fires on a failed save.
+- `_writing` mutex makes batch/seed operations persist once; `try/finally` guarantees the flag clears.
+- Storage keys match §3.4 (incl. the `inkling-has-user-notes` rename); only the model writes the `inkling-timeline-v1` key (lint-enforced), with the parallel event-ish stores documented as the federation.
+- **Phase 1 reconciliation complete.** Next: Phase 2, Milestone 2.1 — Event Bus (and the bus convergence 1.1.9 depends on).
 
 
 ---
