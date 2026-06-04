@@ -499,7 +499,7 @@ function eventsFromDayNode(dateIso, day) {
  * @param {string} dateIso
  * @returns {CalendarEventRecord[]}
  */
-function getEventsForDate(dateIso) {
+export function getEventsForDate(dateIso) {
   /** @type {CalendarEventRecord[]} */
   const list = [];
   const today = todayIsoDate();

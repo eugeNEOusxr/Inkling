@@ -11,12 +11,14 @@ import { on, off } from "./EventBus.js";
 import {
   getInitialNotes,
   getEventsForMonth,
-  CategoryColors,
-  loadTimeline,
+  getCategoryColor,
   todayIsoDate
 } from "./timelineModel.js";
-import { loadAlerts } from "../calendar/alerts/alertsModel.js";
+import { DayBlock } from "./DayBlock.js";
+import { AtomGlyph3D } from "./timeline3d/AtomGlyph3D.js";
 import { mountWordWeaverMainUI } from "../MainUI.js";
+import { getCalendarMode, onCalendarModeChange } from "./calendarMode.js";
+import { getCalendar2D } from "./Calendar2D.js";
 
 /** Served from public/environments/ (copied from Meshy export). */
 const WORDWEAVER_ENV_GLB_URL = "/environments/meshy-dark-futuristic.glb";
@@ -111,6 +113,8 @@ export class WordWeaverScene {
     this._raycaster = new THREE.Raycaster();
     this._pointer = new THREE.Vector2();
     this._hovered = null;
+    /** @type {WordWeaverMonthLayout3D | null} */
+    this._monthLayout = null;
     this._raf = 0;
     this._resizeObserver = null;
     this._clock = new THREE.Clock();
@@ -137,13 +141,15 @@ export class WordWeaverScene {
     this._applyForegroundLayers();
     this._onTimelineUpdated = () => {
       this._applyForegroundLayers();
-      this._timelineViewport?.timeline3d?.buildFromTimeline(loadTimeline());
-      loadMonthView(this.container, getInitialNotes(), this._timelineViewport);
+      this._rebuildMonthLayout();
     };
     on("timelineUpdated", this._onTimelineUpdated);
 
-    loadMonthView(this.container, getInitialNotes(), this._timelineViewport);
-    this._timelineViewport?.timeline3d?.buildFromTimeline(loadTimeline());
+    this._monthLayout = new WordWeaverMonthLayout3D(this.scene);
+    this._rebuildMonthLayout();
+    getCalendar2D().mount(this.container);
+    this._applyCalendarMode(getCalendarMode());
+    this._offCalendarMode = onCalendarModeChange((mode) => this._applyCalendarMode(mode));
     mountWordWeaverMainUI();
 
     this._tick = this._tick.bind(this);
@@ -158,6 +164,37 @@ export class WordWeaverScene {
    */
   setFlightInput(forward, strafe, lift) {
     this._timelineViewport?.setFlightInput?.(forward, strafe, lift);
+  }
+
+  /**
+   * @param {"2d" | "3d"} mode
+   */
+  _applyCalendarMode(mode) {
+    const is3d = mode === "3d";
+    this.scene.visible = is3d;
+    this.canvas.style.display = is3d ? "block" : "none";
+    this.canvas.style.pointerEvents = is3d ? "auto" : "none";
+    if (this._monthLayout?.root) {
+      this._monthLayout.root.visible = is3d;
+    }
+    const cal2d = getCalendar2D();
+    if (is3d) cal2d.hide();
+    else cal2d.show();
+  }
+
+  _rebuildMonthLayout() {
+    if (getCalendarMode() !== "3d") return;
+    const timelineRoot = this._timelineViewport?.timeline3d?.root;
+    if (timelineRoot) timelineRoot.visible = false;
+    this._monthLayout?.build(getInitialNotes());
+    this._frameMonthCamera();
+    this._applyForegroundLayers();
+  }
+
+  _frameMonthCamera() {
+    this.controls.target.set(0, -2.5, 0);
+    this.camera.position.set(0, 2.2, 11);
+    this.controls.update();
   }
 
   _loadEnvironmentGlb() {
@@ -196,6 +233,10 @@ export class WordWeaverScene {
     this.guideGroup?.layers.set(CONTENT_LAYER);
     const timelineRoot = this._timelineViewport?.timeline3d?.root;
     timelineRoot?.layers.set(CONTENT_LAYER);
+    this._monthLayout?.root?.layers.set(CONTENT_LAYER);
+    this._monthLayout?.root?.traverse((obj) => {
+      obj.layers.set(CONTENT_LAYER);
+    });
     timelineRoot?.traverse((obj) => {
       if (obj === this._envRoot) return;
       obj.layers.set(CONTENT_LAYER);
@@ -537,6 +578,9 @@ export class WordWeaverScene {
         if (obj instanceof THREE.Mesh) targets.push(obj);
       });
     }
+    for (const block of this._monthLayout?.dayBlocks ?? []) {
+      targets.push(block.panel, block.edge);
+    }
     return targets;
   }
 
@@ -546,13 +590,20 @@ export class WordWeaverScene {
     const hits = this._raycaster.intersectObjects(this._collectClickTargets(), false);
     if (!hits.length) return null;
     let o = hits[0].object;
+    while (o && !o.userData?.node && !o.parent?.userData?.dayBlock && o.parent) {
+      o = o.parent;
+    }
+    if (o?.parent?.userData?.dayBlock) {
+      return { dayBlock: o.parent.userData.dayBlock };
+    }
     while (o && !o.userData?.node && o.parent) o = o.parent;
     return o?.userData?.node ?? null;
   }
 
   _handlePointerMove(event) {
-    const node = this._pick(event);
-    const next = node?.id ?? null;
+    const picked = this._pick(event);
+    const next =
+      picked?.dayBlock?.dateIso ?? (picked?.id ? picked.id : null) ?? null;
     if (next !== this._hovered) {
       this._hovered = next;
       this.canvas.style.cursor = next ? "pointer" : "grab";
@@ -560,8 +611,22 @@ export class WordWeaverScene {
   }
 
   _handlePointerDown(event) {
-    const node = this._pick(event);
-    if (!node) return;
+    const picked = this._pick(event);
+    if (!picked) return;
+    if (picked.dayBlock) {
+      event.preventDefault();
+      event.stopPropagation();
+      picked.dayBlock.setProximity(true);
+      this.onNodeClick({
+        date: picked.dayBlock.dateIso,
+        time: "12:00",
+        text: `Day ${picked.dayBlock.day}`,
+        node: picked.dayBlock
+      });
+      return;
+    }
+    const node = picked;
+    if (!node?.id) return;
     event.preventDefault();
     event.stopPropagation();
     this.onNodeClick({
@@ -590,7 +655,10 @@ export class WordWeaverScene {
     }
 
     this._atomOrbits?.update(t);
-    this._timelineViewport?.update(delta);
+    if (getCalendarMode() === "3d") {
+      this._monthLayout?.update(delta, t, this.camera);
+      this._timelineViewport?.update(delta);
+    }
 
     const rotSpeed = this._layoutMode === "constellation" ? 0.05 : 0.08;
     const rotAmp =
@@ -603,11 +671,15 @@ export class WordWeaverScene {
 
     this.controls.update();
     this._meshes.forEach((m, i) => m.animatePulse?.(0.35 + (i % 3) * 0.05));
-    this.renderer.render(this.scene, this.camera);
+    if (getCalendarMode() === "3d") {
+      this.renderer.render(this.scene, this.camera);
+    }
     this._raf = requestAnimationFrame(this._tick);
   }
 
   dispose() {
+    this._offCalendarMode?.();
+    this._offCalendarMode = null;
     if (this._onTimelineUpdated) {
       off("timelineUpdated", this._onTimelineUpdated);
       this._onTimelineUpdated = null;
@@ -619,6 +691,8 @@ export class WordWeaverScene {
     this._resizeObserver?.disconnect();
     this._atomOrbits?.dispose();
     this._atomOrbits = null;
+    this._monthLayout?.dispose();
+    this._monthLayout = null;
     this._timelineViewport?.dispose();
     this._timelineViewport = null;
     this._disposeEnvironmentGlb();
@@ -628,162 +702,172 @@ export class WordWeaverScene {
     this.controls.dispose();
     this.renderer.dispose();
     this.canvas.remove();
-    this.container?.querySelector(".ww-month-overview")?.remove();
   }
 }
 
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const COL_SPACING = 1.5;
+const ROW_SPACING = 2;
+const WEEK_HALO_HEX = ["#00ffff", "#aa00ff", "#0044ff", "#00ccff"];
 
 /**
- * In-scene month grid for first load (notes, appointments, alert dots).
- * @param {HTMLElement} container
- * @param {{ time: string, text: string, category: string }[]} initialNotes
- * @param {ReturnType<typeof mountWordWeaverTimeline> | null} [viewport]
+ * 3D month grid — day blocks, week halos, background atom glyphs.
  */
-export function loadMonthView(container, initialNotes, viewport) {
-  if (!container) return;
+class WordWeaverMonthLayout3D {
+  /**
+   * @param {THREE.Scene} scene
+   */
+  constructor(scene) {
+    this.scene = scene;
+    this.root = new THREE.Group();
+    this.root.name = "ww-month-layout-3d";
+    scene.add(this.root);
+    /** @type {DayBlock[]} */
+    this.dayBlocks = [];
+    /** @type {AtomGlyph3D[]} */
+    this.bgAtoms = [];
+    /** @type {THREE.Mesh[]} */
+    this.weekHalos = [];
+  }
 
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const today = todayIsoDate();
+  /**
+   * @param {{ time: string, text: string, category: string }[]} initialNotes
+   */
+  build(initialNotes) {
+    this._clear();
 
-  let wrap = container.querySelector(".ww-month-overview");
-  if (!wrap) {
-    wrap = document.createElement("div");
-    wrap.className = "ww-month-overview";
-    wrap.setAttribute("aria-label", "Month overview");
-    container.prepend(wrap);
-    if (!document.getElementById("ww-month-overview-style")) {
-      const style = document.createElement("style");
-      style.id = "ww-month-overview-style";
-      style.textContent = `
-        .ww-month-overview {
-          position: absolute;
-          top: 8px;
-          left: 8px;
-          right: 8px;
-          z-index: 4;
-          pointer-events: auto;
-          max-height: 42%;
-          overflow: auto;
-          border-radius: 12px;
-          background: rgba(0, 0, 0, 0.55);
-          padding: 8px;
-        }
-        .ww-month-overview .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-        .ww-month-overview .month-cell {
-          background: rgba(0,0,0,0.3);
-          border-radius: 8px;
-          padding: 6px;
-          min-height: 52px;
-          font-size: 11px;
-          color: #e2e8f0;
-        }
-        .ww-month-overview .month-cell.is-today { outline: 1px solid rgba(78, 230, 230, 0.6); }
-        .ww-month-overview .category-dot {
-          width: 8px; height: 8px; border-radius: 50%;
-          display: inline-block; margin-right: 3px;
-        }
-        .ww-month-overview .month-cell__dots { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 4px; }
-        .ww-month-overview .month-cell__alert { color: #fbbf24; font-size: 10px; }
-      `;
-      document.head.appendChild(style);
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const today = todayIsoDate();
+    const events = getEventsForMonth(year, month);
+
+    const first = new Date(year, month - 1, 1);
+    const monOffset = first.getDay() === 0 ? 6 : first.getDay() - 1;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const totalCells = monOffset + daysInMonth;
+    const weekCount = Math.ceil(totalCells / 7);
+
+    for (let w = 0; w < weekCount; w++) {
+      const colorHex = WEEK_HALO_HEX[w % WEEK_HALO_HEX.length];
+      const haloMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(colorHex),
+        transparent: true,
+        opacity: 0.13,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      });
+      const halo = new THREE.Mesh(new THREE.PlaneGeometry(7 * COL_SPACING + 0.6, ROW_SPACING * 0.85), haloMat);
+      halo.position.set(0, -w * ROW_SPACING, -0.15);
+      halo.renderOrder = 0;
+      this.root.add(halo);
+      this.weekHalos.push(halo);
     }
-  }
 
-  const title = now.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-  const events = getEventsForMonth(year, month);
-  const alertTimelineIds = new Set(
-    loadAlerts()
-      .filter((a) => !a.dismissed && a.timelineEntryId)
-      .map((a) => a.timelineEntryId)
-  );
+    const atomCount = 3 + Math.floor(Math.random() * 5);
+    for (let i = 0; i < atomCount; i++) {
+      const scale = 3 + Math.random() * 3;
+      const opacity = 0.1 + Math.random() * 0.1;
+      const pos = new THREE.Vector3(
+        (Math.random() - 0.5) * 14,
+        -Math.random() * weekCount * ROW_SPACING * 0.5 - 1,
+        -4 - Math.random() * 4
+      );
+      const atom = AtomGlyph3D.createBackground({ scale, opacity, position: pos });
+      this.root.add(atom.group);
+      this.bgAtoms.push(atom);
+    }
 
-  const first = new Date(year, month - 1, 1);
-  const startPad = first.getDay();
-  const daysInMonth = new Date(year, month, 0).getDate();
+    for (let day = 1; day <= daysInMonth; day++) {
+      const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      let dayEvents = events
+        .filter((ev) => ev.date === iso)
+        .map((ev) => ({
+          time: ev.time,
+          text: ev.text,
+          category: ev.category === "errand" ? "errands" : ev.category
+        }));
 
-  const header = document.createElement("div");
-  header.className = "ww-month-overview__title";
-  header.style.cssText = "font-weight:700;margin-bottom:6px;font-size:13px;";
-  header.textContent = title;
-
-  const weekdayRow = document.createElement("div");
-  weekdayRow.className = "month-grid month-grid--labels";
-  weekdayRow.style.marginBottom = "4px";
-  for (const label of WEEKDAY_LABELS) {
-    const h = document.createElement("div");
-    h.className = "month-cell month-cell--label";
-    h.style.minHeight = "auto";
-    h.style.opacity = "0.75";
-    h.textContent = label;
-    weekdayRow.appendChild(h);
-  }
-
-  const grid = document.createElement("div");
-  grid.className = "month-grid";
-
-  for (let i = 0; i < startPad; i++) {
-    const pad = document.createElement("div");
-    pad.className = "month-cell month-cell--pad";
-    pad.setAttribute("aria-hidden", "true");
-    grid.appendChild(pad);
-  }
-
-  for (let day = 1; day <= daysInMonth; day++) {
-    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const dayEvents = events.filter((ev) => ev.date === iso);
-    if (iso === today && !dayEvents.length && initialNotes?.length) {
-      for (const n of initialNotes) {
-        dayEvents.push({
-          id: `starter-${n.time}`,
-          date: iso,
+      if (iso === today && !dayEvents.length && initialNotes?.length) {
+        dayEvents = initialNotes.map((n) => ({
           time: n.time,
           text: n.text,
-          category: n.category,
-          kind: "timeline"
-        });
+          category: n.category
+        }));
       }
-    }
 
-    const cell = document.createElement("div");
-    cell.className = "month-cell";
-    if (iso === today) cell.classList.add("is-today");
+      const cellIndex = monOffset + day - 1;
+      const col = cellIndex % 7;
+      const row = Math.floor(cellIndex / 7);
+      const x = (col - 3) * COL_SPACING;
+      const y = -row * ROW_SPACING;
 
-    const num = document.createElement("div");
-    num.className = "month-cell__num";
-    num.textContent = String(day);
-    cell.appendChild(num);
+      const cat = dayEvents[0]?.category ?? "personal";
+      const glow = getCategoryColor(cat);
 
-    const dots = document.createElement("div");
-    dots.className = "month-cell__dots";
-    const cats = new Set();
-    let hasAlert = false;
-    for (const ev of dayEvents) {
-      const cat = ev.category === "errand" ? "errands" : ev.category;
-      if (!cats.has(cat)) {
-        cats.add(cat);
-        const dot = document.createElement("span");
-        dot.className = "category-dot";
-        dot.style.backgroundColor = CategoryColors[cat] ?? CategoryColors.default;
-        dot.title = cat;
-        dots.appendChild(dot);
-      }
-      if (ev.alertId || alertTimelineIds.has(ev.id)) hasAlert = true;
+      const block = new DayBlock({
+        day,
+        dateIso: iso,
+        events: dayEvents,
+        glowColor: glow,
+        isToday: iso === today
+      });
+      block.group.position.set(x, y, 0.05);
+      block.group.userData.dayBlock = block;
+      this.root.add(block.group);
+      this.dayBlocks.push(block);
     }
-    if (hasAlert) {
-      const icon = document.createElement("span");
-      icon.className = "month-cell__alert";
-      icon.textContent = "⏰";
-      icon.title = "Alert";
-      dots.appendChild(icon);
-    }
-    cell.appendChild(dots);
-    grid.appendChild(cell);
   }
 
-  wrap.replaceChildren(header, weekdayRow, grid);
+  /**
+   * @param {number} delta
+   * @param {number} elapsed
+   * @param {THREE.PerspectiveCamera} camera
+   */
+  update(delta, elapsed, camera) {
+    for (const atom of this.bgAtoms) atom.update(delta);
+    const camPos = camera.position;
+    for (const block of this.dayBlocks) {
+      const world = new THREE.Vector3();
+      block.group.getWorldPosition(world);
+      const dist = camPos.distanceTo(world);
+      block.setProximity(dist < 3.4);
+      block.update(delta, elapsed);
+    }
+  }
 
-  viewport?.timeline3d?.buildFromTimeline(loadTimeline());
+  _clear() {
+    for (const block of this.dayBlocks) {
+      block.dispose();
+      this.root.remove(block.group);
+    }
+    this.dayBlocks = [];
+
+    for (const atom of this.bgAtoms) {
+      atom.dispose();
+      this.root.remove(atom.group);
+    }
+    this.bgAtoms = [];
+
+    for (const halo of this.weekHalos) {
+      halo.geometry.dispose();
+      halo.material.dispose();
+      this.root.remove(halo);
+    }
+    this.weekHalos = [];
+  }
+
+  dispose() {
+    this._clear();
+    this.scene.remove(this.root);
+  }
+}
+
+/**
+ * @param {THREE.Scene} scene
+ * @param {{ time: string, text: string, category: string }[]} initialNotes
+ */
+export function loadMonthView(scene, initialNotes) {
+  const layout = new WordWeaverMonthLayout3D(scene);
+  layout.build(initialNotes);
+  return layout;
 }

@@ -4,10 +4,17 @@ import * as THREE from "three";
  * Premium aqua orb: glass shell, animated wave rings (middle layer), orbiting electrons.
  */
 export class AtomGlyph3D {
-  constructor() {
+  /**
+   * @param {{ scale?: number, opacity?: number, slowRotation?: boolean }} [opts]
+   */
+  constructor(opts = {}) {
+    const baseScale = opts.scale ?? 1.4;
+    const shellOpacity = opts.opacity ?? 0.35;
+    this._slowRotation = opts.slowRotation ?? false;
+
     this.group = new THREE.Group();
     this.group.name = "atom-glyph-3d";
-    this.group.scale.set(1.4, 1.4, 1.4);
+    this.group.scale.set(baseScale, baseScale, baseScale);
     this._phase = Math.random() * Math.PI * 2;
     this._elapsed = 0;
     /** @type {THREE.Mesh[]} */
@@ -25,7 +32,7 @@ export class AtomGlyph3D {
       metalness: 0.0,
       roughness: 0.05,
       transparent: true,
-      opacity: 0.35,
+      opacity: shellOpacity,
       transmission: 1.0,
       thickness: 0.7,
       ior: 1.45,
@@ -103,14 +110,28 @@ export class AtomGlyph3D {
   /**
    * @param {number} delta
    */
+  /**
+   * Large faint background atom for month calendar scenes.
+   * @param {{ scale?: number, opacity?: number, position?: import("three").Vector3 }} [opts]
+   */
+  static createBackground(opts = {}) {
+    const scale = opts.scale ?? 4;
+    const opacity = opts.opacity ?? 0.15;
+    const glyph = new AtomGlyph3D({ scale, opacity, slowRotation: true });
+    if (opts.position) glyph.group.position.copy(opts.position);
+    glyph.group.position.z = opts.position?.z ?? -6;
+    return glyph;
+  }
+
   update(delta) {
     const dt = Math.min(Math.max(delta || 0.016, 0.001), 0.05);
     this._elapsed += dt;
     const t = this._elapsed + this._phase;
+    const rotMul = this._slowRotation ? 0.18 : 1;
 
     if (this.shell) {
-      this.shell.rotation.y += dt * 0.35;
-      this.shell.rotation.x += dt * 0.12;
+      this.shell.rotation.y += dt * 0.35 * rotMul;
+      this.shell.rotation.x += dt * 0.12 * rotMul;
     }
 
     for (const ring of this._waveRings) {
@@ -133,7 +154,7 @@ export class AtomGlyph3D {
     }
 
     if (this.ringGroup) {
-      this.ringGroup.rotation.y += dt * 0.22;
+      this.ringGroup.rotation.y += dt * 0.22 * rotMul;
     }
 
     for (const e of this._electrons) {

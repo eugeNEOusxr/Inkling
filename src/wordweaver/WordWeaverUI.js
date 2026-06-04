@@ -19,6 +19,7 @@ import {
   pointsToFontSize
 } from "./weaveTextStyleSettings.js";
 import { hexToCssColor } from "./letterTypography.js";
+import { getCalendarMode, toggleCalendarMode, onCalendarModeChange } from "./calendarMode.js";
 
 const STYLE_TAG_ID = "wordweaver-ui-styles";
 
@@ -74,6 +75,14 @@ function injectStyles() {
   color: #f0fdff;
 }
 .wordweaver-ui__btn--first { order: -1; }
+.wordweaver-ui__btn--mode {
+  width: auto;
+  min-width: 72px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
 .wordweaver-ui__menu {
   margin-top: 8px;
   width: min(92vw, 300px);
@@ -184,6 +193,8 @@ export class WordWeaverUI {
     this._colorSchemeSelect = null;
     this._sizeRange = null;
     this._sizeValue = null;
+    this._modeBtn = null;
+    this._offModeChange = null;
   }
 
   mount(container) {
@@ -207,6 +218,19 @@ export class WordWeaverUI {
     toggleBtn.textContent = "🎨";
     this._toggleBtn = toggleBtn;
 
+    const modeBtn = document.createElement("button");
+    modeBtn.type = "button";
+    modeBtn.className = "wordweaver-ui__btn wordweaver-ui__btn--mode";
+    modeBtn.title = "Switch between 2D calendar and 3D WordWeaver";
+    this._modeBtn = modeBtn;
+    this._syncModeButtonLabel();
+
+    modeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleCalendarMode();
+    });
+
+    toolbar.appendChild(modeBtn);
     toolbar.appendChild(toggleBtn);
 
     const menu = document.createElement("div");
@@ -244,6 +268,14 @@ export class WordWeaverUI {
     });
 
     this._syncAll();
+    this._offModeChange = onCalendarModeChange(() => this._syncModeButtonLabel());
+  }
+
+  _syncModeButtonLabel() {
+    if (!this._modeBtn) return;
+    const mode = getCalendarMode();
+    this._modeBtn.textContent = mode === "3d" ? "2D Mode" : "3D Mode";
+    this._modeBtn.setAttribute("aria-pressed", String(mode === "2d"));
   }
 
   /**
