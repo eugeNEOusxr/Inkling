@@ -1,0 +1,5 @@
+# Generated artifacts — not build inputs.
+# combined.md is a concatenation of the per-milestone files in docs/expanded/.
+# Build from the individual phase-NN-milestone-N.N-*.md files instead; this
+# bundle is kept for human reading/export only and would duplicate-index here.
+docs/expanded/combined.md
