@@ -16,7 +16,13 @@ body.inkling-tab-wordweaver #calendar-sidebar {
   pointer-events: none;
 }
 
-/* Stage mode: reparented to body so z-index is above backdrop (10180), not trapped in top-chrome (10070) */
+/* Default: sit in top chrome below Inkling when not in stage mode */
+#wordweaver-embed.wordweaver-embed {
+  position: relative;
+  z-index: 900;
+}
+
+/* Stage mode — only when WordWeaver tab is active (below Inkling panel) */
 .wordweaver-embed.wordweaver-embed--stage,
 body.inkling-tab-wordweaver #wordweaver-embed.wordweaver-embed--stage,
 body.wordweaver-immersive #wordweaver-embed.wordweaver-embed--stage {
@@ -25,7 +31,7 @@ body.wordweaver-immersive #wordweaver-embed.wordweaver-embed--stage {
   right: 8px !important;
   top: calc(var(--inkling-chrome-h, 56px) + 8px + env(safe-area-inset-top, 0px)) !important;
   bottom: calc(var(--inkling-bottom-nav-h, 62px) + 8px + env(safe-area-inset-bottom, 0px)) !important;
-  z-index: 10260 !important;
+  z-index: 10200 !important;
   width: auto !important;
   max-width: none !important;
   max-height: none !important;
@@ -38,6 +44,12 @@ body.wordweaver-immersive #wordweaver-embed.wordweaver-embed--stage {
   animation: wordweaver-enter 0.55s ease-out;
 }
 
+body.inkling-tab-inkling:not(.inkling-tab-wordweaver) #wordweaver-embed.wordweaver-embed--stage {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 .wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__mount,
 body.inkling-tab-wordweaver #wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__mount {
   display: block !important;
@@ -46,6 +58,7 @@ body.inkling-tab-wordweaver #wordweaver-embed.wordweaver-embed--stage .wordweave
   height: auto !important;
   width: 100% !important;
   position: relative !important;
+  z-index: inherit;
   visibility: visible !important;
 }
 

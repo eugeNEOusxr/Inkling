@@ -117,15 +117,12 @@ export async function applyScheduleIntentAndRefresh(app, intent) {
   app._onDataChange?.();
 
   const hour = String(Number(intent.time.split(":")[0]));
+  if (app.activeWall !== "notebook") {
+    await app.switchWall?.("notebook");
+  }
   if (intent.kind === "appointment") {
-    if (app.activeWall !== "appointments") {
-      await app.switchWall?.("appointments");
-    }
     await app.openNotebookWriterPanel?.(result.dayId, hour, "appointments");
   } else {
-    if (app.activeWall !== "notebook") {
-      await app.switchWall?.("notebook");
-    }
     await app.openNotebookWriterPanel?.(result.dayId, hour);
   }
 

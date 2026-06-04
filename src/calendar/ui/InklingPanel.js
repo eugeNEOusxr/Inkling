@@ -63,11 +63,6 @@ export class InklingPanel {
     document.getElementById("inkling-fab")?.addEventListener("click", () => this.expand());
 
     this._startCron();
-
-    const startTab = new URLSearchParams(window.location.search).get("tab");
-    if (!startTab) {
-      queueMicrotask(() => openPanel("inkling"));
-    }
   }
 
   _bindPanelShellEvents() {
@@ -91,8 +86,17 @@ export class InklingPanel {
   }
 
   async _openInklingHome() {
-    this._closeSiblingPanels();
+    this.app?.wordWeaverEmbed?.exitImmersive?.();
+    this.app?.wordWeaverEmbed?.hide?.();
+    this.app?.layerManager?.close("wordweaver");
+    this.app?.closePanels?.();
+    this.app?.exitCalendarMaxLayer?.();
+    this.app?.notebookWriterPanel?.close?.();
+    this.app?.threadPanel?.close?.();
     this.app?.layerManager?.open("inkling");
+    this.app?.bottomNav?.setActiveTab("inkling");
+    this.app?._showStageBackdrop?.(true);
+    document.body.classList.add("inkling-stage-open", "inkling-tab-inkling");
     document.getElementById("inkling-fab")?.classList.add("hidden");
     this.expand();
   }
@@ -103,6 +107,7 @@ export class InklingPanel {
     this.app?.layerManager?.closeAll?.();
     this.app?.notebookWriterPanel?.close?.();
     this.app?.threadPanel?.close?.();
+    this.app?.wordWeaverEmbed?.exitImmersive?.();
     this.app?.wordWeaverEmbed?.hide?.();
     this.app?.bottomNav?.setActiveTab(null);
     this.app?._showStageBackdrop?.(false);
@@ -111,7 +116,6 @@ export class InklingPanel {
       "inkling-tab-calendar",
       "inkling-tab-writer",
       "inkling-tab-wordweaver",
-      "inkling-tab-wall",
       "inkling-tab-inkling",
       "notebook-writer-panel-open",
       "appointment-writer-panel-open"

@@ -3176,9 +3176,10 @@ body.alerts-panel-open .notification-bell-anchor {
   position: relative;
 }
 
+#inkling-panel,
 .inkling-panel {
   position: fixed;
-  z-index: 10210;
+  z-index: 10350;
   right: calc(12px + env(safe-area-inset-right, 0px));
   bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   width: min(380px, calc(100vw - var(--calendar-sidebar-w, 220px) - 32px));

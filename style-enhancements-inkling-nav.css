@@ -308,24 +308,6 @@ body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller__scro
   }
 }
 
-/* Reader / wall tab centered */
-body.inkling-notebook-layout.inkling-tab-wall .notebook-reader-panel:not(.hidden) {
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 10245 !important;
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  padding: calc(var(--inkling-chrome-h, 56px) + 8px) 12px calc(var(--inkling-bottom-nav-h) + 12px);
-  pointer-events: none !important;
-}
-
-body.inkling-notebook-layout.inkling-tab-wall .notebook-reader-panel__inner {
-  width: min(640px, 100%) !important;
-  max-height: 100% !important;
-  pointer-events: auto !important;
-}
-
 /* WordWeaver tab — layout handled by .wordweaver-embed--stage in style-enhancements-wordweaver.css */
 body.inkling-tab-wordweaver #top-chrome.top-chrome {
   pointer-events: none !important;
@@ -336,6 +318,7 @@ body.inkling-tab-wordweaver #top-chrome .top-chrome__bar {
 }
 
 /* Inkling tab — centered chat */
+body.inkling-tab-inkling #inkling-panel,
 body.inkling-tab-inkling .inkling-panel:not(.inkling-panel--minimized) {
   position: fixed !important;
   left: 50% !important;
@@ -345,7 +328,7 @@ body.inkling-tab-inkling .inkling-panel:not(.inkling-panel--minimized) {
   transform: translate(-50%, -50%) !important;
   width: min(420px, calc(100vw - 24px)) !important;
   max-height: min(70vh, 560px) !important;
-  z-index: 10255 !important;
+  z-index: 10350 !important;
 }
 
 body.inkling-notebook-layout .inkling-fab {

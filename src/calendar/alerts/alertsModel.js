@@ -4,6 +4,8 @@
 
 const STORAGE_KEY = "inkling-alerts-v1";
 
+/** @typedef {{ alertId: string, fireAt: number, leadMinutes: number, phase: string }} ScheduledTrigger */
+
 export const AlertTypes = {
   HEALTH: "health",
   STUDY: "study",
@@ -63,6 +65,46 @@ export function createAlert({ time, text, category, priority, date, timelineEntr
  * @param {string} category
  * @returns {number}
  */
+/**
+ * @param {number} priority
+ * @returns {number[]}
+ */
+export function getLeadMinutesForPriority(priority) {
+  switch (priority) {
+    case AlertPriority.CRITICAL:
+      return [60, 30, 10, 5, 0];
+    case AlertPriority.HIGH:
+      return [30, 10, 0];
+    case AlertPriority.NORMAL:
+      return [10, 0];
+    case AlertPriority.LOW:
+    default:
+      return [0];
+  }
+}
+
+/**
+ * @param {AlertRecord} alert
+ * @param {string} [referenceDate]
+ * @returns {ScheduledTrigger[]}
+ */
+export function buildScheduleTriggers(alert, referenceDate = alert.date ?? todayDateString()) {
+  const [y, m, d] = referenceDate.split("-").map(Number);
+  const [hh, mm] = String(alert.time ?? "09:00").match(/(\d{1,2}):(\d{2})/)?.slice(1) ?? ["9", "0"];
+  const base = new Date(y, m - 1, d, Number(hh), Number(mm), 0, 0).getTime();
+  const leads = getLeadMinutesForPriority(alert.priority);
+
+  return leads.map((leadMinutes) => {
+    const phase = leadMinutes === 0 ? "at_time" : `before_${leadMinutes}`;
+    return {
+      alertId: alert.id,
+      fireAt: base - leadMinutes * 60 * 1000,
+      leadMinutes,
+      phase
+    };
+  });
+}
+
 export function getPriorityForCategory(category) {
   switch (String(category ?? "").toLowerCase()) {
     case "health":
@@ -237,4 +279,46 @@ export function registerAlertFromPayload(payload) {
       category
     })
   );
+}
+
+/**
+ * @param {number} alertTime epoch ms
+ * @returns {string}
+ */
+export function getTimeUntil(alertTime) {
+  const now = Date.now();
+  const diff = alertTime - now;
+
+  if (diff <= 0) return "now";
+  if (diff < 60000) return "less than a minute";
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} minutes`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} hours`;
+  return `${Math.floor(diff / 86400000)} days`;
+}
+
+/**
+ * @param {AlertRecord} alert
+ * @param {number} [now]
+ * @returns {number | null}
+ */
+export function getNextTriggerMs(alert, now = Date.now()) {
+  const triggers = buildScheduleTriggers(alert);
+  const upcoming = triggers.filter((t) => t.fireAt >= now - 60_000);
+  if (!upcoming.length) return null;
+  return Math.min(...upcoming.map((t) => t.fireAt));
+}
+
+/**
+ * Upcoming alerts with next trigger timestamp, sorted soonest first.
+ * @param {number} [now]
+ * @returns {{ alert: AlertRecord, triggerAt: number }[]}
+ */
+export function getUpcomingAlerts(now = Date.now()) {
+  return getActiveAlerts()
+    .map((alert) => ({
+      alert,
+      triggerAt: getNextTriggerMs(alert, now)
+    }))
+    .filter((row) => row.triggerAt != null)
+    .sort((a, b) => a.triggerAt - b.triggerAt);
 }

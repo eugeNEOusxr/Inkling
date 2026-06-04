@@ -34,7 +34,7 @@ import { loadNotificationSettings } from "./notifications/notificationSettings.j
 import { bootstrapAppearance } from "../theme/applyAppearance.js";
 import { iconDay, iconHour, iconBell, iconSettings } from "./ui/IconLibrary.js";
 import { WindowManager } from "./ui/WindowManager.js";
-import { AppLauncher } from "./ui/AppLauncher.js";
+import { AppLauncher, openPanel } from "./ui/AppLauncher.js";
 import { DayWindow } from "./ui/DayWindow.js";
 import { NotebookWriterPanel } from "./ui/NotebookWriterPanel.js";
 import { NotebookCalendarDock } from "./ui/NotebookCalendarDock.js";
@@ -229,7 +229,6 @@ export class CalendarApp {
     this._injectMobileToolbar();
     this._syncMobileToolbarState();
     this._bindNavigation();
-    this._bindWallToggle();
     this._updateNavLabels();
     this.notificationService.tick();
     this._registerServiceWorker();
@@ -565,9 +564,18 @@ export class CalendarApp {
     if (!this.layerManager.isOpen("calendar-max")) return;
     this.layerManager.close("calendar-max");
     this.notebookWall.overviewWallGroup.scale.set(1, 1, 1);
+    this.notebookWall.setVisible(false);
     this.bottomNav?.setActiveTab(null);
     document.body.classList.remove("inkling-stage-open", "inkling-tab-calendar");
-    void this._frameOverviewCamera(true);
+    if (
+      this.layerManager.isOpen("wordweaver") &&
+      this.notebookCalendarDock?.getDate()
+    ) {
+      this._showWordWeaverPreview(
+        this.notebookCalendarDock.getDate(),
+        getLastView()?.time ?? "09:00"
+      );
+    }
   }
 
   /**
@@ -871,24 +879,29 @@ export class CalendarApp {
       this.notebookCalendarDock?.remountMini();
     });
 
-    this.notebookWall.setVisible(true);
-    this.notebookWall.setOverviewDimmed(false);
+    this.notebookWall.setVisible(false);
+    this.notebookWall.setOverviewDimmed(true);
     this.notebookWall.setSelectedDay(null);
 
     this._applyNotebookWallVisibility();
 
-    const bootDate = this.notebookCalendarDock?.getDate() ?? this._getTodayDate();
-    if (bootDate) {
-      this._showWordWeaverPreview(bootDate, getLastView()?.time ?? "09:00");
-    }
-
-    void this._frameOverviewCamera(false);
     this.bottomNav?.show();
 
     const startTab = new URLSearchParams(window.location.search).get("tab");
-    if (startTab === "wordweaver") {
-      queueMicrotask(() => void this._handleBottomNavTab("wordweaver", { toggle: false }));
+    const allowedTabs = new Set(["calendar", "writer", "wordweaver", "inkling", "alerts"]);
+    if (startTab === "wall" || !startTab || startTab === "inkling") {
+      queueMicrotask(() => void this._openWordWeaverStartup());
+    } else if (allowedTabs.has(startTab)) {
+      queueMicrotask(() => void this._handleBottomNavTab(startTab, { toggle: false }));
+    } else {
+      queueMicrotask(() => void this._openWordWeaverStartup());
     }
+  }
+
+  /** Default launch: WordWeaver first — Inkling does not auto-open. */
+  _openWordWeaverStartup() {
+    this.windowManager?.closeAllPanels();
+    void this._handleBottomNavTab("wordweaver", { toggle: false });
   }
 
   _bindStageBackdrop() {
@@ -909,7 +922,6 @@ export class CalendarApp {
       "inkling-tab-calendar",
       "inkling-tab-writer",
       "inkling-tab-wordweaver",
-      "inkling-tab-wall",
       "inkling-tab-inkling",
       "inkling-tab-alerts"
     );
@@ -1055,21 +1067,20 @@ export class CalendarApp {
         await this.openNotebookDayByDate(date);
         break;
       case "wordweaver":
+        this.notebookWall.setVisible(false);
         this.layerManager.open("wordweaver");
         this.wordWeaverEmbed?.enterImmersive();
         break;
-      case "wall":
-        this.layerManager.closeAll();
-        this._showStageBackdrop(false);
-        this.notebookWall.setVisible(true);
-        this.notebookWall.setOverviewDimmed(false);
-        void this._frameOverviewCamera(true);
-        break;
-      case "inkling":
+      case "inkling": {
+        this.notebookWall.setVisible(false);
+        this.wordWeaverEmbed?.exitImmersive();
+        this.wordWeaverEmbed?.hide();
+        this.layerManager.close("wordweaver");
         this.layerManager.open("inkling");
         document.getElementById("inkling-fab")?.classList.add("hidden");
         this.inklingPanel.expand();
         break;
+      }
       case "alerts":
         await this.openAlertsPanel();
         break;
@@ -1096,8 +1107,13 @@ export class CalendarApp {
 
     if (this.viewMode === "notification-wall") return;
 
-    this.notebookWall.setVisible(true);
-    if (inklingLayout && !this.layerManager.isOpen("calendar-max")) {
+    const showNotebookWall = this.layerManager.isOpen("calendar-max");
+    this.notebookWall.setVisible(showNotebookWall);
+    if (
+      inklingLayout &&
+      this.layerManager.isOpen("wordweaver") &&
+      !this.layerManager.isOpen("calendar-max")
+    ) {
       this._showWordWeaverPreview(
         this.notebookCalendarDock?.getDate() ?? this._getTodayDate(),
         getLastView()?.time ?? "09:00"
@@ -1260,10 +1276,6 @@ export class CalendarApp {
     const distance = Math.max(distanceMin, span * distanceMultiplier);
     const y = mobile || aspect < 1 ? 1.6 : calendarMax ? 0.95 : 1.2;
     return new THREE.Vector3(0, y, distance);
-  }
-
-  _bindWallToggle() {
-    /* legacy wall toggle removed — 3D wall is always notebook */
   }
 
   _updateWallToggleUI() {
@@ -1584,16 +1596,16 @@ export class CalendarApp {
     bar.className = "mobile-bottom-toolbar";
     bar.setAttribute("aria-label", "Mobile quick actions");
     bar.innerHTML = `
-      <button type="button" class="mobile-toolbar-btn" data-action="wall">${iconDay}<span>The Wall</span></button>
+      <button type="button" class="mobile-toolbar-btn" data-action="wordweaver">${iconDay}<span>WordWeaver</span></button>
       <button type="button" class="mobile-toolbar-btn" data-action="writer">${iconHour}<span>Writer</span></button>
       <button type="button" class="mobile-toolbar-btn" data-action="notifications">${iconBell}<span>Notifications</span></button>
       <button type="button" class="mobile-toolbar-btn" data-action="settings">${iconSettings}<span>Settings</span></button>
     `;
 
-    bar.querySelector('[data-action="wall"]')?.addEventListener("click", async () => {
+    bar.querySelector('[data-action="wordweaver"]')?.addEventListener("click", async () => {
       if (!this._isMobileViewport) return;
       if (this.viewMode === "notification-wall") await this.exitNotificationWall();
-      void this._handleBottomNavTab("wall", { toggle: false });
+      void this._handleBottomNavTab("wordweaver", { toggle: false });
     });
     bar.querySelector('[data-action="writer"]')?.addEventListener("click", async () => {
       if (!this._isMobileViewport) return;
@@ -1622,7 +1634,7 @@ export class CalendarApp {
     this._mobileToolbarEl.querySelectorAll(".mobile-toolbar-btn").forEach((btn) => {
       const action = btn.getAttribute("data-action");
       const active =
-        (action === "wall" && this.viewMode !== "notification-wall" && !this.panelMode) ||
+        (action === "wordweaver" && this.bottomNav?.getActiveTab() === "wordweaver") ||
         (action === "writer" && this.panelMode === "notebook-writer") ||
         (action === "notifications" && this.viewMode === "notification-wall");
       btn.classList.toggle("is-active", active);

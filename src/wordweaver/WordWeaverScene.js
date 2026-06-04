@@ -8,6 +8,15 @@ import { WordWeaverAtomOrbits } from "./WordWeaverAtomOrbits.js";
 import { getActivePalette } from "../theme/appearancePalettes.js";
 import { mountWordWeaverTimeline } from "./WordWeaverTimelineViewport.js";
 import { on, off } from "./EventBus.js";
+import {
+  getInitialNotes,
+  getEventsForMonth,
+  CategoryColors,
+  loadTimeline,
+  todayIsoDate
+} from "./timelineModel.js";
+import { loadAlerts } from "../calendar/alerts/alertsModel.js";
+import { mountWordWeaverMainUI } from "../MainUI.js";
 
 /** Served from public/environments/ (copied from Meshy export). */
 const WORDWEAVER_ENV_GLB_URL = "/environments/meshy-dark-futuristic.glb";
@@ -18,6 +27,7 @@ const _envLoader = new GLTFLoader();
 
 /**
  * WordWeaver 3D viewport — spatial thought-weaving with multiple layout modes.
+ * Renders in #wordweaver-embed-mount (standalone; not tied to the legacy Wall tab or month wall).
  */
 export class WordWeaverScene {
   /**
@@ -125,10 +135,29 @@ export class WordWeaverScene {
       domElement: this.canvas
     });
     this._applyForegroundLayers();
-    this._onTimelineUpdated = () => this._applyForegroundLayers();
+    this._onTimelineUpdated = () => {
+      this._applyForegroundLayers();
+      this._timelineViewport?.timeline3d?.buildFromTimeline(loadTimeline());
+      loadMonthView(this.container, getInitialNotes(), this._timelineViewport);
+    };
     on("timelineUpdated", this._onTimelineUpdated);
+
+    loadMonthView(this.container, getInitialNotes(), this._timelineViewport);
+    this._timelineViewport?.timeline3d?.buildFromTimeline(loadTimeline());
+    mountWordWeaverMainUI();
+
     this._tick = this._tick.bind(this);
     this._raf = requestAnimationFrame(this._tick);
+  }
+
+  /**
+   * Mobile / keyboard flight from WordWeaverChrome.
+   * @param {number} forward
+   * @param {number} strafe
+   * @param {number} lift
+   */
+  setFlightInput(forward, strafe, lift) {
+    this._timelineViewport?.setFlightInput?.(forward, strafe, lift);
   }
 
   _loadEnvironmentGlb() {
@@ -599,5 +628,162 @@ export class WordWeaverScene {
     this.controls.dispose();
     this.renderer.dispose();
     this.canvas.remove();
+    this.container?.querySelector(".ww-month-overview")?.remove();
   }
+}
+
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * In-scene month grid for first load (notes, appointments, alert dots).
+ * @param {HTMLElement} container
+ * @param {{ time: string, text: string, category: string }[]} initialNotes
+ * @param {ReturnType<typeof mountWordWeaverTimeline> | null} [viewport]
+ */
+export function loadMonthView(container, initialNotes, viewport) {
+  if (!container) return;
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const today = todayIsoDate();
+
+  let wrap = container.querySelector(".ww-month-overview");
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.className = "ww-month-overview";
+    wrap.setAttribute("aria-label", "Month overview");
+    container.prepend(wrap);
+    if (!document.getElementById("ww-month-overview-style")) {
+      const style = document.createElement("style");
+      style.id = "ww-month-overview-style";
+      style.textContent = `
+        .ww-month-overview {
+          position: absolute;
+          top: 8px;
+          left: 8px;
+          right: 8px;
+          z-index: 4;
+          pointer-events: auto;
+          max-height: 42%;
+          overflow: auto;
+          border-radius: 12px;
+          background: rgba(0, 0, 0, 0.55);
+          padding: 8px;
+        }
+        .ww-month-overview .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+        .ww-month-overview .month-cell {
+          background: rgba(0,0,0,0.3);
+          border-radius: 8px;
+          padding: 6px;
+          min-height: 52px;
+          font-size: 11px;
+          color: #e2e8f0;
+        }
+        .ww-month-overview .month-cell.is-today { outline: 1px solid rgba(78, 230, 230, 0.6); }
+        .ww-month-overview .category-dot {
+          width: 8px; height: 8px; border-radius: 50%;
+          display: inline-block; margin-right: 3px;
+        }
+        .ww-month-overview .month-cell__dots { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 4px; }
+        .ww-month-overview .month-cell__alert { color: #fbbf24; font-size: 10px; }
+      `;
+      document.head.appendChild(style);
+    }
+  }
+
+  const title = now.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const events = getEventsForMonth(year, month);
+  const alertTimelineIds = new Set(
+    loadAlerts()
+      .filter((a) => !a.dismissed && a.timelineEntryId)
+      .map((a) => a.timelineEntryId)
+  );
+
+  const first = new Date(year, month - 1, 1);
+  const startPad = first.getDay();
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  const header = document.createElement("div");
+  header.className = "ww-month-overview__title";
+  header.style.cssText = "font-weight:700;margin-bottom:6px;font-size:13px;";
+  header.textContent = title;
+
+  const weekdayRow = document.createElement("div");
+  weekdayRow.className = "month-grid month-grid--labels";
+  weekdayRow.style.marginBottom = "4px";
+  for (const label of WEEKDAY_LABELS) {
+    const h = document.createElement("div");
+    h.className = "month-cell month-cell--label";
+    h.style.minHeight = "auto";
+    h.style.opacity = "0.75";
+    h.textContent = label;
+    weekdayRow.appendChild(h);
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "month-grid";
+
+  for (let i = 0; i < startPad; i++) {
+    const pad = document.createElement("div");
+    pad.className = "month-cell month-cell--pad";
+    pad.setAttribute("aria-hidden", "true");
+    grid.appendChild(pad);
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dayEvents = events.filter((ev) => ev.date === iso);
+    if (iso === today && !dayEvents.length && initialNotes?.length) {
+      for (const n of initialNotes) {
+        dayEvents.push({
+          id: `starter-${n.time}`,
+          date: iso,
+          time: n.time,
+          text: n.text,
+          category: n.category,
+          kind: "timeline"
+        });
+      }
+    }
+
+    const cell = document.createElement("div");
+    cell.className = "month-cell";
+    if (iso === today) cell.classList.add("is-today");
+
+    const num = document.createElement("div");
+    num.className = "month-cell__num";
+    num.textContent = String(day);
+    cell.appendChild(num);
+
+    const dots = document.createElement("div");
+    dots.className = "month-cell__dots";
+    const cats = new Set();
+    let hasAlert = false;
+    for (const ev of dayEvents) {
+      const cat = ev.category === "errand" ? "errands" : ev.category;
+      if (!cats.has(cat)) {
+        cats.add(cat);
+        const dot = document.createElement("span");
+        dot.className = "category-dot";
+        dot.style.backgroundColor = CategoryColors[cat] ?? CategoryColors.default;
+        dot.title = cat;
+        dots.appendChild(dot);
+      }
+      if (ev.alertId || alertTimelineIds.has(ev.id)) hasAlert = true;
+    }
+    if (hasAlert) {
+      const icon = document.createElement("span");
+      icon.className = "month-cell__alert";
+      icon.textContent = "⏰";
+      icon.title = "Alert";
+      dots.appendChild(icon);
+    }
+    cell.appendChild(dots);
+    grid.appendChild(cell);
+  }
+
+  wrap.replaceChildren(header, weekdayRow, grid);
+
+  viewport?.timeline3d?.buildFromTimeline(loadTimeline());
 }

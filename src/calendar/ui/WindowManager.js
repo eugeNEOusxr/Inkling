@@ -43,7 +43,96 @@ export class WindowManager {
       win.el.classList.remove("is-focused");
       win.el.style.zIndex = "";
     });
+    this._hideDomPanels();
     document.dispatchEvent(new CustomEvent("inkling:close-all-panels"));
+  }
+
+  /** @type {readonly string[]} */
+  static PANEL_IDS = [
+    "inkling-panel",
+    "alerts-panel",
+    "week-view-panel",
+    "month-view-panel",
+    "notebook-writer-panel",
+    "thread-panel",
+    "notification-wall-panel"
+  ];
+
+  /** @type {Record<string, string>} */
+  static PANEL_NAME_MAP = {
+    inkling: "inkling-panel",
+    alerts: "alerts-panel",
+    weekView: "week-view-panel",
+    monthView: "month-view-panel",
+    wordweaver: "wordweaver-embed"
+  };
+
+  _hideDomPanels() {
+    for (const id of WindowManager.PANEL_IDS) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      el.classList.add("hidden");
+      el.style.display = "none";
+      el.style.zIndex = "0";
+    }
+    const ww = document.getElementById("wordweaver-embed");
+    if (ww) {
+      ww.style.zIndex = "0";
+    }
+    this.calendarApp?.wordWeaverEmbed?.exitImmersive?.();
+    this.calendarApp?.wordWeaverEmbed?.hide?.();
+  }
+
+  /**
+   * Show a single in-page panel (Inkling home, alerts, etc.).
+   * @param {string} name e.g. "inkling", "wordweaver", "alerts"
+   */
+  openPanel(name) {
+    this.closeAllPanels();
+
+    if (name === "alerts") {
+      void import("../alerts/AlertsDropdown.js").then((m) => m.openAlertsDropdown());
+      document.dispatchEvent(
+        new CustomEvent("inkling:open-panel", { detail: { panelId: name } })
+      );
+      return;
+    }
+
+    const targetId =
+      WindowManager.PANEL_NAME_MAP[name] ??
+      (name === "wordweaver" ? "wordweaver-embed" : `${name}-panel`);
+
+    for (const id of WindowManager.PANEL_IDS) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const isTarget = id === targetId;
+      if (isTarget) {
+        el.classList.remove("hidden");
+        el.style.display = id.includes("view") ? "flex" : "block";
+        el.style.zIndex = name === "inkling" ? "10350" : "10340";
+      } else {
+        el.classList.add("hidden");
+        el.style.display = "none";
+        el.style.zIndex = "0";
+      }
+    }
+
+    const ww = document.getElementById("wordweaver-embed");
+    if (ww) {
+      if (name === "wordweaver") {
+        ww.classList.remove("hidden");
+        ww.style.display = "flex";
+        ww.style.zIndex = "10200";
+      } else {
+        ww.style.zIndex = "900";
+        this.calendarApp?.wordWeaverEmbed?.exitImmersive?.();
+        this.calendarApp?.wordWeaverEmbed?.hide?.();
+      }
+    }
+
+    document.dispatchEvent(
+      new CustomEvent("inkling:open-panel", { detail: { panelId: name } })
+    );
   }
 
   /**

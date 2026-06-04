@@ -1,37 +1,91 @@
 /**
- * Top chrome + sidebar rail — Alerts entry with badge counter.
+ * Top chrome — Today / Week / Month / Alerts + badge.
  */
 import { syncAlertsBadge } from "../alerts/alertsModel.js";
+import { getAlertsDropdown, openAlertsDropdown } from "../alerts/AlertsDropdown.js";
+import { openPanel } from "./AppLauncher.js";
+import "../views/WeekView.js";
+import "../views/MonthView.js";
+
+/** @type {import("./WindowManager.js").WindowManager | null} */
+let shellWindowManager = null;
 
 /**
- * @param {{ onOpenAlerts: () => void }} opts
+ * @param {import("./WindowManager.js").WindowManager | null} wm
  */
-export function mountAlertsNavigation(opts) {
-  const onOpen = opts.onOpenAlerts ?? (() => {});
+export function registerShellWindowManager(wm) {
+  shellWindowManager = wm;
+}
 
+/**
+ * @param {string} panelId
+ */
+export function openViewPanel(panelId) {
+  if (shellWindowManager?.openPanel) {
+    shellWindowManager.openPanel(panelId);
+    return;
+  }
+  openPanel(panelId);
+}
+
+/**
+ * @param {{ windowManager?: import("./WindowManager.js").WindowManager | null, onNavigateToAlert?: (alert: import("../alerts/alertsModel.js").AlertRecord) => void }} [opts]
+ */
+export function mountAlertsNavigation(opts = {}) {
+  if (opts.windowManager) registerShellWindowManager(opts.windowManager);
+
+  mountViewNavigation(opts);
+}
+
+/**
+ * Today · Week · Month · Alerts links in top chrome.
+ * @param {{ onNavigateToAlert?: (alert: import("../alerts/alertsModel.js").AlertRecord) => void }} opts
+ */
+function mountViewNavigation(opts) {
   const topBar = document.querySelector(".top-chrome__bar");
-  if (topBar && !document.getElementById("btn-inkling-alerts")) {
+  if (!topBar || topBar.querySelector(".inkling-view-nav")) return;
+
+  getAlertsDropdown({ onNavigateToAlert: opts.onNavigateToAlert })._mount();
+
+  const nav = document.createElement("nav");
+  nav.className = "inkling-view-nav";
+  nav.setAttribute("aria-label", "Calendar views");
+
+  const views = [
+    { id: "inkling", label: "Today" },
+    { id: "weekView", label: "Week" },
+    { id: "monthView", label: "Month" },
+    { id: "alerts", label: "Alerts", showBadge: true }
+  ];
+
+  for (const v of views) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.id = "btn-inkling-alerts";
-    btn.className = "inkling-alerts-nav-btn top-chrome__alerts";
-    btn.setAttribute("aria-label", "Alerts");
-    btn.title = "Alerts";
-    btn.innerHTML = `
-      <span class="inkling-alerts-nav-btn__icon" aria-hidden="true">⏰</span>
-      <span class="inkling-alerts-nav-btn__label">Alerts</span>
-      <span class="inkling-alerts-badge hidden" data-inkling-alerts-badge>0</span>
-    `;
+    btn.className = "inkling-view-nav__btn";
+    btn.dataset.view = v.id;
+    if (v.id === "alerts") btn.id = "btn-inkling-alerts";
+    btn.innerHTML = v.showBadge
+      ? `${v.label}<span class="inkling-alerts-badge hidden" data-inkling-alerts-badge>0</span>`
+      : v.label;
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      onOpen();
+      topBar.querySelectorAll(".inkling-view-nav__btn").forEach((b) => {
+        b.classList.toggle("is-active", b === btn);
+      });
+      if (v.id === "alerts") {
+        openAlertsDropdown();
+      } else {
+        openViewPanel(v.id);
+      }
     });
-    const settings = document.getElementById("btn-top-settings");
-    if (settings?.parentElement === topBar) {
-      topBar.insertBefore(btn, settings);
-    } else {
-      topBar.appendChild(btn);
-    }
+    nav.appendChild(btn);
+  }
+
+  const settings = document.getElementById("btn-top-settings");
+  if (settings?.parentElement === topBar) {
+    topBar.insertBefore(nav, settings);
+  } else {
+    topBar.appendChild(nav);
   }
 
   const rail = document.querySelector(".calendar-sidebar__rail-alerts");
@@ -48,11 +102,32 @@ export function mountAlertsNavigation(opts) {
     `;
     railBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      onOpen();
+      openAlertsDropdown();
     });
     rail.appendChild(railBtn);
   }
 
   syncAlertsBadge();
   document.addEventListener("inkling:alerts-updated", () => syncAlertsBadge());
+  document.addEventListener("inkling:alerts-dropdown-toggle", () => {
+    const btn = document.getElementById("btn-inkling-alerts");
+    const dd = getAlertsDropdown();
+    if (btn) btn.setAttribute("aria-expanded", String(dd._open));
+  });
+
+  document.addEventListener("inkling:open-panel", (e) => {
+    const id = e.detail?.panelId;
+    if (!id) return;
+    topBar.querySelectorAll(".inkling-view-nav__btn").forEach((b) => {
+      b.classList.toggle("is-active", b.dataset.view === id);
+    });
+  });
+
+  document.addEventListener("inkling:close-all-panels", () => {
+    topBar.querySelectorAll(".inkling-view-nav__btn").forEach((b) => {
+      b.classList.remove("is-active");
+    });
+  });
 }
+
+export { openAlertsDropdown };

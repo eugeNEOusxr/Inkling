@@ -13,6 +13,9 @@ const MOVE_SPEED = 5;
 function createFreeCameraMovement(camera, controls) {
   /** @type {Record<string, boolean>} */
   const keys = {};
+  let extForward = 0;
+  let extStrafe = 0;
+  let extLift = 0;
 
   const onKeyDown = (e) => {
     keys[e.code] = true;
@@ -26,13 +29,24 @@ function createFreeCameraMovement(camera, controls) {
 
   return {
     /**
+     * @param {number} forward -1..1
+     * @param {number} strafe -1..1
+     * @param {number} lift -1..1
+     */
+    setFlightInput(forward, strafe, lift) {
+      extForward = forward;
+      extStrafe = strafe;
+      extLift = lift;
+    },
+    /**
      * @param {number} delta
      */
     update(delta) {
       const speed = MOVE_SPEED * delta;
-      const forward = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
-      const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
-      const vertical = (keys.KeyQ ? 1 : 0) - (keys.KeyE ? 1 : 0);
+      const forward =
+        (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) + extForward;
+      const strafe = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + extStrafe;
+      const vertical = (keys.KeyQ ? 1 : 0) - (keys.KeyE ? 1 : 0) + extLift;
       if (!forward && !strafe && !vertical) return;
 
       const dir = new THREE.Vector3();
@@ -46,6 +60,7 @@ function createFreeCameraMovement(camera, controls) {
       if (forward) {
         camera.position.addScaledVector(dir, forward * speed);
         controls.target.addScaledVector(dir, forward * speed);
+        camera.translateZ(-forward * speed * 0.35);
       }
       if (strafe) {
         camera.position.addScaledVector(right, strafe * speed);
@@ -181,6 +196,14 @@ export function mountWordWeaverTimeline(opts) {
 
   return {
     timeline3d,
+    /**
+     * @param {number} forward
+     * @param {number} strafe
+     * @param {number} lift
+     */
+    setFlightInput(forward, strafe, lift) {
+      movement?.setFlightInput(forward, strafe, lift);
+    },
     /**
      * @param {number} delta
      */

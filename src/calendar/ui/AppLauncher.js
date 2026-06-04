@@ -1,10 +1,15 @@
 import { AppIcon } from "./AppIcon.js";
 
 /**
- * Open a single Inkling home / layer panel (dispatched to InklingPanel).
+ * Open a single Inkling home / layer panel.
  * @param {string} panelId
+ * @param {import("./WindowManager.js").WindowManager | null} [windowManager]
  */
-export function openPanel(panelId) {
+export function openPanel(panelId, windowManager = null) {
+  if (windowManager && typeof windowManager.openPanel === "function") {
+    windowManager.openPanel(panelId);
+    return;
+  }
   document.dispatchEvent(
     new CustomEvent("inkling:open-panel", { detail: { panelId } })
   );
@@ -47,10 +52,5 @@ export class AppLauncher {
 
     container.appendChild(launcher);
     this.el = launcher;
-
-    const startTab = new URLSearchParams(window.location.search).get("tab");
-    if (!startTab) {
-      queueMicrotask(() => openPanel("inkling"));
-    }
   }
 }

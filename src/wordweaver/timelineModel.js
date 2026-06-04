@@ -3,8 +3,40 @@
  */
 
 import { emit } from "./EventBus.js";
+import {
+  loadSavedMonth,
+  createCalendarStateFromSaved,
+  createCalendarState
+} from "../calendar/calendarState.js";
 
 const STORAGE_KEY = "inkling-timeline-v1";
+
+/** @typedef {{
+ *   id: string,
+ *   date: string,
+ *   time: string,
+ *   text: string,
+ *   category: string,
+ *   kind: string,
+ *   alertId?: string,
+ *   dayId?: string
+ * }} CalendarEventRecord */
+
+export const CategoryColors = {
+  health: "#FF4D4D",
+  study: "#4DFF88",
+  work: "#FFD24D",
+  personal: "#4DA6FF",
+  creative: "#B84DFF",
+  errands: "#FF884D",
+  errand: "#FF884D",
+  finance: "#4DFFD2",
+  appointment: "#FF4DA6",
+  deadline: "#FF3333",
+  reminder: "#66CCFF",
+  alarm: "#FF66AA",
+  default: "#94A3B8"
+};
 
 /** @typedef {{
  *   id: string,
@@ -16,7 +48,8 @@ const STORAGE_KEY = "inkling-timeline-v1";
  *   color?: string,
  *   fontSize?: number,
  *   weight?: "normal" | "bold",
- *   alertId?: string
+ *   alertId?: string,
+ *   date?: string
  * }} TimelineEntryRecord */
 
 const CATEGORY_COLORS = {
@@ -35,7 +68,8 @@ const CATEGORY_COLORS = {
  */
 export function getCategoryColor(category) {
   const key = String(category ?? "default").toLowerCase().trim();
-  return CATEGORY_COLORS[key] ?? CATEGORY_COLORS.default;
+  if (key === "errands" || key === "errand") return CategoryColors.errands;
+  return CategoryColors[key] ?? CategoryColors.default;
 }
 
 /** Chronological bucket order for the Depth Staircase (9 / 12 / 3 day rhythm). */
@@ -113,59 +147,68 @@ export function sortTimelineForDisplay(entries) {
   });
 }
 
-/** @type {TimelineEntryRecord[]} */
-const DEFAULT_ENTRIES = [
-  {
-    id: "sample-1",
-    time: "08:00",
-    label: "Morning",
-    category: "personal",
-    text: "Wake up and plan the day",
-    color: "#e2e8f0",
-    fontSize: 0.26,
-    weight: "bold"
-  },
-  {
-    id: "sample-2",
-    time: "09:30",
-    label: "Focus",
-    category: "work",
-    text: "Deep work block",
-    color: "#4ade80",
-    fontSize: 0.26,
-    weight: "bold"
-  },
-  {
-    id: "sample-3",
-    time: "12:00",
-    label: "Midday",
-    category: "health",
-    text: "Lunch and reset",
-    color: "#fbbf24",
-    fontSize: 0.24,
-    weight: "normal"
-  },
-  {
-    id: "sample-4",
-    time: "15:00",
-    label: "Afternoon",
-    category: "work",
-    text: "Meetings and notes",
-    color: "#38bdf8",
-    fontSize: 0.25,
-    weight: "normal"
-  },
-  {
-    id: "sample-5",
-    time: "21:00",
-    label: "Evening",
-    category: "personal",
-    text: "Reflect and wind down",
-    color: "#c4b5fd",
-    fontSize: 0.24,
-    weight: "normal"
-  }
+const HAS_USER_NOTES_KEY = "hasUserNotes";
+
+export const starterNotes = [
+  { time: "08:00", text: "Wake up and plan the day", category: "personal" },
+  { time: "09:30", text: "Deep work block", category: "work" },
+  { time: "12:00", text: "Lunch and reset", category: "personal" },
+  { time: "15:00", text: "Meetings and notes", category: "work" },
+  { time: "21:00", text: "Reflect and wind down", category: "health" }
 ];
+
+/**
+ * @returns {{ time: string, text: string, category: string, date?: string }[]}
+ */
+export function loadUserNotes() {
+  return loadTimeline().map((e) => ({
+    time: e.time,
+    text: e.text,
+    category: e.category === "default" ? "personal" : e.category,
+    date: e.date
+  }));
+}
+
+/**
+ * Starter samples until the user saves their first note.
+ * @returns {{ time: string, text: string, category: string }[]}
+ */
+export function getInitialNotes() {
+  try {
+    if (localStorage.getItem(HAS_USER_NOTES_KEY)) return loadUserNotes();
+  } catch {
+    /* ignore */
+  }
+  return [...starterNotes];
+}
+
+/**
+ * @returns {TimelineEntryRecord[]}
+ */
+function buildStarterTimelineEntries() {
+  const today = todayIsoDate();
+  return starterNotes.map((n, i) =>
+    normalizeEntry(
+      {
+        id: `starter-${i}`,
+        time: n.time,
+        text: n.text,
+        category: n.category,
+        label: "Note",
+        date: today
+      },
+      `starter-${i}`
+    )
+  );
+}
+
+export function markUserNotesStarted() {
+  try {
+    localStorage.setItem(HAS_USER_NOTES_KEY, "true");
+  } catch {
+    /* ignore */
+  }
+}
 
 /**
  * @param {Partial<TimelineEntryRecord>} raw
@@ -187,7 +230,8 @@ function normalizeEntry(raw, id) {
     color: raw.color ? String(raw.color) : "#e2e8f0",
     fontSize: Number.isFinite(raw.fontSize) ? Number(raw.fontSize) : 0.26,
     weight: raw.weight === "bold" ? "bold" : "normal",
-    alertId: raw.alertId ? String(raw.alertId) : undefined
+    alertId: raw.alertId ? String(raw.alertId) : undefined,
+    date: raw.date ? String(raw.date) : undefined
   };
 }
 
@@ -220,7 +264,12 @@ export function loadTimeline() {
       stored.map((e, i) => normalizeEntry(e, e.id ?? `entry-${i}`))
     );
   }
-  return sortTimelineForDisplay(DEFAULT_ENTRIES.map((e) => normalizeEntry(e, e.id)));
+  try {
+    if (localStorage.getItem(HAS_USER_NOTES_KEY)) return [];
+  } catch {
+    /* ignore */
+  }
+  return sortTimelineForDisplay(buildStarterTimelineEntries());
 }
 
 /**
@@ -232,6 +281,9 @@ export function saveTimeline(entries) {
     entries.map((e, i) => normalizeEntry(e, e.id ?? `entry-${i}`))
   );
   writeStore(normalized);
+  if (typeof document !== "undefined") {
+    document.dispatchEvent(new CustomEvent("timelineUpdated"));
+  }
   return normalized;
 }
 
@@ -261,6 +313,7 @@ export function addTimelineEntry(fields) {
     id
   );
   entries.push(entry);
+  markUserNotesStarted();
   saveTimeline(entries);
   return entry;
 }
@@ -294,7 +347,8 @@ export function saveNoteToTimeline(payload) {
   const entry = addTimelineEntry({
     time,
     text,
-    category
+    category,
+    date: payload?.date ?? todayIsoDate()
   });
 
   void import("../calendar/alerts/alertsModel.js")
@@ -335,4 +389,180 @@ export function updateTimelineEntry(id, fields) {
   entries[index] = normalizeEntry({ ...entries[index], ...fields, id }, id);
   saveTimeline(entries);
   return entries[index];
+}
+
+/**
+ * @returns {string}
+ */
+export function todayIsoDate() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * @param {string} iso
+ * @returns {Date}
+ */
+export function parseIsoDate(iso) {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0, 0);
+}
+
+/**
+ * @param {Date} d
+ * @returns {string}
+ */
+export function isoFromDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Monday 00:00 of the week containing ref.
+ * @param {Date} [ref]
+ * @returns {string}
+ */
+export function getWeekStartMonday(ref = new Date()) {
+  const d = new Date(ref);
+  const dow = d.getDay();
+  const diff = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + diff);
+  return isoFromDate(d);
+}
+
+/**
+ * @param {number} hour
+ * @returns {string}
+ */
+function hourToTimeString(hour) {
+  return `${String(Number(hour)).padStart(2, "0")}:00`;
+}
+
+/**
+ * @param {string} dateIso
+ * @param {import("../calendar/calendarState.js").DayNode} day
+ * @returns {CalendarEventRecord[]}
+ */
+function eventsFromDayNode(dateIso, day) {
+  /** @type {CalendarEventRecord[]} */
+  const list = [];
+
+  for (const ap of day.appointments ?? []) {
+    list.push({
+      id: ap.id,
+      date: dateIso,
+      time: hourToTimeString(ap.hour),
+      text: ap.title + (ap.description ? ` — ${ap.description}` : ""),
+      category: "appointment",
+      kind: "appointment",
+      dayId: day.id
+    });
+  }
+  for (const r of day.reminders ?? []) {
+    list.push({
+      id: r.id,
+      date: dateIso,
+      time: hourToTimeString(r.hour),
+      text: r.message,
+      category: "reminder",
+      kind: "reminder",
+      dayId: day.id
+    });
+  }
+  for (const a of day.alarms ?? []) {
+    list.push({
+      id: a.id,
+      date: dateIso,
+      time: hourToTimeString(a.hour),
+      text: a.message,
+      category: "alarm",
+      kind: "alarm",
+      dayId: day.id
+    });
+  }
+  for (const thread of day.threads ?? []) {
+    for (const note of thread.notes ?? []) {
+      list.push({
+        id: note.id,
+        date: dateIso,
+        time: hourToTimeString(note.hour),
+        text: note.text,
+        category: classifyText(note.text),
+        kind: "note",
+        dayId: day.id
+      });
+    }
+  }
+  return list;
+}
+
+/**
+ * @param {string} dateIso
+ * @returns {CalendarEventRecord[]}
+ */
+function getEventsForDate(dateIso) {
+  /** @type {CalendarEventRecord[]} */
+  const list = [];
+  const today = todayIsoDate();
+
+  for (const entry of loadTimeline()) {
+    const entryDate = entry.date ?? today;
+    if (entryDate !== dateIso) continue;
+    list.push({
+      id: entry.id,
+      date: entryDate,
+      time: formatTimelineDisplayTime(entry.time),
+      text: entry.text || entry.label,
+      category: entry.category === "default" ? "personal" : entry.category,
+      kind: "timeline",
+      alertId: entry.alertId
+    });
+  }
+
+  const [y, m] = dateIso.split("-").map(Number);
+  const saved = loadSavedMonth();
+  const year = saved?.year ?? y;
+  const month = saved?.month ?? m;
+  const state =
+    saved && (saved.year !== y || saved.month !== m)
+      ? createCalendarState(y, m)
+      : createCalendarStateFromSaved(year, month, saved?.dayDataByDate ?? {});
+
+  const day = state.days.find((d) => d.date === dateIso);
+  if (day) list.push(...eventsFromDayNode(dateIso, day));
+
+  return list.sort(
+    (a, b) => parseTimeMinutes(a.time) - parseTimeMinutes(b.time) || a.text.localeCompare(b.text)
+  );
+}
+
+/**
+ * @param {string} weekStartDate ISO Monday
+ * @returns {CalendarEventRecord[]}
+ */
+export function getEventsForWeek(weekStartDate) {
+  const start = parseIsoDate(weekStartDate);
+  /** @type {CalendarEventRecord[]} */
+  const all = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    all.push(...getEventsForDate(isoFromDate(d)));
+  }
+  return all;
+}
+
+/**
+ * @param {number} year
+ * @param {number} month 1–12
+ * @returns {CalendarEventRecord[]}
+ */
+export function getEventsForMonth(year, month) {
+  const last = new Date(year, month, 0).getDate();
+  /** @type {CalendarEventRecord[]} */
+  const all = [];
+  for (let day = 1; day <= last; day++) {
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    all.push(...getEventsForDate(iso));
+  }
+  return all;
 }
