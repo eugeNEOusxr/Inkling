@@ -64,6 +64,20 @@ export function runLocalInklingChat(opts) {
     };
   }
 
+  if (brain.action === "createAlert") {
+    return {
+      reply: brain.aiResponse ?? "Okay, I'll alert you.",
+      action: "create_alert",
+      proposal: {
+        time: brain.payload?.time,
+        text: brain.payload?.text,
+        category: brain.payload?.category
+      },
+      source: "local",
+      brain
+    };
+  }
+
   if (brain.action === "storeNote") {
     return {
       reply: null,

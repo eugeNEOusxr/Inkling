@@ -2,7 +2,7 @@
  * Inkling + WordWeaver conversational routing — intent, tone, context, side chat.
  */
 
-/** @typedef {'openWriter'|'openCalendar'|'openWordWeaver'|'storeNote'|'sideConversation'|'askClarification'|'none'} BrainAction */
+/** @typedef {'openWriter'|'openCalendar'|'openWordWeaver'|'storeNote'|'createAlert'|'sideConversation'|'askClarification'|'none'} BrainAction */
 
 /**
  * @typedef {Object} BrainState
@@ -421,6 +421,22 @@ function routeAction(intents, tone, text, context, state) {
       action: "none",
       payload,
       aiResponse: null
+    };
+  }
+
+  const alertPhrase =
+    /\b(remind me|alert me|don'?t let me forget|wake me up|notify me when|tell me at|set an alarm)\b/i;
+  if (alertPhrase.test(lower)) {
+    return {
+      route: "createAlert",
+      action: "createAlert",
+      payload: {
+        ...payload,
+        time: extractTimeHint(lower) ?? "09:00",
+        text: text,
+        category: mapContextToCategory(context)
+      },
+      aiResponse: "Okay, I'll alert you."
     };
   }
 

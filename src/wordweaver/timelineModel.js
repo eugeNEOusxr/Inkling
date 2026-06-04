@@ -15,7 +15,8 @@ const STORAGE_KEY = "inkling-timeline-v1";
  *   timeBucket?: string,
  *   color?: string,
  *   fontSize?: number,
- *   weight?: "normal" | "bold"
+ *   weight?: "normal" | "bold",
+ *   alertId?: string
  * }} TimelineEntryRecord */
 
 const CATEGORY_COLORS = {
@@ -185,7 +186,8 @@ function normalizeEntry(raw, id) {
     timeBucket,
     color: raw.color ? String(raw.color) : "#e2e8f0",
     fontSize: Number.isFinite(raw.fontSize) ? Number(raw.fontSize) : 0.26,
-    weight: raw.weight === "bold" ? "bold" : "normal"
+    weight: raw.weight === "bold" ? "bold" : "normal",
+    alertId: raw.alertId ? String(raw.alertId) : undefined
   };
 }
 
@@ -294,6 +296,16 @@ export function saveNoteToTimeline(payload) {
     text,
     category
   });
+
+  void import("../calendar/alerts/alertsModel.js")
+    .then(({ createAlertFromTimelineEntry }) => createAlertFromTimelineEntry(entry))
+    .then((alert) => {
+      if (alert?.id) {
+        updateTimelineEntry(entry.id, { alertId: alert.id });
+        emit("timelineUpdated", { entry: loadTimeline().find((e) => e.id === entry.id), entries: loadTimeline() });
+      }
+    })
+    .catch((err) => console.warn("[timelineModel] alert attach failed", err));
 
   emit("timelineUpdated", { entry, entries: loadTimeline() });
   return entry;

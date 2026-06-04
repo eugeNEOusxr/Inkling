@@ -124,6 +124,18 @@ export class TimelineEntry3D {
     this.atom.object3d.position.set(tsBoxPlaced.min.x - 0.6, 0, 0);
     this.group.add(this.atom.object3d);
 
+    if (entry.alertId) {
+      const iconMat = new THREE.MeshBasicMaterial({
+        color: 0xffd54f,
+        transparent: true,
+        opacity: 0.95
+      });
+      const icon = new THREE.Mesh(new THREE.RingGeometry(0.06, 0.1, 16), iconMat);
+      icon.position.set(tsBoxPlaced.min.x - 1.05, 0.42, 0.12);
+      icon.name = "timeline-alert-icon";
+      this.group.add(icon);
+    }
+
     parent.add(this.group);
   }
 

@@ -41,6 +41,10 @@ import { NotebookCalendarDock } from "./ui/NotebookCalendarDock.js";
 import { InklingPanel } from "./ui/InklingPanel.js";
 import { MinimizeDock } from "./ui/MinimizeDock.js";
 import { InklingBottomNav } from "./ui/InklingBottomNav.js";
+import { AlertsPanel } from "./alerts/AlertsPanel.js";
+import { mountAlertsNavigation } from "./ui/NavigationBar.js";
+import { startAlertsScheduler } from "./alerts/alertsScheduler.js";
+import { syncAlertsBadge } from "./alerts/alertsModel.js";
 import { WordWeaverEmbed } from "../wordweaver/WordWeaverEmbed.js";
 import { commitSlotNote } from "../utils/slotNoteSync.js";
 import { getLastView, saveLastView } from "../utils/storage.js";
@@ -231,6 +235,7 @@ export class CalendarApp {
     this._registerServiceWorker();
     this._mountInstallPrompt();
     if (this.osShell) this._mountOsShell();
+    this._bootAlertsSystem();
     this._ensureMinimizeDock();
     this._bindWriterPanelEvents();
     this._bindWordWeaverEvents();
@@ -905,8 +910,35 @@ export class CalendarApp {
       "inkling-tab-writer",
       "inkling-tab-wordweaver",
       "inkling-tab-wall",
-      "inkling-tab-inkling"
+      "inkling-tab-inkling",
+      "inkling-tab-alerts"
     );
+  }
+
+  _bootAlertsSystem() {
+    this.alertsPanel = new AlertsPanel({
+      windowManager: this.windowManager ?? null,
+      onClose: () => {
+        this.bottomNav?.setActiveTab(null);
+        document.body.classList.remove("alerts-panel-open", "inkling-tab-alerts");
+      }
+    });
+    mountAlertsNavigation({ onOpenAlerts: () => void this.openAlertsPanel() });
+    startAlertsScheduler();
+    syncAlertsBadge();
+  }
+
+  async openAlertsPanel() {
+    this.windowManager?.closeAllPanels();
+    document.dispatchEvent(new CustomEvent("inkling:close-all-panels"));
+    if (this.viewMode === "notification-wall") {
+      await this.exitNotificationWall();
+    }
+    await this._closeAllPanelsForSwitch();
+    this._closeBottomStage();
+    this.alertsPanel?.open();
+    this.bottomNav?.setActiveTab("alerts");
+    document.body.classList.add("inkling-stage-open", "inkling-tab-alerts");
   }
 
   _closeBottomStage() {
@@ -987,7 +1019,12 @@ export class CalendarApp {
   async _handleBottomNavTab(tab, meta) {
     if (meta.toggle) {
       this._closeBottomStage();
+      if (tab === "alerts") this.alertsPanel?.close();
       return;
+    }
+
+    if (tab !== "alerts") {
+      this.alertsPanel?.close();
     }
 
     if (this.viewMode === "notification-wall") {
@@ -1032,6 +1069,9 @@ export class CalendarApp {
         this.layerManager.open("inkling");
         document.getElementById("inkling-fab")?.classList.add("hidden");
         this.inklingPanel.expand();
+        break;
+      case "alerts":
+        await this.openAlertsPanel();
         break;
       default:
         break;

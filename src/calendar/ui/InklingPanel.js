@@ -277,7 +277,7 @@ export class InklingPanel {
     if (await this._handleBrainResult(brain, text)) {
       if (brain.action === "sideConversation" || brain.action === "askClarification") {
         this._sideThreadActive = true;
-      } else if (["openWriter", "openCalendar", "openWordWeaver", "storeNote"].includes(brain.action)) {
+      } else if (["openWriter", "openCalendar", "openWordWeaver", "storeNote", "createAlert"].includes(brain.action)) {
         this._sideThreadActive = false;
       }
       return;
@@ -337,6 +337,18 @@ export class InklingPanel {
     if (brain.action === "openWordWeaver") {
       await this.app?._handleBottomNavTab?.("wordweaver", { toggle: false });
       if (brain.aiResponse) this._appendBubble("inkling", escapeHtml(brain.aiResponse));
+      return true;
+    }
+
+    if (brain.action === "createAlert") {
+      const { registerAlertFromPayload } = await import("../alerts/alertsModel.js");
+      const p = brain.payload ?? {};
+      registerAlertFromPayload({
+        time: String(p.time ?? "09:00"),
+        text: String(p.text ?? text),
+        category: String(p.category ?? "reminder")
+      });
+      this._appendBubble("inkling", escapeHtml(brain.aiResponse ?? "Okay, I'll alert you."));
       return true;
     }
 
