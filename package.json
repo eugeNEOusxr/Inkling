@@ -6,7 +6,7 @@
   "scripts": {
     "build:web": "node scripts/build-web.mjs",
     "dev": "node server/index.mjs",
-    "test": "node scripts/check-inkling-timeline-v1-writer.mjs && node --test server/tests/auth.test.mjs server/tests/eventBus.test.mjs server/tests/timelineModel.test.mjs server/tests/timelineModel.read.test.mjs server/tests/timelineModel.starter.test.mjs server/tests/timelineModel.storage.test.mjs",
+    "test": "node scripts/check-inkling-timeline-v1-writer.mjs && node --test server/tests/auth.test.mjs server/tests/eventBus.test.mjs server/tests/alertsScheduler.test.mjs server/tests/timelineModel.test.mjs server/tests/timelineModel.read.test.mjs server/tests/timelineModel.starter.test.mjs server/tests/timelineModel.storage.test.mjs",
     "serve:pwa": "serve -s .",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",

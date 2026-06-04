@@ -17,6 +17,12 @@ import {
   getUpcomingAlerts,
   getWeekStartMonday
 } from "../../src/wordweaver/timelineModel.js";
+import {
+  addAlert,
+  createAlert,
+  dismissAlert,
+  __testResetAlertsModel
+} from "../../src/calendar/alerts/alertsModel.js";
 
 /** @type {Map<string, string>} */
 let store;
@@ -35,6 +41,7 @@ function bootEmpty() {
   installMockStorage();
   localStorage.setItem("inkling-has-user-notes", "true");
   __testResetTimelineModel();
+  __testResetAlertsModel();
   initTimelineModel();
 }
 
@@ -164,32 +171,53 @@ test("getUpcomingAlerts respects window and fake clock", () => {
   const fixed = Date.parse("2026-06-10T12:00:00");
   __testSetNowMs(fixed);
 
-  createEvent({
+  const soon = createEvent({
     title: "Soon",
     body: "a",
-    startTime: buildStartTimeIso("2026-06-10", "12:30"),
-    alerts: [{ time: new Date(fixed + 5 * 60_000).toISOString(), kind: "popup" }]
+    startTime: buildStartTimeIso("2026-06-10", "12:30")
   });
-  createEvent({
+  addAlert(
+    createAlert({
+      time: "12:30",
+      text: "Soon",
+      date: "2026-06-10",
+      timelineEntryId: soon.id,
+      priority: 0
+    })
+  );
+
+  const later = createEvent({
     title: "Later",
     body: "b",
-    startTime: buildStartTimeIso("2026-06-11", "09:00"),
-    alerts: [{ time: new Date(fixed + 2 * 60 * 60_000).toISOString(), kind: "popup" }]
+    startTime: buildStartTimeIso("2026-06-11", "09:00")
   });
-  createEvent({
+  addAlert(
+    createAlert({
+      time: "09:00",
+      text: "Later",
+      date: "2026-06-11",
+      timelineEntryId: later.id,
+      priority: 0
+    })
+  );
+
+  const dismissed = createEvent({
     title: "Dismissed",
     body: "c",
-    startTime: buildStartTimeIso("2026-06-10", "13:00"),
-    alerts: [
-      {
-        time: new Date(fixed + 10 * 60_000).toISOString(),
-        kind: "popup",
-        dismissed: true
-      }
-    ]
+    startTime: buildStartTimeIso("2026-06-10", "13:00")
   });
+  const dismissedAlert = addAlert(
+    createAlert({
+      time: "13:00",
+      text: "Dismissed",
+      date: "2026-06-10",
+      timelineEntryId: dismissed.id,
+      priority: 0
+    })
+  );
+  dismissAlert(dismissedAlert.id);
 
-  const rows = getUpcomingAlerts(20, fixed);
+  const rows = getUpcomingAlerts(120, fixed);
   assert.equal(
     rows.filter((r) => r.event.title === "Soon").length,
     1,

@@ -195,11 +195,16 @@ type Priority = 0 | 1 | 2 | 3;
 // 3 = critical (must not be missed)
 
 interface Alert {
-  time: string;         // ISO 8601 datetime string
+  time: string;         // ISO 8601 datetime string (event-local time for linked alerts)
   kind: "popup" | "sound";
-  triggered: boolean;   // true once the alert has fired
+  triggered: boolean;   // true when all scheduled phases have fired (derived from firedPhases in the linked store)
   dismissed: boolean;   // true once the user has dismissed it
 }
+
+// Runtime (Milestone 2.2): authoritative alert records live in `inkling-alerts-v1`
+// (`src/calendar/alerts/alertsModel.js`), linked to timeline events via `timelineEntryId`.
+// Priority drives multi-phase lead times (e.g. CRITICAL: 60/30/10/5/0 min before event time).
+// `Event.alerts[]` may hold optional/link fields; the separate alerts store is source of truth.
 
 interface AIMetadata {
   summary?: string;                       // Short AI-generated sentence summarizing the event
@@ -234,7 +239,7 @@ interface Event {
 - `endTime`: If provided, must be after `startTime`. Validated on write. Null is allowed.
 - `category`: Must be one of the defined Category literals. Defaults to `"personal"` if not supplied.
 - `priority`: Must be 0, 1, 2, or 3. Defaults to 1.
-- `alerts`: Array may be empty. Each alert's `time` must be before `endTime` (or `startTime` if `endTime` is null).
+- `alerts`: Array may be empty on the Event object (optional). Runtime alerts are stored in `inkling-alerts-v1` and linked by `timelineEntryId`. When present on Event, each alert's `time` must be before `endTime` (or `startTime` if `endTime` is null).
 - `createdAt`: Set by `timelineModel.js` on `createEvent()`. Never overwritten.
 - `updatedAt`: Set by `timelineModel.js` on every mutation. Never manually set by callers.
 
@@ -783,36 +788,40 @@ When the user is in 2D mode and navigates to a date, the 3D scene's internal foc
 ### 7.1 Architecture
 
 The Alerts system consists of three parts:
-- **Storage:** Alert data lives inside `Event` objects in the timeline model.
-- **Scheduler:** `Scheduler.js` manages timers and fires alert events.
+- **Storage:** Authoritative alert records in `inkling-alerts-v1` (`src/calendar/alerts/alertsModel.js`), each linked to a timeline event via `timelineEntryId`. `Event.alerts[]` on the timeline is optional/link-only — not the runtime source of truth.
+- **Scheduler:** `alertsScheduler.js` manages a single `setTimeout` to the soonest trigger (B3: plus `visibilitychange` recompute on wake; no active 15s polling).
 - **UI:** The Alerts dropdown and badge in the top bar.
+
+**Multi-phase triggers:** Alert priority selects lead-time phases before the event time (e.g. CRITICAL: 60, 30, 10, 5, and 0 minutes). Each phase fires once; `firedPhases[]` deduplicates. `triggered` means all phases for that alert have fired.
 
 ### 7.2 Scheduler
 
-`Scheduler.js` is initialized on app start. It does not use `setInterval` polling; instead, it calculates the time until the next upcoming alert and sets a single `setTimeout`. When that timeout fires, it processes the alert and schedules the next one. This is more battery-efficient than polling.
+`alertsScheduler.js` subscribes on the canonical event bus (`src/utils/EventBus.js`) to `initialized`, `eventCreated`, `eventUpdated`, and `eventDeleted`. It does not use `setInterval` polling while the app is active; it arms one `setTimeout` to the soonest due phase (overflow-clamped). On `visibilitychange` → visible, it recomputes and processes due triggers (mobile backgrounding safety net).
 
 **Scheduler logic:**
 
 ```
-On init or on any timeline mutation:
-  1. Call timelineModel.getUpcomingAlerts(withinMinutes: 60 * 24 * 7)
-  2. Find the soonest un-triggered, un-dismissed alert
+On initialized or timeline mutation (bus):
+  1. Call alertsModel.getUpcomingAlerts (7-day horizon)
+  2. Find the soonest un-fired phase within the 90s catch window
   3. clearTimeout(currentTimer)
-  4. setTimeout(() => fireAlert(event, alert), msUntilAlert)
+  4. setTimeout(() => fire phase, msUntil)  // clamped; overflow → max delay then re-arm
 ```
 
 **On alert fire:**
-1. Mark `alert.triggered = true` on the event via `updateEvent()`.
-2. Emit `alertTriggered` on the event bus.
-3. Show a non-blocking notification (popup or sound per `alert.kind`).
-4. If Inkling is open, Inkling responds with a summary.
-5. Re-schedule for the next upcoming alert.
+1. Mark the phase in `firedPhases[]` via `markAlertPhaseFired()` (persisted in `inkling-alerts-v1` with storage guards).
+2. Emit `alertTriggered { event, alert }` on the canonical event bus (resolve `event` via `timelineEntryId`).
+3. Show notification per `alert.kind` (popup vs sound); transitional `inkling:alert-fired` on document until 2.3 UI migration.
+4. Re-arm for the next upcoming phase.
 
 **Snooze:**
-The user can snooze an alert for 5, 10, or 30 minutes. Snoozing adds a new `Alert` entry to the event's `alerts` array with a `time` offset from now. The original alert remains marked as triggered.
+Snooze (5, 10, or 30 minutes) sets `snoozeFireAt` on the alert record — an additional phase fires at that time. Prior fired phases remain recorded.
 
 **Dismiss:**
-Sets `alert.dismissed = true` on the event via `updateEvent()`. The alert no longer appears in the Alerts dropdown.
+Sets `dismissed: true` on the alert record. The alert no longer schedules or appears in upcoming lists.
+
+**Delete:**
+On `eventDeleted`, alerts with matching `timelineEntryId` are removed from `inkling-alerts-v1`.
 
 ### 7.3 Alerts Dropdown UI
 
@@ -841,7 +850,7 @@ When `alert.kind === "popup"`, a toast notification appears in the top-right cor
 
 ### 7.6 Missed Alerts
 
-If the app is closed when an alert would have fired, the next time the app opens, the Scheduler detects alerts with `triggered = false` and `time < now`. These are marked as "missed" and shown in a "Missed Alerts" section at the top of the Alerts dropdown.
+If the app is closed when an alert would have fired, the next time the app opens, the Scheduler classifies phases with `fireAt` more than 90 seconds in the past (beyond the catch window) and not in `firedPhases` as **missed** — surfaced in the Alerts dropdown, not fired late.
 
 ---
 

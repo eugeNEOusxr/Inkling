@@ -17,6 +17,11 @@ import {
   createCalendarStateFromSaved,
   createCalendarState
 } from "../calendar/calendarState.js";
+import {
+  getUpcomingAlerts as getAlertsEngineUpcoming,
+  isAlertTriggered,
+  SCHEDULE_HORIZON_MS
+} from "../calendar/alerts/alertsModel.js";
 
 export const STORAGE_KEY = "inkling-timeline-v1";
 /** §3.4 — one-way latch: once true, starter never returns. */
@@ -1771,36 +1776,62 @@ export function getEventsForYear(year) {
 }
 
 /**
- * Upcoming alerts from embedded `Event.alerts[]` on timeline events (§3.2).
+ * @param {string} id
+ * @returns {StoredTimelineEvent | null}
+ */
+export function getEventById(id) {
+  ensureInitialized();
+  const event = _events.find((e) => e.id === id);
+  if (!event) return null;
+  return {
+    ...event,
+    alerts: [...(event.alerts ?? [])],
+    _wwRender: event._wwRender ? { ...event._wwRender } : undefined
+  };
+}
+
+/**
+ * Upcoming alerts — delegates to authoritative `alertsModel` (§7.2 / 2.2.2).
+ * `Event.alerts[]` is optional; `inkling-alerts-v1` linked by `timelineEntryId` is canonical.
  *
- * **Alert boundary (Phase 2):** runtime alert records, scheduler, and the Alerts
- * dropdown use `src/calendar/alerts/alertsModel.js` (`inkling-alerts-v1`).
- * `_wwRender.alertId` links a timeline row to that store but does not auto-populate
- * `event.alerts[]` — sync belongs in Phase 2 / alert attach pipeline.
- *
- * @param {number} [withinMinutes=10080] window from `now` (default 7 days, §7.2 horizon)
+ * @param {number} [withinMinutes=10080] window from `now` (default 7 days)
  * @param {number} [now] override clock (tests)
- * @returns {{ event: StoredTimelineEvent, alert: { time: string, kind: "popup"|"sound", triggered?: boolean, dismissed?: boolean } }[]} new array
+ * @returns {{ event: StoredTimelineEvent, alert: { time: string, kind: "popup"|"sound", triggered?: boolean, dismissed?: boolean }, triggerAt: number }[]} new array
  */
 export function getUpcomingAlerts(withinMinutes = 7 * 24 * 60, now = readNowMs()) {
   ensureInitialized();
-  const horizon = now + withinMinutes * 60 * 1000;
-  /** @type {{ event: StoredTimelineEvent, alert: { time: string, kind: "popup"|"sound", triggered?: boolean, dismissed?: boolean } }[]} */
-  const out = [];
-  for (const event of _events) {
-    for (const alert of event.alerts ?? []) {
-      const a = /** @type {Record<string, unknown>} */ (alert);
-      if (a.triggered === true || a.dismissed === true) continue;
-      const t = Date.parse(String(alert.time));
-      if (Number.isFinite(t) && t >= now && t <= horizon) {
-        out.push({
-          event: { ...event, alerts: [...(event.alerts ?? [])] },
-          alert: { ...alert }
-        });
-      }
-    }
-  }
-  return out.sort((a, b) => Date.parse(a.alert.time) - Date.parse(b.alert.time));
+  const withinMs = Math.min(withinMinutes * 60 * 1000, SCHEDULE_HORIZON_MS);
+  const rows = getAlertsEngineUpcoming(now, { withinMs });
+
+  return rows.map(({ alert, triggerAt }) => {
+    const linked = alert.timelineEntryId ? getEventById(alert.timelineEntryId) : null;
+    const event =
+      linked ??
+      /** @type {StoredTimelineEvent} */ ({
+        id: alert.timelineEntryId ?? alert.id,
+        type: "note",
+        title: alert.text,
+        body: alert.text,
+        startTime: new Date(triggerAt).toISOString(),
+        endTime: null,
+        category: alert.category,
+        priority: alert.priority,
+        alerts: [],
+        createdAt: new Date(alert.createdAt).toISOString(),
+        updatedAt: new Date(alert.createdAt).toISOString()
+      });
+
+    return {
+      event,
+      alert: {
+        time: new Date(triggerAt).toISOString(),
+        kind: alert.kind,
+        triggered: isAlertTriggered(alert),
+        dismissed: alert.dismissed
+      },
+      triggerAt
+    };
+  });
 }
 
 /**

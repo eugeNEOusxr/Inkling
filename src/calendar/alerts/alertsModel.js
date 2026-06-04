@@ -1,10 +1,25 @@
 /**
- * Inkling + WordWeaver alert records (localStorage).
+ * Authoritative alerts engine (§7.1 Option B — Milestone 2.2).
+ * Persisted in `inkling-alerts-v1`, linked to timeline rows via `timelineEntryId`.
+ * `Event.alerts[]` on the timeline is optional/link-only; this store is source of truth.
  */
 
-const STORAGE_KEY = "inkling-alerts-v1";
+import * as canonicalBus from "../../utils/EventBus.js";
+
+export const STORAGE_KEY = "inkling-alerts-v1";
+export const SCHEDULE_HORIZON_MS = 7 * 24 * 60 * 60 * 1000;
+export const BADGE_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** Recent-late window: triggers within this many ms after `fireAt` still fire (not missed). */
+export const CATCH_WINDOW_MS = 90_000;
+export const SNOOZE_MINUTES_OPTIONS = [5, 10, 30];
+
+const STORAGE_WARN_BYTES = 4.5 * 1024 * 1024;
+const STORAGE_FULL_BYTES = 4.9 * 1024 * 1024;
+const MAX_SET_TIMEOUT_MS = 2_147_483_647 - 60_000;
 
 /** @typedef {{ alertId: string, fireAt: number, leadMinutes: number, phase: string }} ScheduledTrigger */
+
+/** @typedef {"popup"|"sound"} AlertKind */
 
 export const AlertTypes = {
   HEALTH: "health",
@@ -27,24 +42,151 @@ export const AlertPriority = {
   LOW: 0
 };
 
-/** @typedef {{
+/**
+ * @typedef {{
  *   id: string,
  *   time: string,
  *   text: string,
  *   category: string,
  *   priority: number,
+ *   kind: AlertKind,
  *   createdAt: number,
  *   dismissed: boolean,
  *   date?: string,
  *   timelineEntryId?: string,
- *   firedPhases?: string[]
- * }} AlertRecord */
+ *   firedPhases?: string[],
+ *   snoozeFireAt?: number
+ * }} AlertRecord
+ */
+
+let _storageWarningEmitted = false;
+/** @type {"ok"|"warn"|"full"|null} */
+let __testStorageGuardOverride = null;
+
+function isAlertsDevLogEnabled() {
+  if (typeof process !== "undefined") {
+    const env = process.env?.NODE_ENV;
+    if (env === "production" || env === "test") return false;
+  }
+  if (typeof import.meta !== "undefined" && import.meta.env?.PROD) return false;
+  return true;
+}
 
 /**
- * @param {{ time: string, text: string, category?: string, priority?: number, date?: string, timelineEntryId?: string }} fields
+ * @param {...unknown} args
+ */
+function devLogAlerts(...args) {
+  if (!isAlertsDevLogEnabled()) return;
+  console.warn("[alertsModel]", ...args);
+}
+
+/**
+ * @param {string} json
+ * @returns {number}
+ */
+function measureJsonBytes(json) {
+  if (typeof TextEncoder !== "undefined") {
+    return new TextEncoder().encode(json).length;
+  }
+  return json.length * 2;
+}
+
+/**
+ * @param {AlertRecord[]} alerts
+ * @returns {{ json: string, bytes: number, status: "ok"|"warn"|"full" }}
+ */
+function serializeAlertsForStorage(alerts) {
+  const json = JSON.stringify(alerts);
+  const bytes = measureJsonBytes(json);
+  if (__testStorageGuardOverride) {
+    return { json, bytes, status: __testStorageGuardOverride };
+  }
+  let status = /** @type {"ok"|"warn"|"full"} */ ("ok");
+  if (bytes >= STORAGE_FULL_BYTES) status = "full";
+  else if (bytes >= STORAGE_WARN_BYTES) status = "warn";
+  return { json, bytes, status };
+}
+
+/**
+ * @param {AlertRecord[]} alerts
+ * @param {{ silent?: boolean }} [opts]
+ * @returns {boolean}
+ */
+function writeAlertsStore(alerts, opts = {}) {
+  const { json, bytes, status } = serializeAlertsForStorage(alerts);
+
+  if (status === "warn") {
+    if (!_storageWarningEmitted && !opts.silent) {
+      canonicalBus.emit("storageWarning", { usedBytes: bytes });
+      _storageWarningEmitted = true;
+      devLogAlerts("storageWarning", { usedBytes: bytes });
+    }
+  } else if (!opts.silent) {
+    _storageWarningEmitted = false;
+  }
+
+  if (status === "full") {
+    if (!opts.silent) {
+      canonicalBus.emit("storageFull", { usedBytes: bytes });
+      devLogAlerts("storageFull (estimate)", { usedBytes: bytes });
+    }
+    return false;
+  }
+
+  try {
+    localStorage.setItem(STORAGE_KEY, json);
+    return true;
+  } catch (err) {
+    canonicalBus.emit("storageFull", { usedBytes: bytes, error: String(err) });
+    devLogAlerts("storageFull (quota)", { usedBytes: bytes, err });
+    return false;
+  }
+}
+
+/**
+ * @returns {AlertRecord[]}
+ */
+export function captureAlertsSnapshot() {
+  return loadAlerts().map((a) => ({
+    ...a,
+    firedPhases: [...(a.firedPhases ?? [])]
+  }));
+}
+
+/**
+ * @param {AlertRecord[]} snapshot
+ */
+function restoreAlertsSnapshot(snapshot) {
+  writeAlertsStore(snapshot, { silent: true });
+}
+
+/**
+ * @param {string} category
+ * @param {number} priority
+ * @returns {AlertKind}
+ */
+export function defaultKindForAlert(category, priority) {
+  void category;
+  if (priority >= AlertPriority.HIGH) return "sound";
+  return "popup";
+}
+
+/**
+ * @param {AlertRecord} alert
+ * @returns {boolean} true when every scheduled phase has fired
+ */
+export function isAlertTriggered(alert) {
+  const phases = buildScheduleTriggers(alert).map((t) => t.phase);
+  if (!phases.length) return false;
+  const fired = new Set(alert.firedPhases ?? []);
+  return phases.every((p) => fired.has(p));
+}
+
+/**
+ * @param {{ time: string, text: string, category?: string, priority?: number, kind?: AlertKind, date?: string, timelineEntryId?: string }} fields
  * @returns {AlertRecord}
  */
-export function createAlert({ time, text, category, priority, date, timelineEntryId }) {
+export function createAlert({ time, text, category, priority, kind, date, timelineEntryId }) {
   const cat = String(category ?? "reminder").toLowerCase().trim();
   const pri = priority ?? getPriorityForCategory(cat);
   return {
@@ -53,6 +195,7 @@ export function createAlert({ time, text, category, priority, date, timelineEntr
     text: String(text ?? "").trim(),
     category: cat,
     priority: pri,
+    kind: kind ?? defaultKindForAlert(cat, pri),
     createdAt: Date.now(),
     dismissed: false,
     date: date ?? todayDateString(),
@@ -61,10 +204,6 @@ export function createAlert({ time, text, category, priority, date, timelineEntr
   };
 }
 
-/**
- * @param {string} category
- * @returns {number}
- */
 /**
  * @param {number} priority
  * @returns {number[]}
@@ -94,7 +233,8 @@ export function buildScheduleTriggers(alert, referenceDate = alert.date ?? today
   const base = new Date(y, m - 1, d, Number(hh), Number(mm), 0, 0).getTime();
   const leads = getLeadMinutesForPriority(alert.priority);
 
-  return leads.map((leadMinutes) => {
+  /** @type {ScheduledTrigger[]} */
+  const triggers = leads.map((leadMinutes) => {
     const phase = leadMinutes === 0 ? "at_time" : `before_${leadMinutes}`;
     return {
       alertId: alert.id,
@@ -103,6 +243,17 @@ export function buildScheduleTriggers(alert, referenceDate = alert.date ?? today
       phase
     };
   });
+
+  if (alert.snoozeFireAt) {
+    triggers.push({
+      alertId: alert.id,
+      fireAt: alert.snoozeFireAt,
+      leadMinutes: 0,
+      phase: `snooze_${alert.snoozeFireAt}`
+    });
+  }
+
+  return triggers;
 }
 
 export function getPriorityForCategory(category) {
@@ -111,15 +262,12 @@ export function getPriorityForCategory(category) {
     case "appointment":
     case "deadline":
       return AlertPriority.CRITICAL;
-
     case "study":
     case "work":
       return AlertPriority.HIGH;
-
     case "finance":
     case "errand":
       return AlertPriority.NORMAL;
-
     case "personal":
     case "creative":
     default:
@@ -141,17 +289,26 @@ export function todayDateString() {
  */
 function normalizeAlert(raw) {
   const category = String(raw.category ?? "reminder").toLowerCase();
+  const priority = Number.isFinite(raw.priority)
+    ? Number(raw.priority)
+    : getPriorityForCategory(category);
+  const kind =
+    raw.kind === "sound" || raw.kind === "popup"
+      ? raw.kind
+      : defaultKindForAlert(category, priority);
   return {
     id: String(raw.id ?? crypto.randomUUID()),
     time: String(raw.time ?? "09:00"),
     text: String(raw.text ?? "").trim(),
     category,
-    priority: Number.isFinite(raw.priority) ? Number(raw.priority) : getPriorityForCategory(category),
+    priority,
+    kind,
     createdAt: Number(raw.createdAt) || Date.now(),
     dismissed: Boolean(raw.dismissed),
     date: raw.date ?? todayDateString(),
     timelineEntryId: raw.timelineEntryId,
-    firedPhases: Array.isArray(raw.firedPhases) ? [...raw.firedPhases] : []
+    firedPhases: Array.isArray(raw.firedPhases) ? [...raw.firedPhases] : [],
+    snoozeFireAt: Number.isFinite(raw.snoozeFireAt) ? Number(raw.snoozeFireAt) : undefined
   };
 }
 
@@ -172,14 +329,27 @@ export function loadAlerts() {
 
 /**
  * @param {AlertRecord[]} alerts
+ * @param {AlertRecord[] | null} [rollbackSnapshot]
+ * @returns {boolean}
  */
-export function saveAlerts(alerts) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(alerts));
-  } catch (err) {
-    console.warn("[alertsModel] save failed", err);
+export function saveAlerts(alerts, rollbackSnapshot = null) {
+  const normalized = alerts.map((a) => normalizeAlert(a));
+  if (!writeAlertsStore(normalized)) {
+    if (rollbackSnapshot) restoreAlertsSnapshot(rollbackSnapshot);
+    devLogAlerts("rollback saveAlerts");
+    return false;
   }
-  document.dispatchEvent(new CustomEvent("inkling:alerts-updated", { detail: { alerts } }));
+  notifyAlertsUpdated(normalized);
+  return true;
+}
+
+/**
+ * @param {AlertRecord[]} alerts
+ */
+function notifyAlertsUpdated(alerts) {
+  if (typeof document !== "undefined") {
+    document.dispatchEvent(new CustomEvent("inkling:alerts-updated", { detail: { alerts } }));
+  }
 }
 
 /**
@@ -187,10 +357,13 @@ export function saveAlerts(alerts) {
  * @returns {AlertRecord}
  */
 export function addAlert(alert) {
+  const snapshot = captureAlertsSnapshot();
   const alerts = loadAlerts();
   const normalized = normalizeAlert(alert);
   alerts.push(normalized);
-  saveAlerts(alerts);
+  if (!saveAlerts(alerts, snapshot)) {
+    throw new Error("Could not persist alert (storage full).");
+  }
   return normalized;
 }
 
@@ -199,27 +372,70 @@ export function addAlert(alert) {
  * @returns {AlertRecord | null}
  */
 export function dismissAlert(id) {
+  const snapshot = captureAlertsSnapshot();
   const alerts = loadAlerts();
   const idx = alerts.findIndex((a) => a.id === id);
   if (idx < 0) return null;
   alerts[idx] = { ...alerts[idx], dismissed: true };
-  saveAlerts(alerts);
+  if (!saveAlerts(alerts, snapshot)) return null;
+  return alerts[idx];
+}
+
+/**
+ * @param {string} id
+ * @param {number} minutes
+ * @param {number} [now]
+ * @returns {AlertRecord | null}
+ */
+export function snoozeAlert(id, minutes, now = Date.now()) {
+  const snapshot = captureAlertsSnapshot();
+  const alerts = loadAlerts();
+  const idx = alerts.findIndex((a) => a.id === id);
+  if (idx < 0) return null;
+  const fireAt = now + minutes * 60 * 1000;
+  alerts[idx] = { ...alerts[idx], snoozeFireAt: fireAt };
+  if (!saveAlerts(alerts, snapshot)) return null;
   return alerts[idx];
 }
 
 /**
  * @param {string} id
  * @param {string} phase
+ * @returns {boolean}
  */
 export function markAlertPhaseFired(id, phase) {
+  const snapshot = captureAlertsSnapshot();
   const alerts = loadAlerts();
   const idx = alerts.findIndex((a) => a.id === id);
-  if (idx < 0) return;
+  if (idx < 0) return false;
   const fired = new Set(alerts[idx].firedPhases ?? []);
-  if (fired.has(phase)) return;
+  if (fired.has(phase)) return true;
   fired.add(phase);
   alerts[idx] = { ...alerts[idx], firedPhases: [...fired] };
-  saveAlerts(alerts);
+  if (!saveAlerts(alerts, snapshot)) return false;
+  return true;
+}
+
+/**
+ * @param {string} timelineEntryId
+ * @returns {number} removed count
+ */
+export function removeAlertsForEntry(timelineEntryId) {
+  const snapshot = captureAlertsSnapshot();
+  const id = String(timelineEntryId);
+  const alerts = loadAlerts();
+  const next = alerts.filter((a) => a.timelineEntryId !== id);
+  if (next.length === alerts.length) return 0;
+  if (!saveAlerts(next, snapshot)) return 0;
+  return alerts.length - next.length;
+}
+
+/**
+ * @param {string} timelineEntryId
+ * @returns {AlertRecord | undefined}
+ */
+export function findAlertByTimelineEntryId(timelineEntryId) {
+  return loadAlerts().find((a) => a.timelineEntryId === timelineEntryId && !a.dismissed);
 }
 
 /**
@@ -232,22 +448,63 @@ export function getActiveAlerts() {
 }
 
 /**
- * Badge count: active alerts not yet fully fired at time.
+ * @param {AlertRecord} alert
+ * @param {number} now
+ * @param {number} horizonEnd
+ * @returns {ScheduledTrigger | null}
+ */
+export function getNextUnfiredTrigger(alert, now, horizonEnd) {
+  const fired = new Set(alert.firedPhases ?? []);
+  let best = null;
+  for (const trigger of buildScheduleTriggers(alert)) {
+    if (fired.has(trigger.phase)) continue;
+    if (trigger.fireAt > horizonEnd) continue;
+    if (trigger.fireAt < now - CATCH_WINDOW_MS) continue;
+    if (!best || trigger.fireAt < best.fireAt) best = trigger;
+  }
+  return best;
+}
+
+/**
+ * @param {number} [now]
+ * @returns {{ alert: AlertRecord, trigger: ScheduledTrigger, triggerAt: number }[]}
+ */
+export function getMissedAlerts(now = Date.now()) {
+  /** @type {{ alert: AlertRecord, trigger: ScheduledTrigger, triggerAt: number }[]} */
+  const missed = [];
+  for (const alert of loadAlerts().filter((a) => !a.dismissed)) {
+    const fired = new Set(alert.firedPhases ?? []);
+    for (const trigger of buildScheduleTriggers(alert)) {
+      if (fired.has(trigger.phase)) continue;
+      if (trigger.fireAt >= now - CATCH_WINDOW_MS) continue;
+      if (trigger.fireAt < now - CATCH_WINDOW_MS) {
+        missed.push({ alert, trigger, triggerAt: trigger.fireAt });
+      }
+    }
+  }
+  return missed.sort((a, b) => a.triggerAt - b.triggerAt);
+}
+
+/**
+ * Badge count: upcoming un-dismissed within 24h (§7.3).
+ * @param {number} [now]
  * @returns {number}
  */
-export function getActiveAlertCount() {
-  return getActiveAlerts().length;
+export function getBadgeAlertCount(now = Date.now()) {
+  return getUpcomingAlerts(now, { withinMs: BADGE_WINDOW_MS }).length;
 }
 
 /**
  * @returns {number}
  */
 export function syncAlertsBadge() {
-  const count = getActiveAlertCount();
-  document.querySelectorAll("[data-inkling-alerts-badge]").forEach((el) => {
-    el.textContent = String(count);
-    el.classList.toggle("hidden", count === 0);
-  });
+  const count = getBadgeAlertCount();
+  if (typeof document !== "undefined") {
+    document.querySelectorAll("[data-inkling-alerts-badge]").forEach((el) => {
+      el.textContent = String(count);
+      el.classList.toggle("hidden", count === 0);
+    });
+  }
   return count;
 }
 
@@ -256,12 +513,16 @@ export function syncAlertsBadge() {
  * @returns {AlertRecord}
  */
 export function createAlertFromTimelineEntry(entry) {
+  const existing = findAlertByTimelineEntryId(String(entry.id));
+  if (existing) return existing;
+
   const category = String(entry.category ?? "default").toLowerCase();
   const alert = createAlert({
     time: entry.time,
     text: entry.text || entry.label,
     category: category === "default" ? "reminder" : category,
-    timelineEntryId: entry.id
+    timelineEntryId: String(entry.id),
+    date: entry.date
   });
   return addAlert(alert);
 }
@@ -302,23 +563,54 @@ export function getTimeUntil(alertTime) {
  * @returns {number | null}
  */
 export function getNextTriggerMs(alert, now = Date.now()) {
-  const triggers = buildScheduleTriggers(alert);
-  const upcoming = triggers.filter((t) => t.fireAt >= now - 60_000);
-  if (!upcoming.length) return null;
-  return Math.min(...upcoming.map((t) => t.fireAt));
+  const trigger = getNextUnfiredTrigger(alert, now, now + SCHEDULE_HORIZON_MS);
+  return trigger?.fireAt ?? null;
 }
 
 /**
- * Upcoming alerts with next trigger timestamp, sorted soonest first.
+ * Canonical upcoming-alerts read (§7.2 / 2.2.2).
  * @param {number} [now]
- * @returns {{ alert: AlertRecord, triggerAt: number }[]}
+ * @param {{ withinMs?: number }} [opts] default 7-day scheduler horizon
+ * @returns {{ alert: AlertRecord, triggerAt: number, trigger: ScheduledTrigger }[]}
  */
-export function getUpcomingAlerts(now = Date.now()) {
-  return getActiveAlerts()
-    .map((alert) => ({
-      alert,
-      triggerAt: getNextTriggerMs(alert, now)
-    }))
-    .filter((row) => row.triggerAt != null)
-    .sort((a, b) => a.triggerAt - b.triggerAt);
+export function getUpcomingAlerts(now = Date.now(), opts = {}) {
+  const withinMs = opts.withinMs ?? SCHEDULE_HORIZON_MS;
+  const horizonEnd = now + withinMs;
+  /** @type {{ alert: AlertRecord, triggerAt: number, trigger: ScheduledTrigger }[]} */
+  const rows = [];
+
+  for (const alert of getActiveAlerts()) {
+    const trigger = getNextUnfiredTrigger(alert, now, horizonEnd);
+    if (trigger) {
+      rows.push({ alert, triggerAt: trigger.fireAt, trigger });
+    }
+  }
+
+  return rows.sort((a, b) => a.triggerAt - b.triggerAt);
+}
+
+/**
+ * Clamp delay for `setTimeout` (§7.2 overflow).
+ * @param {number} msUntil
+ * @returns {number}
+ */
+export function clampSchedulerDelayMs(msUntil) {
+  if (msUntil <= 0) return 0;
+  if (msUntil > MAX_SET_TIMEOUT_MS) return MAX_SET_TIMEOUT_MS;
+  return msUntil;
+}
+
+/** @param {"ok"|"warn"|"full"|null} status */
+export function __testSetAlertsStorageGuardOverride(status) {
+  __testStorageGuardOverride = status;
+}
+
+export function __testResetAlertsModel() {
+  _storageWarningEmitted = false;
+  __testStorageGuardOverride = null;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
 }
