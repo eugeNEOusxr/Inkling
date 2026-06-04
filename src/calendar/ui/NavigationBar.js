@@ -1,6 +1,7 @@
 /**
  * Top chrome — Today / Week / Month / Alerts + badge.
  */
+import * as bus from "../../utils/EventBus.js";
 import { syncAlertsBadge } from "../alerts/alertsModel.js";
 import { getAlertsDropdown, openAlertsDropdown } from "../alerts/AlertsDropdown.js";
 import { openPanel } from "./AppLauncher.js";
@@ -45,7 +46,7 @@ function mountViewNavigation(opts) {
   const topBar = document.querySelector(".top-chrome__bar");
   if (!topBar || topBar.querySelector(".inkling-view-nav")) return;
 
-  getAlertsDropdown({ onNavigateToAlert: opts.onNavigateToAlert })._mount();
+  getAlertsDropdown()._mount();
 
   const nav = document.createElement("nav");
   nav.className = "inkling-view-nav";
@@ -108,7 +109,10 @@ function mountViewNavigation(opts) {
   }
 
   syncAlertsBadge();
-  document.addEventListener("inkling:alerts-updated", () => syncAlertsBadge());
+  bus.on("alertTriggered", () => syncAlertsBadge());
+  bus.on("eventUpdated", () => syncAlertsBadge());
+  bus.on("eventDeleted", () => syncAlertsBadge());
+  bus.on("eventCreated", () => syncAlertsBadge());
   document.addEventListener("inkling:alerts-dropdown-toggle", () => {
     const btn = document.getElementById("btn-inkling-alerts");
     const dd = getAlertsDropdown();

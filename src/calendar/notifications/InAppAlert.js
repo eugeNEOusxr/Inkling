@@ -3,6 +3,12 @@ import {
   setPreferredSnoozeDuration,
   snoozeLabel
 } from "./snoozePrefs.js";
+import {
+  dismissAlert,
+  snoozeAlert,
+  SNOOZE_MINUTES_OPTIONS
+} from "../alerts/alertsModel.js";
+import { formatTimelineDisplayTime } from "../../wordweaver/timelineModel.js";
 
 /**
  * In-app alert toasts (app open).
@@ -92,6 +98,65 @@ export class InAppAlert {
     if (!isAlarm) {
       setTimeout(remove, 8000);
     }
+  }
+
+  /**
+   * §7.5 timeline alert toast — snooze/dismiss via alerts engine; auto-hide 30s without dismiss.
+   * @param {{
+   *   alert: import("../alerts/alertsModel.js").AlertRecord,
+   *   trigger?: { leadMinutes?: number }
+   * }} payload
+   */
+  showTimelineAlert({ alert, trigger }) {
+    const lead =
+      trigger?.leadMinutes > 0 ? `${trigger.leadMinutes} min before · ` : "";
+    const time = formatTimelineDisplayTime(alert.time);
+    const title = alert.text;
+    const message = `${lead}${time}`;
+
+    const el = document.createElement("div");
+    el.className = "in-app-alert in-app-alert--reminder";
+
+    const snoozeBtns = SNOOZE_MINUTES_OPTIONS.map(
+      (m) =>
+        `<button type="button" class="in-app-alert-snooze-chip" data-snooze-min="${m}">${m}</button>`
+    ).join("");
+
+    el.innerHTML = `
+      <strong>${escapeHtml(title)}</strong>
+      <p>${escapeHtml(message)}</p>
+      <div class="in-app-alert-snooze" role="group" aria-label="Snooze alert">
+        <span class="in-app-alert-snooze-label">Snooze</span>
+        ${snoozeBtns}
+        <span class="in-app-alert-snooze-unit">min</span>
+      </div>
+      <button type="button" class="in-app-alert-dismiss" aria-label="Dismiss">✕</button>
+    `;
+
+    const remove = () => {
+      el.classList.remove("in-app-alert--visible");
+      setTimeout(() => el.remove(), 400);
+    };
+
+    el.querySelector(".in-app-alert-dismiss")?.addEventListener("click", () => {
+      dismissAlert(alert.id);
+      remove();
+    });
+
+    el.querySelectorAll("[data-snooze-min]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const min = Number(btn.getAttribute("data-snooze-min"));
+        if (Number.isFinite(min)) {
+          snoozeAlert(alert.id, min);
+          remove();
+        }
+      });
+    });
+
+    this.container.appendChild(el);
+    requestAnimationFrame(() => el.classList.add("in-app-alert--visible"));
+
+    setTimeout(remove, 30_000);
   }
 }
 

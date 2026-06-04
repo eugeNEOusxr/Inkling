@@ -399,7 +399,7 @@ body.day-window-open.detail-mode #hour-editor-panel {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 100;
+  z-index: 400;
   pointer-events: none;
   max-width: 360px;
 }

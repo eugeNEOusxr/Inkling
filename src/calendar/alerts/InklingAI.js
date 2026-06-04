@@ -1,3 +1,4 @@
+import * as bus from "../../utils/EventBus.js";
 import {
   getUpcomingAlerts,
   AlertPriority,
@@ -144,7 +145,10 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-document.addEventListener("inkling:navigate-to-alert", (e) => {
-  const alert = e.detail?.alert;
-  if (alert) void navigateToAlert(alert);
+bus.on("alertsOpened", () => {
+  handleSystemEvent({ type: "alertsOpened", alerts: getUpcomingAlerts() });
+});
+
+bus.on("alertTriggered", (payload) => {
+  handleSystemEvent({ type: "alertTriggered", alert: payload?.alert });
 });

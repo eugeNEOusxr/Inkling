@@ -2,7 +2,7 @@ import { getEventsForMonth, getEventsForDate, CategoryColors } from "./timelineM
 import { MonthGrid2D } from "./MonthGrid2D.js";
 import { WeekGrid2D, weekStartForDate } from "./WeekGrid2D.js";
 import { getCalendarMode } from "./calendarMode.js";
-import { onTimelineDataChange } from "../utils/EventBus.js";
+import { onTimelineDataChange, on as onBus } from "../utils/EventBus.js";
 
 const STYLE_ID = "ww-calendar-2d-styles";
 
@@ -384,9 +384,12 @@ export class Calendar2D {
     onTimelineDataChange(() => {
       if (getCalendarMode() === "2d") this._render();
     });
-    window.addEventListener("inkling:alerts-updated", () => {
+    const refreshAlerts = () => {
       if (getCalendarMode() === "2d") this._render();
-    });
+    };
+    onBus("eventUpdated", refreshAlerts);
+    onBus("eventDeleted", refreshAlerts);
+    onBus("alertTriggered", refreshAlerts);
 
     this._render();
   }

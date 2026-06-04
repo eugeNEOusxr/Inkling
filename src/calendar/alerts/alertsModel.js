@@ -339,17 +339,18 @@ export function saveAlerts(alerts, rollbackSnapshot = null) {
     devLogAlerts("rollback saveAlerts");
     return false;
   }
-  notifyAlertsUpdated(normalized);
+  notifyAlertsUpdated();
   return true;
 }
 
 /**
  * @param {AlertRecord[]} alerts
  */
-function notifyAlertsUpdated(alerts) {
-  if (typeof document !== "undefined") {
-    document.dispatchEvent(new CustomEvent("inkling:alerts-updated", { detail: { alerts } }));
-  }
+/**
+ * Notify UI/schedulers that alert data changed (canonical bus — no document shim).
+ */
+function notifyAlertsUpdated() {
+  canonicalBus.emit("eventUpdated", { alertsRefresh: true });
 }
 
 /**
@@ -495,16 +496,25 @@ export function getBadgeAlertCount(now = Date.now()) {
 }
 
 /**
+ * @param {number} count
+ */
+export function renderAlertsBadge(count = getBadgeAlertCount()) {
+  if (typeof document === "undefined") return;
+  const label = count > 9 ? "9+" : String(count);
+  document.querySelectorAll("[data-inkling-alerts-badge]").forEach((el) => {
+    el.textContent = label;
+    el.classList.toggle("hidden", count === 0);
+  });
+}
+
+/**
+ * §7.3 — 24h upcoming count for the top-bar badge.
+ * @param {number} [now]
  * @returns {number}
  */
-export function syncAlertsBadge() {
-  const count = getBadgeAlertCount();
-  if (typeof document !== "undefined") {
-    document.querySelectorAll("[data-inkling-alerts-badge]").forEach((el) => {
-      el.textContent = String(count);
-      el.classList.toggle("hidden", count === 0);
-    });
-  }
+export function syncAlertsBadge(now = Date.now()) {
+  const count = getBadgeAlertCount(now);
+  renderAlertsBadge(count);
   return count;
 }
 
@@ -546,8 +556,7 @@ export function registerAlertFromPayload(payload) {
  * @param {number} alertTime epoch ms
  * @returns {string}
  */
-export function getTimeUntil(alertTime) {
-  const now = Date.now();
+export function getTimeUntil(alertTime, now = Date.now()) {
   const diff = alertTime - now;
 
   if (diff <= 0) return "now";

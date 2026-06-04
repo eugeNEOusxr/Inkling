@@ -5,6 +5,7 @@ import {
   parseIsoDate
 } from "../../wordweaver/timelineModel.js";
 import { loadAlerts } from "../alerts/alertsModel.js";
+import { on as onBus } from "../../utils/EventBus.js";
 import { getWeekView } from "./WeekView.js";
 
 /** @type {MonthView | null} */
@@ -29,9 +30,12 @@ export class MonthView {
     document.addEventListener("timelineUpdated", () => {
       if (this.isOpen()) this.render();
     });
-    document.addEventListener("inkling:alerts-updated", () => {
+    const refreshAlerts = () => {
       if (this.isOpen()) this.render();
-    });
+    };
+    onBus("eventUpdated", refreshAlerts);
+    onBus("eventDeleted", refreshAlerts);
+    onBus("alertTriggered", refreshAlerts);
   }
 
   ensurePanel() {

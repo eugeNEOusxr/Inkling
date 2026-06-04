@@ -42,6 +42,8 @@ import { InklingPanel } from "./ui/InklingPanel.js";
 import { MinimizeDock } from "./ui/MinimizeDock.js";
 import { InklingBottomNav } from "./ui/InklingBottomNav.js";
 import { AlertsPanel } from "./alerts/AlertsPanel.js";
+import { initAlertsUi } from "./alerts/alertsUi.js";
+import { openAlertsDropdown } from "./alerts/AlertsDropdown.js";
 import { mountAlertsNavigation } from "./ui/NavigationBar.js";
 import { startAlertsScheduler } from "./alerts/alertsScheduler.js";
 import { syncAlertsBadge } from "./alerts/alertsModel.js";
@@ -936,6 +938,7 @@ export class CalendarApp {
       }
     });
     mountAlertsNavigation({ onOpenAlerts: () => void this.openAlertsPanel() });
+    initAlertsUi();
     startAlertsScheduler();
     syncAlertsBadge();
   }
@@ -948,7 +951,7 @@ export class CalendarApp {
     }
     await this._closeAllPanelsForSwitch();
     this._closeBottomStage();
-    this.alertsPanel?.open();
+    openAlertsDropdown();
     this.bottomNav?.setActiveTab("alerts");
     document.body.classList.add("inkling-stage-open", "inkling-tab-alerts");
   }

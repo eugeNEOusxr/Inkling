@@ -1,6 +1,6 @@
 /**
  * Alerts scheduler (§7.2 B3): single `setTimeout` to soonest trigger + `visibilitychange` recompute.
- * Emits `alertTriggered` on the canonical bus; transitional `inkling:alert-fired` on document (retire in 2.3).
+ * Emits `alertTriggered` on the canonical bus (§13.2); UI subscribes in 2.3 (`alertsUi` / AlertsDropdown).
  */
 
 import * as bus from "../../utils/EventBus.js";
@@ -79,21 +79,8 @@ function fireAlertTrigger(alert, trigger, now) {
     const payload = { event: event ?? fresh, alert: fresh, trigger, firedAt: now };
     bus.emit("alertTriggered", payload);
 
-    if (fresh.kind === "sound" || fresh.priority >= 2) {
+    if (fresh.kind === "sound") {
       playAlertSound(fresh.priority);
-    }
-
-    if (typeof document !== "undefined") {
-      void import("./InklingAI.js").then(({ handleSystemEvent }) => {
-        handleSystemEvent({ type: "alertTriggered", alert: fresh, trigger });
-      });
-    }
-
-    // Phase 2.3 TODO: retire when AlertsDropdown/InklingAI subscribe to canonical `alertTriggered`.
-    if (typeof document !== "undefined") {
-      document.dispatchEvent(
-        new CustomEvent("inkling:alert-fired", { detail: payload })
-      );
     }
   } finally {
     firing = false;

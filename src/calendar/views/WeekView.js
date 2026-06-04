@@ -7,6 +7,7 @@ import {
   isoFromDate
 } from "../../wordweaver/timelineModel.js";
 import { loadAlerts } from "../alerts/alertsModel.js";
+import { on as onBus } from "../../utils/EventBus.js";
 
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -45,9 +46,12 @@ export class WeekView {
       }
     });
     document.addEventListener("inkling:close-all-panels", () => this.close());
-    document.addEventListener("inkling:alerts-updated", () => {
+    const refreshAlerts = () => {
       if (this.isOpen()) this.render();
-    });
+    };
+    onBus("eventUpdated", refreshAlerts);
+    onBus("eventDeleted", refreshAlerts);
+    onBus("alertTriggered", refreshAlerts);
     document.addEventListener("timelineUpdated", () => {
       if (this.isOpen()) this.render();
     });
