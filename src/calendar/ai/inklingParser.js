@@ -2,6 +2,36 @@
  * Inkling — hybrid intent parser (free phrasing, not rigid commands).
  */
 
+/**
+ * Safe trim only — never drops the first word or token.
+ * @param {string} transcript
+ */
+export function normalizeTranscript(transcript) {
+  return String(transcript ?? "").trim();
+}
+
+/**
+ * Normalize speech-to-text or typed input; preserve the full utterance.
+ * @param {string} text
+ * @returns {{ raw: string, cleaned: string, words: string[] }}
+ */
+export function parseSpeechInput(text) {
+  const raw = String(text ?? "");
+  const cleaned = normalizeTranscript(raw);
+  const words = cleaned ? cleaned.split(/\s+/) : [];
+  return { raw, cleaned, words };
+}
+
+/**
+ * @param {string} text
+ * @param {Date} [ref]
+ */
+export function handleVoiceCommand(text, ref = new Date()) {
+  const parsed = parseSpeechInput(text);
+  const intent = parseInklingMessage(parsed.cleaned, ref);
+  return { ...parsed, intent };
+}
+
 const WEEKDAYS = [
   "sunday",
   "monday",
@@ -21,10 +51,10 @@ const WEEKDAYS = [
  * @param {Date} [ref]
  */
 export function parseInklingMessage(text, ref = new Date()) {
-  const raw = String(text ?? "").trim();
-  if (!raw) return { type: "chat", reply: "Say anything — I’ll help with your calendar." };
+  const { raw, cleaned } = parseSpeechInput(text);
+  if (!cleaned) return { type: "chat", reply: "Say anything — I’ll help with your calendar." };
 
-  const lower = raw.toLowerCase();
+  const lower = cleaned.toLowerCase();
 
   if (/^(hi|hello|hey|thanks|thank you)\b/.test(lower)) {
     return { type: "chat", reply: "Hi — I’m Inkling. Ask what’s on your schedule, or say something like “dentist Friday at 2pm”." };
@@ -53,12 +83,12 @@ export function parseInklingMessage(text, ref = new Date()) {
     return { type: "query_free_time", date, reply: null };
   }
 
-  const proposal = tryProposeSchedule(raw, lower, ref);
+  const proposal = tryProposeSchedule(raw, cleaned, lower, ref);
   if (proposal) {
     return {
       type: "propose_schedule",
       proposal,
-      reply: `I heard: **${proposal.label}**. Add this to your calendar?`
+      reply: `I heard: **${raw}**. Add this to your calendar?`
     };
   }
 
@@ -91,10 +121,11 @@ function matchesFreeTime(lower) {
 
 /**
  * @param {string} raw
+ * @param {string} cleaned
  * @param {string} lower
  * @param {Date} ref
  */
-function tryProposeSchedule(raw, lower, ref) {
+function tryProposeSchedule(raw, cleaned, lower, ref) {
   const hasVerb =
     /\b(add|put|make|create|save|store|schedule|set|book|jot|write|remind|appointment|note)\b/.test(
       lower
@@ -106,8 +137,8 @@ function tryProposeSchedule(raw, lower, ref) {
   const isAppt =
     /\b(appointment|meeting|dentist|doctor|interview|call)\b/.test(lower) && !/\bnote\b/.test(lower);
 
-  let text = extractTitle(raw);
-  if (!text) text = isAppt ? "Appointment" : "Note";
+  const text = cleaned;
+  const label = cleaned;
 
   if (!date) return null;
 
@@ -116,7 +147,10 @@ function tryProposeSchedule(raw, lower, ref) {
     date,
     time: time ?? "09:00",
     text,
-    label: `${text} — ${formatHumanDate(date)} ${formatHumanTime(time ?? "09:00")}`
+    label,
+    raw,
+    cleaned,
+    words: cleaned.split(/\s+/)
   };
 }
 
@@ -144,7 +178,7 @@ function parseTime(lower, ref) {
     return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
   }
 
-  const m12 = lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
+  const m12 = lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
   if (m12) {
     let h = Number(m12[1]) % 12;
     const min = m12[2] ? Number(m12[2]) : 0;

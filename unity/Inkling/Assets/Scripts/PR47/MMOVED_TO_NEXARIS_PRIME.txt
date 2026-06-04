@@ -1,0 +1,5 @@
+PR47 files were moved to:
+C:\Users\eugen\OneDrive\Desktop\Nexaris_Prime\Assets\
+
+Open that Unity project and run:
+PR47 → Setup → Build All PR47 Assets

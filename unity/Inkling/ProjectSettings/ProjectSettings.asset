@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!129 &1
+PlayerSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 28
+  productGUID: 1a2b3c4d5e6f708192a3b4c5d6e7f809
+  companyName: Inkling
+  productName: Inkling
+  defaultScreenOrientation: 4
+  targetDevice: 2
+  useOnDemandResources: 0
+  accelerometerFrequency: 60
+  androidTargetArchitectures: 2
+  AndroidTargetArchitectures: 2
+  AndroidMinSdkVersion: 24
+  AndroidTargetSdkVersion: 0
+  iOSTargetOSVersionString: 13.0
+  activeInputHandler: 2
+  apiCompatibilityLevel: 6
+  apiCompatibilityLevelPerPlatform: {}
+  scriptingBackend:
+    Android: 1
+  managedStrippingLevel:
+    Android: 1
+  incrementalIl2cppBuild:
+    Android: 1

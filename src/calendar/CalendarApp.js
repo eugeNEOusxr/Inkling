@@ -32,7 +32,6 @@ import { NotificationSettings } from "./ui/NotificationSettings.js";
 import { InstallPrompt } from "./ui/InstallPrompt.js";
 import { loadNotificationSettings } from "./notifications/notificationSettings.js";
 import { bootstrapAppearance } from "../theme/applyAppearance.js";
-import { bootstrapAppearance } from "../theme/applyAppearance.js";
 import { iconDay, iconHour, iconBell, iconSettings } from "./ui/IconLibrary.js";
 import { WindowManager } from "./ui/WindowManager.js";
 import { AppLauncher } from "./ui/AppLauncher.js";
@@ -1379,6 +1378,28 @@ export class CalendarApp {
       delta,
       activeWall
     );
+  }
+
+  _saveOverviewBookmark() {
+    this._overviewCameraBookmark = {
+      cameraPosition: this.camera?.position.clone() ?? null,
+      cameraTarget: this.controls?.target.clone() ?? null,
+      timestamp: Date.now()
+    };
+  }
+
+  _restoreOverviewBookmark() {
+    const b = this._overviewCameraBookmark;
+    if (!b) return;
+
+    if (b.cameraPosition && this.camera) {
+      this.camera.position.copy(b.cameraPosition);
+    }
+
+    if (b.cameraTarget && this.controls) {
+      this.controls.target.copy(b.cameraTarget);
+      this.controls.update();
+    }
   }
 
   _frameOverviewCamera(animate) {

@@ -219,12 +219,16 @@ export class NotebookWriterPanel {
   _buildHourStrip() {
     if (!this.hourStripEl) return;
     this.hourStripEl.innerHTML = "";
+    this.hourStripEl.setAttribute("aria-label", "Jump to hour — scroll for noon through midnight");
     for (let h = 0; h < 24; h++) {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "notebook-writer-hour-chip";
       btn.dataset.hour = String(h);
-      btn.textContent = formatHour(h).replace(":00", "");
+      const h12 = h % 12 || 12;
+      const ampm = h < 12 ? "a" : "p";
+      btn.textContent = `${h12}${ampm}`;
+      btn.title = formatHour(h);
       btn.setAttribute("aria-label", `Jump to ${formatHour(h)}`);
       btn.addEventListener("click", () => {
         this.selectHour(String(h), true);

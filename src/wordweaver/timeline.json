@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "time": "08:00",
+    "text": "Wake up",
+    "fontSize": 0.26,
+    "fontWeight": "700",
+    "color": "#e2e8f0"
+  },
+  {
+    "id": 2,
+    "time": "09:30",
+    "text": "Meeting",
+    "fontSize": 0.26,
+    "fontWeight": "700",
+    "color": "#4ade80"
+  },
+  {
+    "id": 3,
+    "time": "12:00",
+    "text": "Lunch",
+    "fontSize": 0.26,
+    "fontWeight": "700",
+    "color": "#fbbf24"
+  }
+]

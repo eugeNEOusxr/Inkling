@@ -47,6 +47,10 @@
       </button>
 
       <p class="auth-hint">Your data is saved to this app server under your account. Use the same email on any device after signing in.</p>
+
+      <p class="auth-forgot">
+        <a href="#" id="auth-skip-login">Continue without signing in</a>
+      </p>
     </form>
   </main>
 
@@ -57,6 +61,12 @@
     import { renderAppearancePalettePicker } from "./src/theme/appearancePaletteUi.js";
     import { applyPaletteToDocument } from "./src/theme/appearancePalettes.js";
     import { saveNotificationSettings } from "./src/calendar/notifications/notificationSettings.js";
+
+    const SKIP_LOGIN_KEY = "inklingSkipLogin";
+
+    if (localStorage.getItem(SKIP_LOGIN_KEY) === "true") {
+      window.location.replace("/index.html");
+    }
 
     const form = document.getElementById("auth-form");
     const emailInput = document.getElementById("auth-email");
@@ -97,6 +107,12 @@
 
     tabSignIn?.addEventListener("click", () => setMode("signin"));
     tabRegister?.addEventListener("click", () => setMode("register"));
+
+    document.getElementById("auth-skip-login")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      localStorage.setItem(SKIP_LOGIN_KEY, "true");
+      window.location.href = "/index.html";
+    });
 
     form?.addEventListener("submit", async (e) => {
       e.preventDefault();

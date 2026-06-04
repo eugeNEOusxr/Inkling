@@ -3,11 +3,24 @@ import { apiFetch, pullCloudBundle } from "./cloudSync.js";
 import { fetchMe } from "./userAccount.js";
 import { applyServerUserToClient } from "./userSettingsSync.js";
 
+const SKIP_LOGIN_KEY = "inklingSkipLogin";
+
+function isLoginSkipped() {
+  try {
+    return localStorage.getItem(SKIP_LOGIN_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Sync guard for standalone auth pages (account-settings, etc.).
  * @returns {boolean}
  */
 export function requireAuth() {
+  if (isLoginSkipped()) {
+    return true;
+  }
   if (!getSession()?.token) {
     window.location.href = "/login.html";
     return false;
@@ -22,6 +35,10 @@ export function requireAuth() {
  */
 export async function requireAuthForApp() {
   if (new URLSearchParams(window.location.search).has("embedded")) {
+    return true;
+  }
+
+  if (isLoginSkipped()) {
     return true;
   }
 

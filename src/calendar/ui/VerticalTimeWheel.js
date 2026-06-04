@@ -52,6 +52,7 @@ export class VerticalTimeWheel {
     viewport.appendChild(this.list);
     viewport.appendChild(padBottom);
     this.root.appendChild(viewport);
+    viewport.setAttribute("title", "Scroll for all times through midnight");
 
     this._highlight = document.createElement("div");
     this._highlight.className = "vertical-time-wheel__highlight";

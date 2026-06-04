@@ -187,11 +187,25 @@ body.inkling-notebook-layout #notebook-writer-panel .notebook-writer-body.panel-
 }
 
 .vertical-time-wheel__viewport {
-  max-height: 140px;
-  overflow-y: auto;
+  max-height: min(320px, 42vh);
+  overflow-y: scroll;
   scroll-snap-type: y mandatory;
   scrollbar-width: thin;
-  scrollbar-color: var(--writer-scroll-thumb-aqua) var(--writer-scroll-track);
+  scrollbar-color: #888 #222;
+  -webkit-overflow-scrolling: touch;
+}
+
+.vertical-time-wheel__viewport::-webkit-scrollbar {
+  width: 10px;
+}
+
+.vertical-time-wheel__viewport::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 6px;
+}
+
+.vertical-time-wheel__viewport::-webkit-scrollbar-track {
+  background: #222;
 }
 
 .vertical-time-wheel__pad {

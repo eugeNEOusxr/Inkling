@@ -1,10 +1,20 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { disposeWeaveMeshes, layoutSegmentWeave } from "./layoutSegmentWeave.js";
 import { getActiveCustomLayout } from "./customLayout.js";
 import { getCameraFrameForLayout } from "./layoutModes.js";
 import { WordWeaverAtomOrbits } from "./WordWeaverAtomOrbits.js";
 import { getActivePalette } from "../theme/appearancePalettes.js";
+import { mountWordWeaverTimeline } from "./WordWeaverTimelineViewport.js";
+import { on, off } from "./EventBus.js";
+
+/** Served from public/environments/ (copied from Meshy export). */
+const WORDWEAVER_ENV_GLB_URL = "/environments/meshy-dark-futuristic.glb";
+const ENV_LAYER = 0;
+const CONTENT_LAYER = 1;
+
+const _envLoader = new GLTFLoader();
 
 /**
  * WordWeaver 3D viewport — spatial thought-weaving with multiple layout modes.
@@ -23,10 +33,13 @@ export class WordWeaverScene {
     this.container.appendChild(this.canvas);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x05060a);
-    this.scene.fog = new THREE.Fog(0x05060a, 10, 28);
+    this.scene.background = null;
+    this.scene.environment = null;
+    this.scene.fog = null;
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 80);
+    this.camera.layers.enable(ENV_LAYER);
+    this.camera.layers.enable(CONTENT_LAYER);
     this.camera.position.set(0, 2.4, 8.2);
     this._cameraHome = this.camera.position.clone();
     this._targetHome = new THREE.Vector3(0, 1.1, 0);
@@ -45,19 +58,32 @@ export class WordWeaverScene {
     this.controls = new OrbitControls(this.camera, this.canvas);
     this.controls.enableDamping = true;
     this.controls.target.copy(this._targetHome);
-    this.controls.maxPolarAngle = Math.PI * 0.52;
-    this.controls.minDistance = 3.5;
-    this.controls.maxDistance = 18;
+    this.controls.maxPolarAngle = Math.PI;
+    this.controls.minDistance = 0.4;
+    this.controls.maxDistance = 80;
+    this.controls.enablePan = true;
 
-    const amb = new THREE.AmbientLight(0x404060, 0.9);
-    const key = new THREE.DirectionalLight(0x7dd3fc, 0.85);
+    const amb = new THREE.AmbientLight(0x8899cc, 1.15);
+    const key = new THREE.DirectionalLight(0xb8e8ff, 1.25);
     key.position.set(4, 8, 6);
-    const rim = new THREE.PointLight(0x4ee6e6, 0.4, 24);
+    const rim = new THREE.PointLight(0x66ffff, 0.85, 32);
     rim.position.set(-3, 4, 2);
+    for (const light of [amb, key, rim]) {
+      light.layers.enable(ENV_LAYER);
+      light.layers.enable(CONTENT_LAYER);
+    }
     this.scene.add(amb, key, rim);
+
+    this._envRoot = new THREE.Group();
+    this._envRoot.name = "wordweaver-glb-environment";
+    this._envRoot.layers.set(ENV_LAYER);
+    this.scene.add(this._envRoot);
+    this._loadEnvironmentGlb();
 
     this.weaveGroup = new THREE.Group();
     this.guideGroup = new THREE.Group();
+    this.weaveGroup.layers.set(CONTENT_LAYER);
+    this.guideGroup.layers.set(CONTENT_LAYER);
     this.scene.add(this.weaveGroup);
     this.scene.add(this.guideGroup);
 
@@ -91,8 +117,73 @@ export class WordWeaverScene {
       this._resizeObserver.observe(container);
     }
     this._resize();
+    this._timelineViewport = mountWordWeaverTimeline({
+      scene: this.scene,
+      camera: this.camera,
+      renderer: this.renderer,
+      controls: this.controls,
+      domElement: this.canvas
+    });
+    this._applyForegroundLayers();
+    this._onTimelineUpdated = () => this._applyForegroundLayers();
+    on("timelineUpdated", this._onTimelineUpdated);
     this._tick = this._tick.bind(this);
     this._raf = requestAnimationFrame(this._tick);
+  }
+
+  _loadEnvironmentGlb() {
+    _envLoader.load(
+      WORDWEAVER_ENV_GLB_URL,
+      (gltf) => {
+        const envScene = gltf.scene;
+        envScene.name = "meshy-dark-futuristic-env";
+        envScene.scale.set(10, 10, 10);
+        envScene.position.set(0, 0, -5);
+        envScene.renderOrder = -9999;
+        envScene.layers.set(ENV_LAYER);
+        envScene.traverse((obj) => {
+          obj.layers.set(ENV_LAYER);
+          if (obj.isMesh) {
+            obj.castShadow = false;
+            obj.receiveShadow = false;
+            if (obj.material) {
+              obj.material.depthWrite = true;
+            }
+          }
+        });
+        this._envRoot.add(envScene);
+        this._envGlb = envScene;
+      },
+      undefined,
+      (err) => {
+        console.warn("[WordWeaverScene] environment GLB failed to load:", err);
+      }
+    );
+  }
+
+  /** Timeline / weave content on layer 1; GLB environment stays on layer 0. */
+  _applyForegroundLayers() {
+    this.weaveGroup?.layers.set(CONTENT_LAYER);
+    this.guideGroup?.layers.set(CONTENT_LAYER);
+    const timelineRoot = this._timelineViewport?.timeline3d?.root;
+    timelineRoot?.layers.set(CONTENT_LAYER);
+    timelineRoot?.traverse((obj) => {
+      if (obj === this._envRoot) return;
+      obj.layers.set(CONTENT_LAYER);
+    });
+  }
+
+  _disposeEnvironmentGlb() {
+    if (!this._envRoot) return;
+    this._envRoot.traverse((obj) => {
+      obj.geometry?.dispose?.();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose?.());
+        else obj.material.dispose?.();
+      }
+    });
+    this._envRoot.clear();
+    this._envGlb = null;
   }
 
   /**
@@ -182,6 +273,8 @@ export class WordWeaverScene {
     this._threadLines = threadLines ?? [];
 
     this._applyCameraFrame(nodeCount);
+    this._removeWeaveBackgroundDate();
+    this._removeGroundPlanes();
 
     if (opts.editGuide && customParams) {
       this.setEditGuide(customParams, true);
@@ -194,26 +287,59 @@ export class WordWeaverScene {
       this._atomOrbits = new WordWeaverAtomOrbits(this.weaveGroup, pickables);
     }
 
+    this._applyForegroundLayers();
     this.controls.update();
 
+    this._entranceMs = 0;
+    this._layoutEntranceMs = 0;
     if (opts.skipEntrance) {
-      this._entranceMs = 0;
-      this._layoutEntranceMs = 0;
-      this.camera.position.copy(this._cameraHome);
-      this.controls.target.copy(this._targetHome);
       this._snapNodesToTargets();
-    } else if (opts.immersive) {
-      this._entranceStart = performance.now();
-      this._entranceMs = 1200;
-      this._layoutEntranceStart = performance.now();
-      this._layoutEntranceMs = 1100;
-      this.camera.position.set(0, 3.4, 15);
-    } else {
-      this._entranceStart = performance.now();
-      this._entranceMs = 700;
-      this._layoutEntranceStart = performance.now();
-      this._layoutEntranceMs = 900;
-      this.camera.position.copy(this._cameraHome).multiplyScalar(1.15);
+    }
+  }
+
+  /** Remove horizontal ground / road planes so the timeline floats in space. */
+  _removeGroundPlanes() {
+    const toRemove = [];
+    this.scene.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const type = obj.userData?.type;
+      if (
+        type === "weave-road" ||
+        type === "timeline-floor" ||
+        type === "ground" ||
+        type === "floor"
+      ) {
+        toRemove.push(obj);
+      }
+    });
+    for (const mesh of toRemove) {
+      mesh.parent?.remove(mesh);
+      mesh.geometry?.dispose?.();
+      if (mesh.material) {
+        if (Array.isArray(mesh.material)) mesh.material.forEach((m) => m.dispose?.());
+        else mesh.material.dispose?.();
+      }
+    }
+  }
+
+  /** Remove large floating segment date header; keep starfield / weave nodes. */
+  _removeWeaveBackgroundDate() {
+    for (let i = this.weaveGroup.children.length - 1; i >= 0; i--) {
+      const group = this.weaveGroup.children[i];
+      if (group.userData?.type !== "weave-header") continue;
+      this.weaveGroup.remove(group);
+      const meshIdx = this._meshes.findIndex((m) => m.getGroup?.() === group);
+      if (meshIdx >= 0) {
+        this._meshes[meshIdx].dispose?.();
+        this._meshes.splice(meshIdx, 1);
+      }
+      group.traverse((obj) => {
+        obj.geometry?.dispose?.();
+        if (obj.material) {
+          if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose?.());
+          else obj.material.dispose?.();
+        }
+      });
     }
   }
 
@@ -224,12 +350,8 @@ export class WordWeaverScene {
     const frame = getCameraFrameForLayout(this._layoutMode, nodeCount);
     this._cameraHome.copy(frame.position);
     this._targetHome.copy(frame.target);
-    this.controls.target.copy(this._targetHome);
-    const span = frame.position.distanceTo(frame.target);
-    this.scene.fog.near = Math.max(6, span * 0.5);
-    this.scene.fog.far = Math.max(22, span * 3.2);
-    this.controls.minDistance = Math.max(2.5, span * 0.35);
-    this.controls.maxDistance = Math.max(14, span * 2.4);
+    this.controls.minDistance = 0.4;
+    this.controls.maxDistance = 80;
   }
 
   _initNodeAnimations() {
@@ -422,7 +544,8 @@ export class WordWeaverScene {
   }
 
   _tick() {
-    const t = this._clock.getElapsedTime();
+    const delta = this._clock.getDelta();
+    const t = this._clock.elapsedTime;
     const now = performance.now();
 
     let layoutEase = 1;
@@ -433,24 +556,12 @@ export class WordWeaverScene {
       if (elapsed >= this._layoutEntranceMs) this._layoutEntranceMs = 0;
     }
 
-    if (this._entranceMs > 0) {
-      const elapsed = now - this._entranceStart;
-      const p = Math.min(1, elapsed / this._entranceMs);
-      const ease = 1 - (1 - p) ** 3;
-      this.camera.position.lerpVectors(
-        new THREE.Vector3(0, 3.4, 15),
-        this._cameraHome,
-        ease
-      );
-      this.controls.target.lerp(this._targetHome, 0.08);
-      if (p >= 1) this._entranceMs = 0;
-    }
-
     if (this._nodeAnims.length) {
       this._updateNodeAnimations(now, layoutEase);
     }
 
     this._atomOrbits?.update(t);
+    this._timelineViewport?.update(delta);
 
     const rotSpeed = this._layoutMode === "constellation" ? 0.05 : 0.08;
     const rotAmp =
@@ -468,6 +579,10 @@ export class WordWeaverScene {
   }
 
   dispose() {
+    if (this._onTimelineUpdated) {
+      off("timelineUpdated", this._onTimelineUpdated);
+      this._onTimelineUpdated = null;
+    }
     cancelAnimationFrame(this._raf);
     window.removeEventListener("resize", this._onResize);
     this.canvas.removeEventListener("pointermove", this._onPointerMove);
@@ -475,6 +590,9 @@ export class WordWeaverScene {
     this._resizeObserver?.disconnect();
     this._atomOrbits?.dispose();
     this._atomOrbits = null;
+    this._timelineViewport?.dispose();
+    this._timelineViewport = null;
+    this._disposeEnvironmentGlb();
     disposeWeaveMeshes(this._meshes);
     this.weaveGroup.clear();
     this.setEditGuide(null, false);

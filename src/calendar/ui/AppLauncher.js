@@ -1,6 +1,16 @@
 import { AppIcon } from "./AppIcon.js";
 
 /**
+ * Open a single Inkling home / layer panel (dispatched to InklingPanel).
+ * @param {string} panelId
+ */
+export function openPanel(panelId) {
+  document.dispatchEvent(
+    new CustomEvent("inkling:open-panel", { detail: { panelId } })
+  );
+}
+
+/**
  * Inkling shell launcher — icons for optional satellite apps (WordWeaver, etc.).
  * Rollback: remove this file and CalendarApp launcher bootstrap hook.
  */
@@ -37,5 +47,10 @@ export class AppLauncher {
 
     container.appendChild(launcher);
     this.el = launcher;
+
+    const startTab = new URLSearchParams(window.location.search).get("tab");
+    if (!startTab) {
+      queueMicrotask(() => openPanel("inkling"));
+    }
   }
 }

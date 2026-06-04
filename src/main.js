@@ -3,6 +3,7 @@ import { CalendarApp } from "./calendar/CalendarApp.js";
 import { requireAuthForApp, signOut } from "./auth/requireAuth.js";
 import { getSession } from "./auth/session.js";
 import { scheduleCloudSync } from "./auth/cloudSync.js";
+import { registerInklingTimelineBridge } from "./wordweaver/InklingTimelineBridge.js";
 
 const embedded = new URLSearchParams(window.location.search).has("embedded");
 if (embedded) {
@@ -34,6 +35,8 @@ const calendarApp = new CalendarApp({
   osShell: !embedded,
   onLocalDataChange: () => scheduleCloudSync()
 });
+
+registerInklingTimelineBridge(calendarApp);
 
 function animate() {
   requestAnimationFrame(animate);

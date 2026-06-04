@@ -76,6 +76,14 @@ export function applyScheduleIntent(state, intent) {
 
   persistCalendarState(state);
 
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(
+      new CustomEvent("inkling:schedule-applied", {
+        detail: { intent: { ...intent, date, time, text } }
+      })
+    );
+  }
+
   return { ok: true, dayId: day.id, intent };
 }
 

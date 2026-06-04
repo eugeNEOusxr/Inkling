@@ -1,0 +1,5 @@
+PR47 files live in the real Inkling Unity project:
+
+C:\Users\eugen\Projects\New folder\Inkling\Assets\
+
+Run PR47 → Setup → Build All PR47 Assets after opening that project in Unity.

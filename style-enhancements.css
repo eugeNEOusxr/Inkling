@@ -2729,6 +2729,219 @@ body.notebook-writer-panel-open .notification-bell-anchor {
   }
 }
 
+/* --- Inkling time-entry panel (48 times + note bar) --- */
+#inkling-time-entry-panel.time-entry-panel,
+.time-entry-panel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  margin: 0 16px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(78, 230, 230, 0.28);
+  background: rgba(8, 12, 22, 0.92);
+  overflow: hidden;
+  max-height: min(50vh, 440px);
+  min-height: 200px;
+  box-sizing: border-box;
+  touch-action: auto;
+  transform: none;
+  position: relative;
+  z-index: 2;
+}
+
+.time-entry-panel__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  max-height: 100%;
+  scrollbar-width: thin;
+  scrollbar-color: #888 #222;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.time-entry-panel__scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.time-entry-panel__scroll::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 6px;
+}
+
+.time-entry-panel__scroll::-webkit-scrollbar-track {
+  background: #222;
+}
+
+.time-entry-list-mount {
+  padding: 6px 8px;
+  min-height: 0;
+}
+
+.time-entry-list-scroll {
+  overflow-y: auto;
+  max-height: 100%;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.time-entry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: min-content;
+}
+
+.time-entry-list__slot {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid rgba(78, 230, 230, 0.2);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.time-entry-list__slot:hover,
+.time-entry-list__slot.is-selected {
+  border-color: rgba(212, 175, 55, 0.55);
+  background: rgba(78, 230, 230, 0.18);
+  color: #f0fdff;
+}
+
+.time-entry-input {
+  flex-shrink: 0;
+  width: 100%;
+  padding: 12px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.4);
+  border-top: 1px solid rgba(51, 65, 85, 0.8);
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+}
+
+.time-entry-input input {
+  width: 100%;
+  padding: 14px;
+  font-size: 1.1rem;
+  border-radius: 10px;
+  border: 1px solid #444;
+  background: #111;
+  color: #fff;
+  box-sizing: border-box;
+  touch-action: manipulation;
+}
+
+.notebook-writer-panel-inner > #inkling-time-entry-panel {
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  #inkling-time-entry-panel.time-entry-panel,
+  .time-entry-panel {
+    margin: 0 8px 8px;
+    max-height: min(42vh, 360px);
+    min-height: 180px;
+  }
+
+  .time-entry-panel__scroll,
+  .time-entry-list-scroll {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+
+  .time-entry-input {
+    padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* --- Panel scrollbars + minimize controls --- */
+#notebook-writer-panel,
+.writer-panel,
+#thread-panel,
+.notes-panel,
+.inkling-panel {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #888 #222;
+}
+
+#notebook-writer-panel .notebook-writer-body,
+#notebook-writer-panel .notebook-writer-scroller-mount,
+.calendar-day-view,
+.day-scroller__track-wrap,
+.day-scroller__track {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #888 #222;
+}
+
+#thread-note-hour,
+.inkling-hour-select {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  min-height: 8.5rem;
+  max-height: min(280px, 38vh);
+  overflow-y: auto;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid #475569;
+  background: #0f1420;
+  color: #f1f5f9;
+  font-size: 13px;
+  line-height: 1.35;
+  scrollbar-width: thin;
+  scrollbar-color: #888 #222;
+}
+
+#thread-note-hour option,
+.inkling-hour-select option {
+  padding: 4px 6px;
+}
+
+.compose-field select.inkling-hour-select,
+#thread-note-hour::-webkit-scrollbar {
+  width: 10px;
+}
+
+#thread-note-hour::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 6px;
+}
+
+#thread-note-hour::-webkit-scrollbar-track {
+  background: #222;
+}
+
+.minimize-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: #333;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  z-index: 4;
+  line-height: 1;
+  padding: 0;
+}
+
+#thread-panel .thread-header-row,
+#notebook-writer-panel .thread-header-row,
+.wordweaver-embed__bar {
+  position: relative;
+}
+
 .inkling-panel {
   position: fixed;
   z-index: 10210;
@@ -3439,10 +3652,11 @@ body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--time
 
 body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track-wrap {
   flex: 1;
-  min-height: 0;
-  height: 100% !important;
-  max-height: 100% !important;
-  overflow: hidden !important;
+  min-height: 200px;
+  height: auto !important;
+  max-height: min(52vh, 520px) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
   display: flex;
   flex-direction: row;
   align-items: stretch;
@@ -3457,6 +3671,9 @@ body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--time
   );
   border: 1px solid rgba(78, 230, 230, 0.28);
   box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.4);
+  scrollbar-width: thin;
+  scrollbar-color: #888 #222;
+  -webkit-overflow-scrolling: touch;
 }
 
 body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__scroll-rail {
@@ -3475,19 +3692,34 @@ body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--time
 
 body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track {
   flex: 1;
-  min-height: 0;
-  max-height: 100% !important;
-  overflow-x: hidden !important;
-  overflow-y: auto !important;
-  touch-action: pan-y;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  min-height: min-content;
+  max-height: none !important;
+  overflow: visible !important;
   touch-action: pan-y;
   scroll-snap-type: y proximity;
-  padding-right: 6px;
-  scrollbar-width: auto;
-  scrollbar-color: rgba(78, 230, 230, 0.85) rgba(26, 31, 40, 0.98);
+  padding-right: 4px;
+}
+
+body.inkling-notebook-layout
+  .notebook-writer-scroller-mount
+  .day-scroller--timeline
+  .day-scroller__track-wrap::-webkit-scrollbar {
+  width: 12px;
+}
+
+body.inkling-notebook-layout
+  .notebook-writer-scroller-mount
+  .day-scroller--timeline
+  .day-scroller__track-wrap::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 6px;
+}
+
+body.inkling-notebook-layout
+  .notebook-writer-scroller-mount
+  .day-scroller--timeline
+  .day-scroller__track-wrap::-webkit-scrollbar-track {
+  background: #222;
 }
 
 body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track::-webkit-scrollbar {
@@ -3602,7 +3834,7 @@ body.inkling-notebook-layout .notebook-writer-schedules {
   }
 
   body.inkling-notebook-layout .notebook-writer-hour-strip {
-    max-height: 56px;
+    max-height: min(200px, 30vh);
   }
 
   body.inkling-notebook-layout .notebook-writer-body.panel-card {
@@ -3622,25 +3854,23 @@ body.inkling-notebook-layout .notebook-writer-schedules {
 
   body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track-wrap {
     flex: 1 !important;
-    min-height: 0 !important;
-    max-height: 100% !important;
-    overflow: hidden !important;
+    min-height: 180px !important;
+    max-height: min(48vh, 480px) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
     display: flex !important;
     flex-direction: row !important;
     touch-action: pan-y;
+    scrollbar-width: thin;
+    scrollbar-color: #888 #222;
   }
 
   body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track {
     flex: 1 1 auto !important;
-    min-height: 0 !important;
-    max-height: 100% !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch;
+    min-height: min-content !important;
+    max-height: none !important;
+    overflow: visible !important;
     touch-action: pan-y;
-    overscroll-behavior-y: contain;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(78, 230, 230, 0.85) rgba(26, 31, 40, 0.98);
   }
 
   body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller__scroll-rail {
@@ -4275,21 +4505,40 @@ body.inkling-notification-wall #notification-wall-panel .notification-wall-inner
 .notebook-writer-hour-strip {
   flex-shrink: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  max-height: 72px;
-  overflow-y: auto;
+  flex-flow: column nowrap;
+  align-items: stretch;
+  gap: 2px;
+  max-height: min(240px, 34vh);
+  overflow-y: scroll;
+  overflow-x: hidden;
   margin: 0 16px 10px;
-  padding: 6px;
+  padding: 6px 8px 6px 6px;
   border-radius: 10px;
   border: 1px solid rgba(212, 175, 55, 0.28);
   background: rgba(10, 14, 26, 0.65);
   scrollbar-width: thin;
+  scrollbar-color: #888 #222;
+  -webkit-overflow-scrolling: touch;
+}
+
+.notebook-writer-hour-strip::-webkit-scrollbar {
+  width: 10px;
+}
+
+.notebook-writer-hour-strip::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 6px;
+}
+
+.notebook-writer-hour-strip::-webkit-scrollbar-track {
+  background: #222;
 }
 
 .notebook-writer-hour-chip {
-  min-width: 34px;
-  padding: 4px 6px;
+  min-width: 0;
+  width: 100%;
+  text-align: left;
+  padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid rgba(78, 230, 230, 0.25);
   background: rgba(15, 23, 42, 0.85);
@@ -4332,7 +4581,8 @@ body.inkling-notification-wall #notification-wall-panel .notification-wall-inner
 
 .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track-wrap {
   flex: 1;
-  min-height: 200px;
+  min-height: 220px;
+  max-height: min(56vh, 520px);
   display: flex;
   flex-direction: row;
   gap: 8px;
@@ -4340,13 +4590,17 @@ body.inkling-notification-wall #notification-wall-panel .notification-wall-inner
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(12, 20, 38, 0.9), rgba(8, 12, 24, 0.95));
   border: 1px solid rgba(99, 102, 241, 0.25);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #888 #222;
 }
 
 .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track {
   flex: 1;
   max-height: none;
-  overflow-y: scroll;
-  min-height: 180px;
+  overflow: visible;
+  min-height: min-content;
 }
 
 .notebook-writer-header-main {
@@ -4935,7 +5189,17 @@ body.inkling-writer-scroll-lock .notebook-writer-scroller-mount .day-scroller__t
 
 body.notebook-writer-panel-open .notebook-writer-scroller-mount .day-scroller__track-wrap,
 body.inkling-writer-scroll-lock .notebook-writer-scroller-mount .day-scroller__track-wrap {
-  overflow: hidden !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  max-height: min(56vh, 520px) !important;
+  scrollbar-width: thin;
+  scrollbar-color: #888 #222;
+}
+
+body.notebook-writer-panel-open .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track,
+body.inkling-writer-scroll-lock .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track {
+  overflow: visible !important;
+  max-height: none !important;
 }
 
 body.notebook-writer-panel-open .vertical-time-wheel__viewport {

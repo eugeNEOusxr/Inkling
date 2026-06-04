@@ -79,13 +79,18 @@ export class ThreadPanel {
   _populateHours() {
     if (!this.noteHourSelect) return;
     this.noteHourSelect.innerHTML = "";
+    this.noteHourSelect.classList.add("inkling-hour-select");
     for (let h = 0; h < 24; h++) {
       const opt = document.createElement("option");
       opt.value = String(h);
-      opt.textContent = formatHour(h);
+      const h12 = h % 12 || 12;
+      const ampm = h < 12 ? "AM" : "PM";
+      opt.textContent = `${formatHour(h)} (${h12}:00 ${ampm})`;
       this.noteHourSelect.appendChild(opt);
     }
     this.noteHourSelect.value = String(new Date().getHours());
+    this.noteHourSelect.size = 8;
+    this.noteHourSelect.setAttribute("aria-label", "Hour — scroll for afternoon and evening times");
   }
 
   _bindToolbar() {

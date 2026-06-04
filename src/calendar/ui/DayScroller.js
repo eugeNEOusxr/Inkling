@@ -115,15 +115,16 @@ export default class DayScroller {
       el.addEventListener("pointerdown", stopBubble);
     }
 
-    if (!track.dataset.wheelBound) {
-      track.dataset.wheelBound = "1";
-      track.addEventListener(
+    const wheelTarget = this.inlineNotes && wrap ? wrap : track;
+    if (!wheelTarget.dataset.wheelBound) {
+      wheelTarget.dataset.wheelBound = "1";
+      wheelTarget.addEventListener(
         "wheel",
         (e) => {
-          if (track.scrollHeight <= track.clientHeight) return;
+          if (wheelTarget.scrollHeight <= wheelTarget.clientHeight) return;
           e.preventDefault();
           e.stopPropagation();
-          track.scrollTop += e.deltaY;
+          wheelTarget.scrollTop += e.deltaY;
         },
         { passive: false }
       );
@@ -177,7 +178,28 @@ export default class DayScroller {
     this._buildSlots();
     this._wireNav();
     this._wireNote();
+    this._ensureTrackScrollable();
     this.scrollToTime(slotIndexToTime(this.selectedIndex), false);
+  }
+
+  /** Guarantee the full 24h timeline (48 slots) can scroll with a visible bar. */
+  _ensureTrackScrollable() {
+    const wrap = this.el?.querySelector(".day-scroller__track-wrap");
+    const track = this.track;
+    if (!wrap || !track) return;
+
+    wrap.style.minHeight = "0";
+    if (this.inlineNotes && this.orientation === "vertical") {
+      wrap.style.overflowY = "auto";
+      wrap.style.overflowX = "hidden";
+      wrap.style.maxHeight = "min(56vh, 520px)";
+      track.style.overflow = "visible";
+      track.style.maxHeight = "none";
+    } else {
+      track.style.overflowY = "scroll";
+      track.style.maxHeight = track.style.maxHeight || "min(58vh, 480px)";
+    }
+    track.style.scrollbarWidth = "thin";
   }
 
   _buildSlots() {
@@ -490,6 +512,20 @@ export default class DayScroller {
     const slot = this.track?.querySelector(selector);
     if (!slot) return;
     const vertical = this.orientation === "vertical";
+    const scrollRoot =
+      this.inlineNotes && this.orientation === "vertical"
+        ? this.el?.querySelector(".day-scroller__track-wrap")
+        : this.track;
+    if (scrollRoot && slot.offsetParent) {
+      const rowTop = slot.offsetTop;
+      const target =
+        rowTop - scrollRoot.clientHeight / 2 + slot.offsetHeight / 2;
+      scrollRoot.scrollTo({
+        top: Math.max(0, target),
+        behavior: smooth && !prefersReducedMotion() ? "smooth" : "auto"
+      });
+      return;
+    }
     slot.scrollIntoView({
       behavior: smooth && !prefersReducedMotion() ? "smooth" : "auto",
       block: vertical ? "center" : "nearest",

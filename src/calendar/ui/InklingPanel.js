@@ -1,9 +1,12 @@
+import { processUserInput } from "../ai/AIBrain.js";
 import { parseInklingMessage } from "../ai/inklingParser.js";
 import { getInklingWelcomeMessage } from "../ai/inklingWelcome.js";
 import { buildNotebookReaderItems } from "../notebookReaderFeed.js";
 import { applyScheduleIntentAndRefresh } from "../ai/scheduleIntent.js";
 import { getDisplayName } from "./userProfile.js";
 import { submitFeedback } from "../../auth/userAccount.js";
+import { registerInklingApp, installWriterNavigation } from "./Writer.js";
+import { openPanel } from "./AppLauncher.js";
 const INKLING_CRON_KEY = "calendar3d-inkling-cron-v1";
 
 /**
@@ -23,9 +26,16 @@ export class InklingPanel {
     this._pending = null;
     this._minimized = false;
     this._attachedImage = null;
+    this._sideThreadActive = false;
 
+    document.getElementById("inkling-minimize")?.classList.add("minimize-btn");
     document.getElementById("inkling-minimize")?.addEventListener("click", () => this.minimize());
     document.getElementById("inkling-close")?.addEventListener("click", () => this.minimize());
+
+    registerInklingApp(calendarApp);
+    installWriterNavigation();
+    this._injectPanelMinimizeButtons();
+    this._bindPanelShellEvents();
 
     this.formEl?.addEventListener("submit", (e) => {
       e.preventDefault();
@@ -54,7 +64,115 @@ export class InklingPanel {
 
     this._startCron();
 
-    this.minimize();
+    const startTab = new URLSearchParams(window.location.search).get("tab");
+    if (!startTab) {
+      queueMicrotask(() => openPanel("inkling"));
+    }
+  }
+
+  _bindPanelShellEvents() {
+    window.addEventListener("inkling:close-all-panels", () => this._closeSiblingPanels());
+    window.addEventListener("inkling:open-panel", (event) => {
+      const panelId = event.detail?.panelId;
+      if (panelId === "inkling") {
+        void this._openInklingHome();
+      }
+    });
+
+    document.getElementById("inkling-bottom-nav")?.addEventListener(
+      "click",
+      (event) => {
+        const tab = event.target.closest?.("[data-tab]")?.getAttribute("data-tab");
+        if (!tab) return;
+        this._closeSiblingPanels();
+      },
+      true
+    );
+  }
+
+  async _openInklingHome() {
+    this._closeSiblingPanels();
+    this.app?.layerManager?.open("inkling");
+    document.getElementById("inkling-fab")?.classList.add("hidden");
+    this.expand();
+  }
+
+  _closeSiblingPanels() {
+    this.app?.closePanels?.();
+    this.app?.exitCalendarMaxLayer?.();
+    this.app?.layerManager?.closeAll?.();
+    this.app?.notebookWriterPanel?.close?.();
+    this.app?.threadPanel?.close?.();
+    this.app?.wordWeaverEmbed?.hide?.();
+    this.app?.bottomNav?.setActiveTab(null);
+    this.app?._showStageBackdrop?.(false);
+    document.body.classList.remove(
+      "inkling-stage-open",
+      "inkling-tab-calendar",
+      "inkling-tab-writer",
+      "inkling-tab-wordweaver",
+      "inkling-tab-wall",
+      "inkling-tab-inkling",
+      "notebook-writer-panel-open",
+      "appointment-writer-panel-open"
+    );
+  }
+
+  /**
+   * Shared minimize control for stage panels (writer, notes, WordWeaver).
+   */
+  _injectPanelMinimizeButtons() {
+    this._attachMinimizeButton(
+      document.querySelector("#thread-panel .thread-header-row"),
+      () => {
+        this.app?.threadPanel?.close?.();
+        this.app?.layerManager?.close("day-notes");
+        this._returnToHomeSurface();
+      }
+    );
+
+    const wwBar = document.querySelector(".wordweaver-embed__bar");
+    if (wwBar && !wwBar.querySelector(".minimize-btn")) {
+      this._attachMinimizeButton(wwBar, () => {
+        this.app?.wordWeaverEmbed?.setSize?.("minimized");
+        this.app?.layerManager?.close("wordweaver");
+        this._returnToHomeSurface();
+      });
+    }
+
+    const writerHeader = document.querySelector(
+      "#notebook-writer-panel .thread-header-row"
+    );
+    if (writerHeader) {
+      const existing = writerHeader.querySelector(".notebook-writer-minimize-btn");
+      existing?.classList.add("minimize-btn");
+    }
+  }
+
+  /**
+   * @param {HTMLElement | null} host
+   * @param {() => void} onMinimize
+   */
+  _attachMinimizeButton(host, onMinimize) {
+    if (!host || host.querySelector(".minimize-btn")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "minimize-btn";
+    btn.title = "Minimize";
+    btn.setAttribute("aria-label", "Minimize panel");
+    btn.textContent = "–";
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onMinimize();
+    });
+    host.appendChild(btn);
+  }
+
+  _returnToHomeSurface() {
+    this.app?.bottomNav?.setActiveTab(null);
+    this.app?._showStageBackdrop?.(false);
+    void this.app?._frameOverviewCamera?.(false);
+    openPanel("inkling");
   }
 
   toggle() {
@@ -149,8 +267,98 @@ export class InklingPanel {
     this.inputEl.value = "";
     this._appendBubble("user", escapeHtml(text));
 
+    const brain = processUserInput(text, {
+      userName: getDisplayName(),
+      awaitingConfirm: Boolean(this._pending),
+      history: this._chatHistory(),
+      sideThread: this._sideThreadActive ? { active: true } : undefined
+    });
+
+    if (await this._handleBrainResult(brain, text)) {
+      if (brain.action === "sideConversation" || brain.action === "askClarification") {
+        this._sideThreadActive = true;
+      } else if (["openWriter", "openCalendar", "openWordWeaver", "storeNote"].includes(brain.action)) {
+        this._sideThreadActive = false;
+      }
+      return;
+    }
+
     const intent = parseInklingMessage(text);
     await this._handleIntent(intent);
+    this._sideThreadActive = false;
+  }
+
+  /**
+   * @returns {{ role: string, content: string }[]}
+   */
+  _chatHistory() {
+    if (!this.messagesEl) return [];
+    const turns = [];
+    this.messagesEl.querySelectorAll(".inkling-msg").forEach((el) => {
+      const role = el.classList.contains("inkling-msg--user")
+        ? "user"
+        : el.classList.contains("inkling-msg--inkling")
+          ? "assistant"
+          : null;
+      if (!role) return;
+      turns.push({ role, content: el.textContent?.trim() ?? "" });
+    });
+    return turns.slice(-12);
+  }
+
+  /**
+   * @param {import("../ai/AIBrain.js").BrainResult} brain
+   * @param {string} text
+   */
+  async _handleBrainResult(brain, text) {
+    if (brain.action === "sideConversation" || brain.action === "askClarification") {
+      if (brain.aiResponse) {
+        this._appendBubble("inkling", escapeHtml(brain.aiResponse));
+      }
+      return true;
+    }
+
+    if (brain.action === "openWriter") {
+      const date =
+        this.app?.notebookCalendarDock?.getDate?.() ??
+        this.app?._getTodayDate?.() ??
+        new Date().toISOString().slice(0, 10);
+      await this.app?.openNotebookDayByDate?.(date);
+      if (brain.aiResponse) this._appendBubble("inkling", escapeHtml(brain.aiResponse));
+      return true;
+    }
+
+    if (brain.action === "openCalendar") {
+      await this.app?._handleBottomNavTab?.("calendar", { toggle: false });
+      if (brain.aiResponse) this._appendBubble("inkling", escapeHtml(brain.aiResponse));
+      return true;
+    }
+
+    if (brain.action === "openWordWeaver") {
+      await this.app?._handleBottomNavTab?.("wordweaver", { toggle: false });
+      if (brain.aiResponse) this._appendBubble("inkling", escapeHtml(brain.aiResponse));
+      return true;
+    }
+
+    if (brain.action === "storeNote") {
+      const intent = parseInklingMessage(text);
+      if (intent.type === "propose_schedule" && intent.proposal) {
+        await this._handleIntent(intent);
+        return true;
+      }
+      if (brain.aiResponse) {
+        this._appendBubble("inkling", escapeHtml(brain.aiResponse));
+        return true;
+      }
+      return false;
+    }
+
+    if (brain.action === "none" && brain.aiResponse) {
+      this._appendBubble("inkling", escapeHtml(brain.aiResponse));
+      return true;
+    }
+
+    return false;
   }
 
   async _handleIntent(intent) {

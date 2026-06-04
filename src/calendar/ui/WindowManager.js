@@ -32,6 +32,21 @@ export class WindowManager {
   }
 
   /**
+   * Hide all shell windows and in-page panels so only one surface is active.
+   */
+  closeAllPanels() {
+    for (const id of [...this.windows.keys()]) {
+      this.closeWindow(id);
+    }
+    this.nextZ = 10130;
+    this.windows.forEach((win) => {
+      win.el.classList.remove("is-focused");
+      win.el.style.zIndex = "";
+    });
+    document.dispatchEvent(new CustomEvent("inkling:close-all-panels"));
+  }
+
+  /**
    * @param {string} appId
    * @param {{ initialView?: string, dayId?: string }} [opts]
    */
@@ -39,12 +54,7 @@ export class WindowManager {
     const app = this.apps.find((item) => item.id === appId);
     if (!app || !this.root) return;
 
-    const existing = [...this.windows.values()].find((w) => w.appId === appId);
-    if (existing) {
-      this.restoreWindow(existing.id);
-      this.focusWindow(existing.id);
-      return;
-    }
+    this.closeAllPanels();
 
     const id = `window-${this.nextId++}`;
     const win = this._createWindowShell(id, app);
