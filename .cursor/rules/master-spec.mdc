@@ -1,0 +1,19 @@
+---
+description: Inkling + WordWeaver v2 design contract — follow master_spec_expanded.md
+alwaysApply: true
+---
+
+# Master build spec (v2 expanded)
+
+For **all** Inkling, WordWeaver, calendar 2D/3D, timeline, alerts, and Inkling AI work:
+
+1. Read and follow **[docs/master_spec_expanded.md](docs/master_spec_expanded.md)** (v2.0) as the source of truth. Consult its Table of Contents (§1–30) before implementing.
+2. **Timeline model** (`timelineModel.js`) is SSOT for reads/writes; use `getEventsForDay`, `getEventsForMonth`, etc. No ad-hoc event lists in views; no direct `localStorage` for events from UI.
+3. **2D and 3D** stay synchronized; both always mounted; visibility toggled via `calendarMode`. Never delete 2D when changing 3D.
+4. **3D default** (`calendarMode: "3d"`); 400ms mode transition; WebGL fallback to 2D per spec §1.5.
+5. **No** cracked-reality / fracture visuals on day blocks (§5.4, §10).
+6. **Event bus** for cross-module communication (§13); validation in `timelineModel.js` (§10).
+7. **Inkling** uses timeline APIs + intent/navigation pipelines (§4, §14–15).
+8. **Minimize scope** — no unrelated refactors.
+
+If a request conflicts with the spec, call it out and align with the spec unless the user explicitly overrides.

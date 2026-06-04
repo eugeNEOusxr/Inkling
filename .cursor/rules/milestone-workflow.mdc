@@ -1,0 +1,24 @@
+---
+description: How to implement the expanded milestone specs — one milestone at a time, stop for review
+alwaysApply: true
+---
+
+# Milestone implementation workflow
+
+When implementing the expanded build plan in **`docs/expanded/`**, follow this discipline. (For *what* to build, defer to [master-spec.mdc](master-spec.mdc) and `docs/master_spec_expanded.md`.)
+
+## Source of truth
+1. Build from the **individual** `docs/expanded/phase-NN-milestone-N.N-*.md` files — **not** `combined.md` (that is a generated, cursor-ignored bundle for human reading only).
+2. These are **reconciliation specs against the EXISTING codebase**, not greenfield. Before writing any code for a milestone, read its **"Current implementation status (reconciliation)"** section and, for each task, its **Status** line (Missing / Divergent / Partial / Implicit / Keep) and its **Next:** action. Ground every change in the **named files and line refs** the task cites — confirm they still exist before editing.
+
+## One milestone at a time — then STOP
+3. Implement **exactly one milestone per pass** (e.g. all of 5.6, or a single task like 5.6.3 if the user names one). Work its tasks in the order given, respecting each task's **Dependencies** and the milestone's **Sequencing** notes. Do **not** start the next milestone in the same pass.
+4. After finishing a milestone, **STOP and report**: which tasks you implemented, which files changed (and how each maps to the task's acceptance criteria), anything deferred, and **how to verify** (the task's Testing notes). Then **wait for explicit approval** before the next milestone.
+5. Honor cross-milestone **Dependencies** — do not implement a milestone whose listed dependencies aren't done yet; say so instead.
+
+## Keep diffs clean and scoped
+6. The working tree may carry **unrelated in-progress changes** — stage and commit **only** the files you changed for the current milestone. Never `git add -A` / commit the whole tree.
+7. **Minimize scope** — implement what the milestone specifies; no unrelated refactors, no bundling multiple milestones, no greenfield rewrites of code the spec says to *reconcile*.
+8. Carry the recurring cross-cutting threads the specs flag — converge **duplicate renderers / parallel stacks** toward one canonical path, and route cross-module communication through the **Phase-2 §13.2 event bus** (not `window` events or ad-hoc callbacks) — only as the relevant task directs.
+
+If a milestone task conflicts with `master_spec_expanded.md`, call it out and align with the spec unless the user explicitly overrides.
