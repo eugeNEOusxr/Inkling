@@ -8,6 +8,7 @@ import { getYearTopology, getEventsForDate } from "./timelineModel.js";
 import {
   computeMonthGridLayout,
   computeYearGridLayout,
+  clusterBackboardFrame,
   MONTH_NAMES,
   GRID_RADIUS,
   YEAR_GRID_RADIUS
@@ -16,8 +17,59 @@ import {
 export {
   computeMonthGridLayout,
   computeYearGridLayout,
+  clusterBackboardFrame,
   MONTH_NAMES
 } from "./WordWeaverMonthGridLayout.js";
+
+/** Scenic backdrop swap slot (public/) — per-month imagery can replace these URLs later. */
+export const SCENIC_BACKDROP_URLS = {
+  day: "/assets/backgrounds/beach-day.png",
+  night: "/assets/backgrounds/beach-night.jpg"
+};
+const BACKDROP_MAX_WIDTH = 1920;
+const BACKDROP_OVERLAY_ALPHA = 0.45;
+const BACKDROP_BLUR_PX = 5;
+/** Just behind day spheres (z ≈ 0.08) in the current-month cluster. */
+const BACKBOARD_Z = -0.16;
+
+/**
+ * @param {import("../inkling-core/timelineNode.js").DaySegment | string} segment
+ * @returns {string}
+ */
+export function scenicBackdropUrlForSegment(segment) {
+  return segment === "night" ? SCENIC_BACKDROP_URLS.night : SCENIC_BACKDROP_URLS.day;
+}
+
+/**
+ * Mute backboard image: ~50% desaturate, ~45% dark overlay, slight blur.
+ * @param {CanvasImageSource} source
+ * @returns {THREE.CanvasTexture}
+ */
+function buildMutedBackdropTexture(source) {
+  const sw = /** @type {HTMLImageElement} */ (source).width || BACKDROP_MAX_WIDTH;
+  const sh = /** @type {HTMLImageElement} */ (source).height || Math.round(sw * 0.5625);
+  const w = Math.min(BACKDROP_MAX_WIDTH, sw);
+  const h = Math.max(1, Math.round((w / sw) * sh));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "#0a1018";
+    ctx.fillRect(0, 0, w, h);
+    if (typeof ctx.filter === "string") {
+      ctx.filter = `saturate(50%) blur(${BACKDROP_BLUR_PX}px)`;
+    }
+    ctx.drawImage(source, 0, 0, w, h);
+    if (typeof ctx.filter === "string") ctx.filter = "none";
+    ctx.fillStyle = `rgba(0, 0, 0, ${BACKDROP_OVERLAY_ALPHA})`;
+    ctx.fillRect(0, 0, w, h);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
 
 const NOTE_CAP = 6;
 const NOTE_STACK_STEP = 0.32;
@@ -341,6 +393,7 @@ export class WordWeaverYearGrid {
     this.scene = scene;
     const now = new Date();
     this.year = opts.year ?? now.getFullYear();
+    this._currentMonthIndex = opts.currentMonthIndex ?? now.getMonth();
     this.root = new THREE.Group();
     this.root.name = "ww-year-grid-panel";
     scene.add(this.root);
@@ -350,12 +403,20 @@ export class WordWeaverYearGrid {
     /** @type {Array<{ mesh: THREE.Mesh, mat: THREE.Material, tex?: THREE.Texture }>} */
     this._labels = [];
     this._layout = null;
+    /** @type {THREE.Mesh | null} */
+    this._backboardMesh = null;
+    /** @type {THREE.CanvasTexture | null} */
+    this._backboardTexture = null;
+    /** @type {string | null} */
+    this._backboardUrl = null;
   }
 
   build() {
     this.disposeContent();
     this._layout = computeYearGridLayout(this.year);
     const topology = getYearTopology(this.year);
+
+    this._mountBackboard();
 
     /** @type {Array<{ x: number, y: number, z: number }>} */
     const monthInstances = [];
@@ -434,7 +495,93 @@ export class WordWeaverYearGrid {
    */
   update(_delta, _elapsed) {}
 
+  /** Poster plane behind today's month cluster (parallel to the grid). */
+  _mountBackboard() {
+    const cluster = this._layout?.clusters.find(
+      (c) => c.monthIndex === this._currentMonthIndex
+    );
+    if (!cluster) {
+      this._removeBackboard();
+      return;
+    }
+    const frame = clusterBackboardFrame(cluster);
+    if (!this._backboardMesh) {
+      const geom = new THREE.PlaneGeometry(1, 1);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        depthWrite: true,
+        toneMapped: false
+      });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.name = "ww-month-backboard";
+      mesh.renderOrder = -8;
+      this._backboardMesh = mesh;
+      this.root.add(mesh);
+    }
+    this._backboardMesh.scale.set(frame.w, frame.h, 1);
+    this._backboardMesh.position.set(frame.cx, frame.cy, BACKBOARD_Z);
+  }
+
+  _removeBackboard() {
+    if (!this._backboardMesh) return;
+    this.root.remove(this._backboardMesh);
+    this._backboardMesh.geometry.dispose();
+    if (this._backboardMesh.material instanceof THREE.Material) {
+      this._backboardMesh.material.dispose();
+    }
+    this._backboardMesh = null;
+  }
+
+  _disposeBackboardTexture() {
+    if (this._backboardTexture) {
+      this._backboardTexture.dispose();
+      this._backboardTexture = null;
+    }
+    if (this._backboardMesh?.material instanceof THREE.MeshBasicMaterial) {
+      this._backboardMesh.material.map = null;
+    }
+  }
+
+  /**
+   * Single swap-in slot for scenic backboard imagery (per-month art replaces this URL later).
+   * @param {string} url
+   */
+  setScenicBackdropImage(url) {
+    if (!url || url === this._backboardUrl) return;
+    this._backboardUrl = url;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      if (this._backboardUrl !== url) return;
+      this._disposeBackboardTexture();
+      const tex = buildMutedBackdropTexture(img);
+      this._backboardTexture = tex;
+      if (this._backboardMesh?.material instanceof THREE.MeshBasicMaterial) {
+        this._backboardMesh.material.map = tex;
+        this._backboardMesh.material.color.set(0xffffff);
+        this._backboardMesh.material.needsUpdate = true;
+      }
+    };
+    img.onerror = () => {
+      console.warn("[WordWeaverYearGrid] scenic backboard failed to load:", url);
+      if (this._backboardUrl === url) this._backboardUrl = null;
+    };
+    img.src = url;
+  }
+
+  /**
+   * Time-of-day scenic backboard from WordWeaver day segment (Morning/Afternoon/Night toggle).
+   * @param {import("../inkling-core/timelineNode.js").DaySegment | string} segment
+   */
+  setScenicBackdropForSegment(segment) {
+    this.setScenicBackdropImage(scenicBackdropUrlForSegment(segment));
+  }
+
   disposeContent() {
+    this._disposeBackboardTexture();
+    this._backboardUrl = null;
+    this._removeBackboard();
+
     for (const mesh of this._instanced) {
       this.root.remove(mesh);
       mesh.dispose();

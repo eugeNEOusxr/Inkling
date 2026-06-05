@@ -51,7 +51,7 @@ export class WordWeaverScene {
     this.container.appendChild(this.canvas);
 
     this.scene = new THREE.Scene();
-    this.scene.background = null;
+    this.scene.background = new THREE.Color(0x000000);
     this.scene.environment = null;
     this.scene.fog = null;
 
@@ -123,6 +123,8 @@ export class WordWeaverScene {
     this._monthGrid = null;
     /** M5 M1: month wall-grid is the active 3D layout; legacy timeline/weave stay mounted but hidden. */
     this._monthGridLayoutActive = true;
+    /** @type {import("../inkling-core/timelineNode.js").DaySegment | string | null} */
+    this._scenicBackdropSegment = null;
     /** Ring layout retained in-file but not mounted (M5 redesign M1). @type {WordWeaverYearLayout3D | null} */
     this._yearLayout = null;
     /** @type {{
@@ -315,6 +317,9 @@ export class WordWeaverScene {
     this._monthGrid = createYearGrid(this.scene, {
       year: now.getFullYear()
     });
+    if (this._scenicBackdropSegment) {
+      this._monthGrid.setScenicBackdropForSegment(this._scenicBackdropSegment);
+    }
     if (this._monthGridLayoutActive) {
       this._suppressLegacy3DLayout();
     }
@@ -440,6 +445,23 @@ export class WordWeaverScene {
         console.warn("[WordWeaverScene] environment GLB failed to load:", err);
       }
     );
+  }
+
+  /**
+   * Single swap-in slot for scenic backboard behind the current month cluster.
+   * @param {string} url
+   */
+  setScenicBackdropImage(url) {
+    this._monthGrid?.setScenicBackdropImage?.(url);
+  }
+
+  /**
+   * Time-of-day scenic backboard from WordWeaver day segment (Morning/Afternoon/Night toggle).
+   * @param {import("../inkling-core/timelineNode.js").DaySegment | string} segment
+   */
+  setScenicBackdropForSegment(segment) {
+    this._scenicBackdropSegment = segment;
+    this._monthGrid?.setScenicBackdropForSegment?.(segment);
   }
 
   /** Timeline / weave content on layer 1; GLB environment stays on layer 0. */

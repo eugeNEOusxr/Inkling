@@ -140,8 +140,13 @@ export class WordWeaverEmbed {
           b.setAttribute("aria-pressed", String(active));
         });
         if (this._date) this.show(this._date, this._time, true, { immersive: this._immersive });
+        this._syncScenicBackdrop();
       });
     });
+  }
+
+  _syncScenicBackdrop() {
+    this._scene?.setScenicBackdropForSegment?.(this._segment);
   }
 
   _bindLayoutSelect() {
@@ -403,6 +408,7 @@ export class WordWeaverEmbed {
       keepGuide: Boolean(opts.keepGuide)
     });
     this._scene?.assertMonthGridLayout?.();
+    this._scene?.setScenicBackdropForSegment?.(this._segment);
     this._syncFlightChrome();
     requestAnimationFrame(() => this._scene?._resize?.());
     setTimeout(() => this._scene?._resize?.(), 150);
@@ -480,6 +486,7 @@ export class WordWeaverEmbed {
     });
     this._scene.setLayoutMode(this._layoutMode);
     this._scene.assertMonthGridLayout?.();
+    this._scene.setScenicBackdropForSegment?.(this._segment);
     this._syncFlightChrome();
   }
 

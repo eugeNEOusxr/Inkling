@@ -172,3 +172,17 @@ export function computeYearGridLayout(year) {
     }
   };
 }
+
+/**
+ * Poster/backboard frame for a single month cluster (slightly larger than cluster bounds).
+ * @param {YearGridMonthCluster} cluster
+ */
+export function clusterBackboardFrame(cluster) {
+  const { monthCenter, monthLayout } = cluster;
+  return {
+    cx: monthCenter.x,
+    cy: monthCenter.y - monthLayout.bounds.height * 0.22,
+    w: monthLayout.bounds.width * 1.2,
+    h: monthLayout.bounds.height * 1.14
+  };
+}
