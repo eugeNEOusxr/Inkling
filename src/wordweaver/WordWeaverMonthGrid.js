@@ -27,7 +27,7 @@ export const SCENIC_BACKDROP_URLS = {
   night: "/assets/backgrounds/beach-night.jpg"
 };
 const BACKDROP_MAX_WIDTH = 1920;
-const BACKDROP_OVERLAY_ALPHA = 0.45;
+const BACKDROP_OVERLAY_ALPHA = 0.3;
 const BACKDROP_BLUR_PX = 5;
 /** Just behind day spheres (z ≈ 0.08) in the current-month cluster. */
 const BACKBOARD_Z = -0.16;
@@ -58,7 +58,7 @@ function buildMutedBackdropTexture(source) {
     ctx.fillStyle = "#0a1018";
     ctx.fillRect(0, 0, w, h);
     if (typeof ctx.filter === "string") {
-      ctx.filter = `saturate(50%) blur(${BACKDROP_BLUR_PX}px)`;
+      ctx.filter = `saturate(62%) blur(${BACKDROP_BLUR_PX}px)`;
     }
     ctx.drawImage(source, 0, 0, w, h);
     if (typeof ctx.filter === "string") ctx.filter = "none";
