@@ -181,8 +181,10 @@ export function clusterBackboardFrame(cluster) {
   const { monthCenter, monthLayout } = cluster;
   return {
     cx: monthCenter.x,
-    cy: monthCenter.y - monthLayout.bounds.height * 0.22,
+    // Drop the center toward the grid + trim the height so the top doesn't poke up
+    // into the month row above (it used to extend ~0.35*height above the sphere).
+    cy: monthCenter.y - monthLayout.bounds.height * 0.45,
     w: monthLayout.bounds.width * 1.2,
-    h: monthLayout.bounds.height * 1.14
+    h: monthLayout.bounds.height * 1.0
   };
 }
