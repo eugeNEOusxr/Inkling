@@ -383,6 +383,7 @@ export class WordWeaverEmbed {
       editGuide: Boolean(opts.editGuide || this.layoutEditor?.isOpen?.()),
       keepGuide: Boolean(opts.keepGuide)
     });
+    this._scene?.assertMonthGridLayout?.();
     requestAnimationFrame(() => this._scene?._resize?.());
     setTimeout(() => this._scene?._resize?.(), 150);
   }
@@ -458,6 +459,7 @@ export class WordWeaverEmbed {
       }
     });
     this._scene.setLayoutMode(this._layoutMode);
+    this._scene.assertMonthGridLayout?.();
   }
 
   /**

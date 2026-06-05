@@ -21,6 +21,7 @@ import { mountWordWeaverMainUI } from "../MainUI.js";
 import * as bus from "../utils/EventBus.js";
 import { getCalendarMode } from "./calendarMode.js";
 import { getCalendar2D } from "./Calendar2D.js";
+import { createMonthGrid, createYearGrid, WordWeaverMonthGrid } from "./WordWeaverMonthGrid.js";
 import { isWordWeaverTabActive } from "../calendar/ui/shellSurfaces.js";
 
 /** Served from public/environments/ (copied from Meshy export). */
@@ -116,7 +117,11 @@ export class WordWeaverScene {
     this._raycaster = new THREE.Raycaster();
     this._pointer = new THREE.Vector2();
     this._hovered = null;
-    /** @type {WordWeaverYearLayout3D | null} */
+    /** @type {import("./WordWeaverMonthGrid.js").WordWeaverYearGrid | WordWeaverMonthGrid | null} */
+    this._monthGrid = null;
+    /** M5 M1: month wall-grid is the active 3D layout; legacy timeline/weave stay mounted but hidden. */
+    this._monthGridLayoutActive = true;
+    /** Ring layout retained in-file but not mounted (M5 redesign M1). @type {WordWeaverYearLayout3D | null} */
     this._yearLayout = null;
     /** @type {{
      *   startTarget: THREE.Vector3,
@@ -150,15 +155,21 @@ export class WordWeaverScene {
       controls: this.controls,
       domElement: this.canvas
     });
+    this._suppressLegacy3DLayout();
     this._applyForegroundLayers();
     this._onTimelineUpdated = () => {
-      this._applyForegroundLayers();
-      this._rebuildYearLayout();
+      if (this._monthGridLayoutActive) {
+        this._rebuildMonthGrid();
+        this.assertMonthGridLayout();
+      } else {
+        this._applyForegroundLayers();
+        this._rebuildMonthGrid();
+      }
     };
     this._timelineBusDisposers = onTimelineDataChange(this._onTimelineUpdated);
 
-    this._yearLayout = createYearLayout(this.scene, getInitialNotes());
-    this._rebuildYearLayout();
+    // M5 redesign M1: single-month wall grid (ring createYearLayout retired in-place)
+    this._rebuildMonthGrid();
     getCalendar2D().mount(this.container);
     this._renderPaused = true;
     this._applyCalendarMode(getCalendarMode());
@@ -197,14 +208,70 @@ export class WordWeaverScene {
     this.canvas.style.display = is3d ? "block" : "none";
     this.canvas.style.visibility = is3d ? "visible" : "hidden";
     this.canvas.style.pointerEvents = is3d ? "auto" : "none";
-    if (this._yearLayout?.root) {
-      this._yearLayout.root.visible = is3d;
+    if (this._monthGridLayoutActive) {
+      if (is3d) {
+        if (!this._monthGrid) this._rebuildMonthGrid();
+        this.assertMonthGridLayout();
+      } else {
+        this._suppressLegacy3DLayout();
+        if (this._monthGrid?.root) this._monthGrid.root.visible = false;
+      }
+    } else if (this._monthGrid?.root) {
+      this._monthGrid.root.visible = is3d;
     }
     const cal2d = getCalendar2D();
     if (mode === "2d" && tabActive) cal2d.show();
     else cal2d.hide();
   }
 
+  /** @returns {boolean} */
+  isMonthGridLayoutActive() {
+    return this._monthGridLayoutActive;
+  }
+
+  /** Hide legacy per-day timeline / weave / edit guides while the month grid is active. */
+  _suppressLegacy3DLayout() {
+    const timelineRoot = this._timelineViewport?.timeline3d?.root;
+    if (timelineRoot) timelineRoot.visible = false;
+    this.weaveGroup.visible = false;
+    this.guideGroup.visible = false;
+  }
+
+  /**
+   * End-state assert after embed enter flow: grid visible, legacy stacks hidden, camera framed.
+   * Public so WordWeaverEmbed can re-assert after construct → setLayoutMode → show → setModule.
+   */
+  assertMonthGridLayout() {
+    if (!this._monthGridLayoutActive) return;
+    const is3d = getCalendarMode() === "3d" && isWordWeaverTabActive();
+    this._suppressLegacy3DLayout();
+    if (!is3d) {
+      if (this._monthGrid?.root) this._monthGrid.root.visible = false;
+      return;
+    }
+    if (!this._monthGrid) this._rebuildMonthGrid();
+    if (this._monthGrid?.root) this._monthGrid.root.visible = true;
+    this._frameMonthGridCamera();
+    this._applyForegroundLayers();
+  }
+
+  _rebuildMonthGrid() {
+    this._monthGrid?.dispose();
+    const now = new Date();
+    this._monthGrid = createYearGrid(this.scene, {
+      year: now.getFullYear()
+    });
+    if (this._monthGridLayoutActive) {
+      this._suppressLegacy3DLayout();
+    }
+    this._applyForegroundLayers();
+  }
+
+  _frameMonthGridCamera() {
+    this._monthGrid?.frameCamera(this.camera, this.controls);
+  }
+
+  /** @deprecated Ring layout — retained for later milestones; not mounted in M1. */
   _rebuildYearLayout() {
     if (getCalendarMode() !== "3d" || !isWordWeaverTabActive()) return;
     const timelineRoot = this._timelineViewport?.timeline3d?.root;
@@ -225,6 +292,15 @@ export class WordWeaverScene {
    * @param {number} monthIndex 0–11
    */
   focusOnMonth(monthIndex) {
+    if (this._monthGrid) {
+      this._monthGrid.dispose();
+      this._monthGrid = createMonthGrid(this.scene, {
+        year: this._monthGrid.year,
+        monthIndex
+      });
+      this._frameMonthGridCamera();
+      return;
+    }
     const cluster = this._yearLayout?.monthClusters[monthIndex];
     if (!cluster) return;
     const world = new THREE.Vector3();
@@ -318,6 +394,10 @@ export class WordWeaverScene {
     this.guideGroup?.layers.set(CONTENT_LAYER);
     const timelineRoot = this._timelineViewport?.timeline3d?.root;
     timelineRoot?.layers.set(CONTENT_LAYER);
+    this._monthGrid?.root?.layers.set(CONTENT_LAYER);
+    this._monthGrid?.root?.traverse((obj) => {
+      obj.layers.set(CONTENT_LAYER);
+    });
     this._yearLayout?.root?.layers.set(CONTENT_LAYER);
     this._yearLayout?.root?.traverse((obj) => {
       obj.layers.set(CONTENT_LAYER);
@@ -346,6 +426,9 @@ export class WordWeaverScene {
    */
   setLayoutMode(mode) {
     this._layoutMode = mode;
+    if (this._monthGridLayoutActive) {
+      this.assertMonthGridLayout();
+    }
   }
 
   /**
@@ -406,6 +489,10 @@ export class WordWeaverScene {
    */
   setModule(module, opts = {}) {
     this._lastModule = module;
+    if (this._monthGridLayoutActive) {
+      this.assertMonthGridLayout();
+      return;
+    }
     this._atomOrbits?.dispose();
     this._atomOrbits = null;
     disposeWeaveMeshes(this._meshes);
@@ -738,21 +825,28 @@ export class WordWeaverScene {
       this._updateNodeAnimations(now, layoutEase);
     }
 
-    this._atomOrbits?.update(t);
+    if (!this._monthGridLayoutActive) {
+      this._atomOrbits?.update(t);
+    }
     if (!this._renderPaused && getCalendarMode() === "3d" && isWordWeaverTabActive()) {
       this._updateCameraFocus(now);
       this._yearLayout?.update(delta, t, this.camera);
-      this._timelineViewport?.update(delta);
+      this._monthGrid?.update(delta, t);
+      if (!this._monthGridLayoutActive) {
+        this._timelineViewport?.update(delta);
+      }
     }
 
-    const rotSpeed = this._layoutMode === "constellation" ? 0.05 : 0.08;
-    const rotAmp =
-      this._layoutMode === "street" || this._layoutMode === "river"
-        ? 0.015
-        : this._layoutMode === "tree"
-          ? 0.025
-          : 0.04;
-    this.weaveGroup.rotation.y = Math.sin(t * rotSpeed) * rotAmp;
+    if (!this._monthGridLayoutActive) {
+      const rotSpeed = this._layoutMode === "constellation" ? 0.05 : 0.08;
+      const rotAmp =
+        this._layoutMode === "street" || this._layoutMode === "river"
+          ? 0.015
+          : this._layoutMode === "tree"
+            ? 0.025
+            : 0.04;
+      this.weaveGroup.rotation.y = Math.sin(t * rotSpeed) * rotAmp;
+    }
 
     this.controls.update();
     this._meshes.forEach((m, i) => m.animatePulse?.(0.35 + (i % 3) * 0.05));
@@ -781,6 +875,8 @@ export class WordWeaverScene {
     this._resizeObserver?.disconnect();
     this._atomOrbits?.dispose();
     this._atomOrbits = null;
+    this._monthGrid?.dispose();
+    this._monthGrid = null;
     this._yearLayout?.dispose();
     this._yearLayout = null;
     this._timelineViewport?.dispose();
