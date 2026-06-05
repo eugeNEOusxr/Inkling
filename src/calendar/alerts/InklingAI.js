@@ -145,10 +145,12 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-bus.on("alertsOpened", () => {
-  handleSystemEvent({ type: "alertsOpened", alerts: getUpcomingAlerts() });
-});
-
+// NOTE: Inkling no longer mirrors alert status into the chat on `alertsOpened`.
+// Alerts have their own dedicated surface (the bell dropdown / Alerts tab), so
+// echoing "No upcoming alerts right now." + summaries into the chat on every
+// open just buried the welcome message and read as spam. `handleSystemEvent`
+// stays exported for the dropdown/tests; only a genuinely *fired* alert posts a
+// proactive nudge below.
 bus.on("alertTriggered", (payload) => {
   handleSystemEvent({ type: "alertTriggered", alert: payload?.alert });
 });

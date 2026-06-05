@@ -18,8 +18,10 @@ import { DayBlock3D } from "./DayBlock3D.js";
 import { classifyEvent } from "../calendar/ai/AIBrain.js";
 import { AtomGlyph3D } from "./timeline3d/AtomGlyph3D.js";
 import { mountWordWeaverMainUI } from "../MainUI.js";
-import { getCalendarMode, onCalendarModeChange } from "./calendarMode.js";
+import * as bus from "../utils/EventBus.js";
+import { getCalendarMode } from "./calendarMode.js";
 import { getCalendar2D } from "./Calendar2D.js";
+import { isWordWeaverTabActive } from "../calendar/ui/shellSurfaces.js";
 
 /** Served from public/environments/ (copied from Meshy export). */
 const WORDWEAVER_ENV_GLB_URL = "/environments/meshy-dark-futuristic.glb";
@@ -158,8 +160,13 @@ export class WordWeaverScene {
     this._yearLayout = createYearLayout(this.scene, getInitialNotes());
     this._rebuildYearLayout();
     getCalendar2D().mount(this.container);
+    this._renderPaused = true;
     this._applyCalendarMode(getCalendarMode());
-    this._offCalendarMode = onCalendarModeChange((mode) => this._applyCalendarMode(mode));
+    this._offCalendarMode = bus.on("modeChanged", (p) =>
+      this._applyCalendarMode(p?.mode === "2d" || p?.mode === "3d" ? p.mode : getCalendarMode())
+    );
+    this._onShellSurface = () => this._applyCalendarMode(getCalendarMode());
+    document.addEventListener("inkling:shell-surface", this._onShellSurface);
     mountWordWeaverMainUI();
 
     this._tick = this._tick.bind(this);
@@ -180,20 +187,26 @@ export class WordWeaverScene {
    * @param {"2d" | "3d"} mode
    */
   _applyCalendarMode(mode) {
-    const is3d = mode === "3d";
+    const tabActive = isWordWeaverTabActive();
+    const is3d = mode === "3d" && tabActive;
+    this._renderPaused = !is3d;
+    this.container.style.visibility = tabActive ? "visible" : "hidden";
+    this.container.style.display = tabActive ? "block" : "none";
+    this.container.style.pointerEvents = is3d ? "auto" : "none";
     this.scene.visible = is3d;
     this.canvas.style.display = is3d ? "block" : "none";
+    this.canvas.style.visibility = is3d ? "visible" : "hidden";
     this.canvas.style.pointerEvents = is3d ? "auto" : "none";
     if (this._yearLayout?.root) {
       this._yearLayout.root.visible = is3d;
     }
     const cal2d = getCalendar2D();
-    if (is3d) cal2d.hide();
-    else cal2d.show();
+    if (mode === "2d" && tabActive) cal2d.show();
+    else cal2d.hide();
   }
 
   _rebuildYearLayout() {
-    if (getCalendarMode() !== "3d") return;
+    if (getCalendarMode() !== "3d" || !isWordWeaverTabActive()) return;
     const timelineRoot = this._timelineViewport?.timeline3d?.root;
     if (timelineRoot) timelineRoot.visible = false;
     this._yearLayout?.build(getInitialNotes());
@@ -726,7 +739,7 @@ export class WordWeaverScene {
     }
 
     this._atomOrbits?.update(t);
-    if (getCalendarMode() === "3d") {
+    if (!this._renderPaused && getCalendarMode() === "3d" && isWordWeaverTabActive()) {
       this._updateCameraFocus(now);
       this._yearLayout?.update(delta, t, this.camera);
       this._timelineViewport?.update(delta);
@@ -743,7 +756,7 @@ export class WordWeaverScene {
 
     this.controls.update();
     this._meshes.forEach((m, i) => m.animatePulse?.(0.35 + (i % 3) * 0.05));
-    if (getCalendarMode() === "3d") {
+    if (!this._renderPaused && getCalendarMode() === "3d" && isWordWeaverTabActive()) {
       this.renderer.render(this.scene, this.camera);
     }
     this._raf = requestAnimationFrame(this._tick);
@@ -752,6 +765,10 @@ export class WordWeaverScene {
   dispose() {
     this._offCalendarMode?.();
     this._offCalendarMode = null;
+    if (this._onShellSurface) {
+      document.removeEventListener("inkling:shell-surface", this._onShellSurface);
+      this._onShellSurface = null;
+    }
     if (this._timelineBusDisposers) {
       disposeTimelineDataChange(this._timelineBusDisposers);
       this._timelineBusDisposers = null;

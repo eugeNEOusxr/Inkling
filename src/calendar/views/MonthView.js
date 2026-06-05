@@ -36,6 +36,18 @@ export class MonthView {
     onBus("eventUpdated", refreshAlerts);
     onBus("eventDeleted", refreshAlerts);
     onBus("alertTriggered", refreshAlerts);
+    onBus("navigateTo", (p) => {
+      if (p?.level !== "month") return;
+      if (p.date) {
+        const d = parseIsoDate(p.date);
+        if (!Number.isNaN(d.getTime())) {
+          this.year = d.getFullYear();
+          this.month = d.getMonth() + 1;
+        }
+      }
+      if (!this.isOpen()) this.open();
+      else this.render();
+    });
   }
 
   ensurePanel() {

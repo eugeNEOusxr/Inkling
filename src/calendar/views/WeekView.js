@@ -52,6 +52,17 @@ export class WeekView {
     onBus("eventUpdated", refreshAlerts);
     onBus("eventDeleted", refreshAlerts);
     onBus("alertTriggered", refreshAlerts);
+    onBus("navigateTo", (p) => {
+      if (p?.level !== "week") return;
+      if (p.date) {
+        const d = parseIsoDate(p.date);
+        if (!Number.isNaN(d.getTime())) {
+          this.weekStart = getWeekStartMonday(d);
+        }
+      }
+      if (!this.isOpen()) this.open();
+      else this.render();
+    });
     document.addEventListener("timelineUpdated", () => {
       if (this.isOpen()) this.render();
     });

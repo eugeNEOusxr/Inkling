@@ -29,7 +29,7 @@ body.wordweaver-immersive #wordweaver-embed.wordweaver-embed--stage {
   position: fixed !important;
   left: 8px !important;
   right: 8px !important;
-  top: calc(var(--inkling-chrome-h, 56px) + 8px + env(safe-area-inset-top, 0px)) !important;
+  top: calc(var(--inkling-top-bar-h, var(--inkling-chrome-h, 48px)) + env(safe-area-inset-top, 0px)) !important;
   bottom: calc(var(--inkling-bottom-nav-h, 62px) + 8px + env(safe-area-inset-bottom, 0px)) !important;
   z-index: 10200 !important;
   width: auto !important;

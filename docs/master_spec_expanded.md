@@ -856,43 +856,36 @@ If the app is closed when an alert would have fired, the next time the app opens
 
 ## 8.0 UI Shell
 
+> **Phase 3.1 amendment (Milestone 3.1 — Shell, Nav & Mode State):** The live shell is the **composition** of `InklingBottomNav`, `NavigationBar`, `WindowManager` / `AppLauncher` / `MinimizeBar`, panels, and `calendarMode` — **not** a separate `UIShell.js`. Navigation is **mobile-first single-panel**: each bottom-nav icon opens **one** full-screen surface; only one is visible at a time; **re-tap** the active icon closes to the **cosmos idle backdrop** (procedural starfield; optional image via `setCosmosBackdropImage`). Inkling opens **only** from its own tab. Both 2D and 3D renderers stay **instantiated**; the inactive renderer is **fully hidden** (not dimmed-through). **App tabs** (bottom nav) are distinct from **view levels** (top bar Today · Week · Month · Year → `navigateTo` on the canonical bus) and from **`calendarMode`** (2D/3D toggle inside WordWeaver only).
+
 ### 8.1 Top Bar
 
-The top bar is always visible, at the top of the viewport, on both mobile and desktop. It has a fixed height of 56px on desktop and 48px on mobile.
+The top bar is always visible at the top of the viewport (56px desktop / 48px mobile). It is **secondary** to the bottom app-tab bar on mobile.
 
-**Layout (desktop, left to right):**
-- App logo / name ("Inkling" wordmark)
-- Spacer
-- 2D / 3D toggle (segmented control)
-- View nav toggle: Today · Week · Month · Year (changes sub-view within current calendar mode)
-- Alerts button (with badge)
-- Inkling button
-- Settings button
+**Layout (desktop and mobile, contextual):**
+- App logo / month block (existing chrome)
+- **View level** (not app tabs): Today · Week · Month · Year — emit `navigateTo { date, level }` on the canonical bus; do not switch app tabs or `calendarMode`
+- **Alerts:** bell icon + 24h badge (§7.3)
+- **2D / 3D** segmented control when WordWeaver (or calendar context) is active — sets `calendarMode` only; §1.3 transition
+- Settings
 
-**Layout (mobile, left to right):**
-- App logo (icon only)
-- Spacer
-- Alerts button (with badge)
-- Inkling button (FAB alternative: floating action button at bottom-right)
-- Settings button
+**View levels:** "Today" → `navigateTo { date: today, level: "day" }`. Week / Month / Year change focus level without opening the Inkling app tab.
 
-**2D/3D Toggle:**
-A segmented control with two segments: "3D" and "2D". Switching triggers the mode transition animation (see Section 1.3). The active segment has a filled/highlighted background.
+**2D/3D toggle:** WordWeaver tab only (internal view mode). The **Calendar** app tab does **not** force `calendarMode`.
 
-**View Nav Toggle:**
-On desktop: text tabs. On mobile: icon-only tab bar at the bottom of the screen (Today, Week, Month, Year icons). Tapping "Today" in any mode navigates to the current date. Tapping Week/Month/Year changes the sub-view level.
+### 8.2 Bottom Navigation (Mobile-first app tabs)
 
-### 8.2 Bottom Navigation (Mobile)
+Primary navigation on all breakpoints (thumb-reachable). Five **app tabs** — only one surface active:
 
-On mobile, the bottom navigation bar replaces the view nav toggle from the top bar.
+| Tab | Surface |
+|-----|---------|
+| Calendar | Scheduling shell: small calendar + clock-insert / `calendar-max` layer |
+| Writer | Notebook writer panel |
+| WordWeaver | 3D immersive embed (`calendarMode` 2D/3D toggle is internal) |
+| Alerts | Alerts dropdown / sheet (§7.3) |
+| Inkling | Inkling panel (only way to open Inkling chat) |
 
-- Today (house icon)
-- Week (7-column icon)
-- Month (calendar icon)
-- Year (grid icon)
-- Settings (gear icon)
-
-The Inkling FAB floats above the bottom nav on the right side.
+**Re-tap** the active tab → close to **cosmos idle backdrop** (not Inkling). View levels (Today/Week/Month/Year) remain on the **top bar**, not duplicated here.
 
 ### 8.3 Inkling Panel
 
@@ -917,7 +910,8 @@ Described in Section 6.6.
 
 | Layer | Z-Index | Element |
 |-------|---------|---------|
-| Base | 0 | 3D canvas / 2D calendar |
+| Base | 0 | Notebook `#three-canvas` (Calendar tab) / WordWeaver mount |
+| Cosmos idle | 5 | `#cosmos-backdrop` when no app tab active |
 | Shell | 100 | Top bar |
 | Panels | 200 | Inkling, Settings, Event Detail |
 | Alerts Dropdown | 300 | Alerts overlay |
@@ -928,9 +922,11 @@ Described in Section 6.6.
 
 | Breakpoint | Width | Layout Changes |
 |------------|-------|----------------|
-| Mobile | < 640px | Bottom nav, full-screen panels, compact top bar |
-| Tablet | 640px–1023px | Top bar with icons, side panels at 50% width |
-| Desktop | 1024px+ | Full top bar with labels, side panels at 380px fixed |
+| Mobile | < 640px | **Primary:** bottom app tabs; each active surface is **full-screen and scrollable** (no x/y cut-off). Compact top bar (view levels + bell). Cosmos idle when no tab active. |
+| Tablet | 640px–1023px | Same single-panel default; richer top chrome; panels up to ~50% width where applicable |
+| Desktop | 1024px+ | Same single-panel default; full top bar labels; side panels ~380px; optional OS floating windows secondary to single-panel |
+
+**Idle surface:** `#cosmos-backdrop` (z-index above base canvas, below shell @100) — default image `/assets/backgrounds/cosmos-backdrop.jpg` (JWST Pismis 24; credit NASA, ESA, CSA, STScI) with top/bottom legibility scrims; procedural canvas starfield if the image fails to load; `setCosmosBackdropImage(url)` to override.
 
 ---
 

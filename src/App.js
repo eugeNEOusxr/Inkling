@@ -13,35 +13,17 @@ export function bootWordWeaverFirst() {
   }
 
   const activate = () => {
-    document.dispatchEvent(new CustomEvent("inkling:close-all-panels"));
-
     const app = window.__inklingApp;
-    if (app?.windowManager?.closeAllPanels && app?.windowManager?.openPanel) {
-      app.windowManager.closeAllPanels();
-      app.windowManager.openPanel("wordweaver");
-    } else {
-      openPanel("wordweaver");
+    if (app?._handleBottomNavTab) {
+      void app._handleBottomNavTab("wordweaver", { toggle: false });
+      return;
     }
-
-    const wwBtn = document.querySelector('.inkling-bottom-nav__btn[data-tab="wordweaver"]');
-    if (wwBtn && !document.body.classList.contains("inkling-tab-wordweaver")) {
-      wwBtn.click();
-    }
-
-    const embed = document.getElementById("wordweaver-embed");
-    if (embed) {
-      embed.classList.remove("hidden", "is-idle");
-      embed.style.display = "flex";
-      embed.style.zIndex = "10200";
-    }
-
-    document.body.classList.add("inkling-tab-wordweaver", "wordweaver-embed-open");
-    document.body.classList.remove("inkling-tab-inkling", "inkling-stage-open");
+    document.dispatchEvent(new CustomEvent("inkling:close-all-panels"));
+    openPanel("wordweaver");
   };
 
   queueMicrotask(activate);
   setTimeout(activate, 150);
-  setTimeout(activate, 450);
 }
 
 /**

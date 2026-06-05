@@ -47,6 +47,10 @@ import { openAlertsDropdown } from "./alerts/AlertsDropdown.js";
 import { mountAlertsNavigation } from "./ui/NavigationBar.js";
 import { startAlertsScheduler } from "./alerts/alertsScheduler.js";
 import { syncAlertsBadge } from "./alerts/alertsModel.js";
+import { getCosmosBackdrop } from "./ui/CosmosBackdrop.js";
+import { showIdleSurface, beginAppTabSurface } from "./ui/shellSurfaces.js";
+import { consumeWebGLFallbackNotice } from "../wordweaver/calendarMode.js";
+import { closeAlertsDropdown } from "./alerts/AlertsDropdown.js";
 import { WordWeaverEmbed } from "../wordweaver/WordWeaverEmbed.js";
 import { commitSlotNote } from "../utils/slotNoteSync.js";
 import { getLastView, saveLastView } from "../utils/storage.js";
@@ -237,6 +241,8 @@ export class CalendarApp {
     this._mountInstallPrompt();
     if (this.osShell) this._mountOsShell();
     this._bootAlertsSystem();
+    getCosmosBackdrop().mount(document.getElementById("app"));
+    this._showWebGLFallbackNoticeIfNeeded();
     this._ensureMinimizeDock();
     this._bindWriterPanelEvents();
     this._bindWordWeaverEvents();
@@ -244,6 +250,11 @@ export class CalendarApp {
       if (this.viewMode === "overview" && !this.panelMode) {
         void this._frameOverviewCamera(false);
       }
+    });
+    // ▾ collapse control while immersive → close WordWeaver to the idle cosmos
+    // surface (same as re-tapping the bottom WordWeaver icon).
+    window.addEventListener("wordweaver:request-exit", () => {
+      this._closeBottomStage();
     });
     this._bindDetailZoomBack();
     this._bindShellFocus();
@@ -549,6 +560,7 @@ export class CalendarApp {
     }
     await this._closeAllPanelsForSwitch();
     this._showStageBackdrop(false);
+    document.body.classList.add("inkling-layer--calendar-max");
     this.layerManager.open("calendar-max");
     this.notebookWall.setVisible(true);
     this.notebookWall.setOverviewDimmed(false);
@@ -558,12 +570,13 @@ export class CalendarApp {
     await this._frameOverviewCamera(true);
     this.controls.enabled = true;
     this.bottomNav?.setActiveTab("calendar");
-    document.body.classList.add("inkling-stage-open");
-    document.body.classList.remove("inkling-tab-calendar");
+    document.body.classList.add("inkling-stage-open", "inkling-tab-calendar");
+    beginAppTabSurface("calendar");
   }
 
   exitCalendarMaxLayer() {
     if (!this.layerManager.isOpen("calendar-max")) return;
+    document.body.classList.remove("inkling-layer--calendar-max");
     this.layerManager.close("calendar-max");
     this.notebookWall.overviewWallGroup.scale.set(1, 1, 1);
     this.notebookWall.setVisible(false);
@@ -944,29 +957,26 @@ export class CalendarApp {
   }
 
   async openAlertsPanel() {
-    this.windowManager?.closeAllPanels();
-    document.dispatchEvent(new CustomEvent("inkling:close-all-panels"));
     if (this.viewMode === "notification-wall") {
       await this.exitNotificationWall();
     }
-    await this._closeAllPanelsForSwitch();
-    this._closeBottomStage();
     openAlertsDropdown();
-    this.bottomNav?.setActiveTab("alerts");
-    document.body.classList.add("inkling-stage-open", "inkling-tab-alerts");
   }
 
   _closeBottomStage() {
     this.exitCalendarMaxLayer();
-    this.bottomNav?.setActiveTab(null);
-    document.body.classList.remove("inkling-stage-open");
     this._clearBottomTabClasses();
     this._showStageBackdrop(false);
     this.layerManager.closeAll();
     this.notebookWriterPanel.close();
     this.threadPanel.close();
     this.inklingPanel.minimize();
-    document.getElementById("inkling-fab")?.classList.add("hidden");
+    this.wordWeaverEmbed?.exitImmersive();
+    this.wordWeaverEmbed?.hide();
+    this.alertsPanel?.close();
+    closeAlertsDropdown();
+    this.windowManager?.closeAllPanels();
+    document.dispatchEvent(new CustomEvent("inkling:close-all-panels"));
     if (this.panelMode === "notebook-writer" || this.panelMode === "day-notes") {
       this.notebookWriterPanel.close();
       this.threadPanel.close();
@@ -976,7 +986,24 @@ export class CalendarApp {
       this._setMobileWriterScrollLock(false);
     }
     void this._frameOverviewCamera(false);
-    this.wordWeaverEmbed?.exitImmersive();
+    this.bottomNav?.setActiveTab(null);
+    showIdleSurface();
+  }
+
+  _showWebGLFallbackNoticeIfNeeded() {
+    if (!consumeWebGLFallbackNotice()) return;
+    let el = document.getElementById("inkling-webgl-notice");
+    if (!el) {
+      el = document.createElement("p");
+      el.id = "inkling-webgl-notice";
+      el.className = "inkling-webgl-notice";
+      el.setAttribute("role", "status");
+      el.textContent =
+        "3D view needs WebGL, which is not available here. Switched to 2D mode.";
+      document.getElementById("ui-overlay")?.appendChild(el);
+    }
+    el.classList.remove("hidden");
+    setTimeout(() => el?.classList.add("hidden"), 12_000);
   }
 
   _closeActiveLayer() {
@@ -1034,57 +1061,65 @@ export class CalendarApp {
   async _handleBottomNavTab(tab, meta) {
     if (meta.toggle) {
       this._closeBottomStage();
-      if (tab === "alerts") this.alertsPanel?.close();
       return;
     }
 
+    this.windowManager?.closeAllPanels();
+    document.dispatchEvent(new CustomEvent("inkling:close-all-panels"));
+
     if (tab !== "alerts") {
       this.alertsPanel?.close();
+      closeAlertsDropdown();
     }
 
     if (this.viewMode === "notification-wall") {
       await this.exitNotificationWall();
     }
 
-    this._clearBottomTabClasses();
+    await this._closeAllPanelsForSwitch();
     this.notebookWriterPanel.close();
     this.threadPanel.close();
     this.inklingPanel.minimize();
+    this.wordWeaverEmbed?.exitImmersive();
+    this.wordWeaverEmbed?.hide();
+    this.layerManager.close("wordweaver");
 
+    beginAppTabSurface(tab);
     this.bottomNav?.setActiveTab(tab);
-    document.body.classList.add("inkling-stage-open", `inkling-tab-${tab}`);
-    this._showStageBackdrop(true);
 
     const date = this.notebookCalendarDock?.getDate() ?? this._getTodayDate();
     const time = getLastView()?.time ?? "09:00";
 
     switch (tab) {
       case "calendar":
-        if (this.layerManager.isOpen("calendar-max")) {
-          this.exitCalendarMaxLayer();
-        } else {
-          await this.enterCalendarMaxLayer();
-        }
+        this._showStageBackdrop(false);
+        document.body.classList.add("inkling-stage-open");
+        await this.enterCalendarMaxLayer();
         break;
       case "writer":
+        document.body.classList.add("inkling-stage-open");
+        this._showStageBackdrop(true);
         await this.openNotebookDayByDate(date);
         break;
       case "wordweaver":
         this.notebookWall.setVisible(false);
+        document.body.classList.add("inkling-stage-open", "wordweaver-embed-open");
+        this._showStageBackdrop(false);
         this.layerManager.open("wordweaver");
         this.wordWeaverEmbed?.enterImmersive();
         break;
       case "inkling": {
         this.notebookWall.setVisible(false);
-        this.wordWeaverEmbed?.exitImmersive();
-        this.wordWeaverEmbed?.hide();
-        this.layerManager.close("wordweaver");
+        document.body.classList.add("inkling-stage-open");
+        this._showStageBackdrop(true);
         this.layerManager.open("inkling");
         document.getElementById("inkling-fab")?.classList.add("hidden");
         this.inklingPanel.expand();
         break;
       }
       case "alerts":
+        document.body.classList.add("inkling-stage-open");
+        this._showStageBackdrop(true);
         await this.openAlertsPanel();
         break;
       default:

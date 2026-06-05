@@ -3,6 +3,7 @@ import { MonthGrid2D } from "./MonthGrid2D.js";
 import { WeekGrid2D, weekStartForDate } from "./WeekGrid2D.js";
 import { getCalendarMode } from "./calendarMode.js";
 import { onTimelineDataChange, on as onBus } from "../utils/EventBus.js";
+import { parseIsoDate } from "./timelineModel.js";
 
 const STYLE_ID = "ww-calendar-2d-styles";
 
@@ -391,7 +392,49 @@ export class Calendar2D {
     onBus("eventDeleted", refreshAlerts);
     onBus("alertTriggered", refreshAlerts);
 
+    onBus("modeChanged", (p) => {
+      const mode = p?.mode;
+      if (mode === "2d") this.show();
+      else if (mode === "3d") this.hide();
+    });
+
+    onBus("navigateTo", (payload) => this._onNavigateTo(payload));
+
     this._render();
+  }
+
+  /**
+   * @param {{ date?: string, level?: string }} payload
+   */
+  _onNavigateTo(payload) {
+    const date = payload?.date;
+    const level = payload?.level;
+    if (!date || !level) return;
+    const parsed = parseIsoDate(date);
+    if (!parsed || Number.isNaN(parsed.getTime())) return;
+    const year = parsed.getFullYear();
+    const month = parsed.getMonth() + 1;
+    if (level === "year") {
+      this.year = year;
+      this.view = "year";
+      this.show();
+      this._render();
+      return;
+    }
+    if (level === "month") {
+      this.openMonth(year, month);
+      this.show();
+      return;
+    }
+    if (level === "day") {
+      this.openDay(date);
+      this.show();
+      return;
+    }
+    if (level === "week") {
+      this.openMonth(year, month);
+      this.show();
+    }
   }
 
   show() {

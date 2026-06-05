@@ -1,3 +1,4 @@
+import "./wordweaver/calendarMode.js";
 import { createScene } from "./scene.js";
 import { CalendarApp } from "./calendar/CalendarApp.js";
 import { requireAuthForApp, signOut } from "./auth/requireAuth.js";

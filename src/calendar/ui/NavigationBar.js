@@ -1,10 +1,12 @@
 /**
- * Top chrome — Today / Week / Month / Alerts + badge.
+ * Top chrome — view levels (Today / Week / Month / Year) + bell Alerts.
  */
 import * as bus from "../../utils/EventBus.js";
 import { syncAlertsBadge } from "../alerts/alertsModel.js";
 import { getAlertsDropdown, openAlertsDropdown } from "../alerts/AlertsDropdown.js";
 import { openPanel } from "./AppLauncher.js";
+import { iconBell } from "./IconLibrary.js";
+import { todayIsoDate } from "../../wordweaver/timelineModel.js";
 import "../views/WeekView.js";
 import "../views/MonthView.js";
 
@@ -30,19 +32,25 @@ export function openViewPanel(panelId) {
 }
 
 /**
- * @param {{ windowManager?: import("./WindowManager.js").WindowManager | null, onNavigateToAlert?: (alert: import("../alerts/alertsModel.js").AlertRecord) => void }} [opts]
+ * @param {{ windowManager?: import("./WindowManager.js").WindowManager | null }} [opts]
  */
 export function mountAlertsNavigation(opts = {}) {
   if (opts.windowManager) registerShellWindowManager(opts.windowManager);
-
   mountViewNavigation(opts);
 }
 
 /**
- * Today · Week · Month · Alerts links in top chrome.
- * @param {{ onNavigateToAlert?: (alert: import("../alerts/alertsModel.js").AlertRecord) => void }} opts
+ * @param {string} dateIso
+ * @param {"day"|"week"|"month"|"year"} level
  */
-function mountViewNavigation(opts) {
+function emitNavigateTo(dateIso, level) {
+  bus.emit("navigateTo", { date: dateIso, level });
+}
+
+/**
+ * Today · Week · Month · Year · Alerts (view levels — not app tabs).
+ */
+function mountViewNavigation() {
   const topBar = document.querySelector(".top-chrome__bar");
   if (!topBar || topBar.querySelector(".inkling-view-nav")) return;
 
@@ -50,13 +58,14 @@ function mountViewNavigation(opts) {
 
   const nav = document.createElement("nav");
   nav.className = "inkling-view-nav";
-  nav.setAttribute("aria-label", "Calendar views");
+  nav.setAttribute("aria-label", "Calendar view level");
 
   const views = [
-    { id: "inkling", label: "Today" },
-    { id: "weekView", label: "Week" },
-    { id: "monthView", label: "Month" },
-    { id: "alerts", label: "Alerts", showBadge: true }
+    { id: "today", label: "Today", level: "day" },
+    { id: "weekView", label: "Week", level: "week", panel: "weekView" },
+    { id: "monthView", label: "Month", level: "month", panel: "monthView" },
+    { id: "year", label: "Year", level: "year" },
+    { id: "alerts", label: "Alerts", isAlerts: true, showBadge: true }
   ];
 
   for (const v of views) {
@@ -64,20 +73,26 @@ function mountViewNavigation(opts) {
     btn.type = "button";
     btn.className = "inkling-view-nav__btn";
     btn.dataset.view = v.id;
-    if (v.id === "alerts") btn.id = "btn-inkling-alerts";
-    btn.innerHTML = v.showBadge
-      ? `${v.label}<span class="inkling-alerts-badge hidden" data-inkling-alerts-badge>0</span>`
-      : v.label;
+    if (v.id === "alerts") {
+      btn.id = "btn-inkling-alerts";
+      btn.setAttribute("aria-label", "Alerts");
+      btn.innerHTML = `<span class="inkling-view-nav__bell" aria-hidden="true">${iconBell}</span><span class="sr-only">Alerts</span><span class="inkling-alerts-badge hidden" data-inkling-alerts-badge>0</span>`;
+    } else {
+      btn.textContent = v.label;
+    }
+
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       topBar.querySelectorAll(".inkling-view-nav__btn").forEach((b) => {
         b.classList.toggle("is-active", b === btn);
       });
-      if (v.id === "alerts") {
+      if (v.isAlerts) {
         openAlertsDropdown();
-      } else {
-        openViewPanel(v.id);
+        return;
       }
+      const date = todayIsoDate();
+      if (v.level) emitNavigateTo(date, v.level);
+      if (v.panel) openViewPanel(v.panel);
     });
     nav.appendChild(btn);
   }
@@ -98,7 +113,7 @@ function mountViewNavigation(opts) {
     railBtn.setAttribute("aria-label", "Alerts");
     railBtn.title = "Alerts";
     railBtn.innerHTML = `
-      <span aria-hidden="true">⏰</span>
+      <span class="inkling-view-nav__bell" aria-hidden="true">${iconBell}</span>
       <span class="inkling-alerts-badge hidden" data-inkling-alerts-badge>0</span>
     `;
     railBtn.addEventListener("click", (e) => {
@@ -116,7 +131,7 @@ function mountViewNavigation(opts) {
   document.addEventListener("inkling:alerts-dropdown-toggle", () => {
     const btn = document.getElementById("btn-inkling-alerts");
     const dd = getAlertsDropdown();
-    if (btn) btn.setAttribute("aria-expanded", String(dd._open));
+    if (btn) btn.setAttribute("aria-expanded", String(dd.isOpen()));
   });
 
   document.addEventListener("inkling:open-panel", (e) => {

@@ -27,6 +27,9 @@ export class InklingPanel {
     this._minimized = false;
     this._attachedImage = null;
     this._sideThreadActive = false;
+    this._messageSeq = 0;
+    this._welcomed = false;
+    this._lastDigestKey = null;
 
     document.getElementById("inkling-minimize")?.classList.add("minimize-btn");
     document.getElementById("inkling-minimize")?.addEventListener("click", () => this.minimize());
@@ -62,6 +65,9 @@ export class InklingPanel {
 
     document.getElementById("inkling-fab")?.addEventListener("click", () => this.expand());
 
+    // Seed the welcome message first so it can never be buried by a proactive
+    // digest or alert bubble that fires before the user opens the panel.
+    this.showWelcomeIfNeeded();
     this._startCron();
   }
 
@@ -74,15 +80,11 @@ export class InklingPanel {
       }
     });
 
-    document.getElementById("inkling-bottom-nav")?.addEventListener(
-      "click",
-      (event) => {
-        const tab = event.target.closest?.("[data-tab]")?.getAttribute("data-tab");
-        if (!tab) return;
-        this._closeSiblingPanels();
-      },
-      true
-    );
+    // NOTE: do NOT intercept #inkling-bottom-nav clicks here. A capture-phase
+    // listener used to call _closeSiblingPanels() (→ setActiveTab(null)) before
+    // InklingBottomNav computed `toggle = activeTab === tab`, which permanently
+    // defeated re-tap-to-minimize. CalendarApp._handleBottomNavTab now owns all
+    // sibling-closing, so this interception is both redundant and harmful.
   }
 
   async _openInklingHome() {
@@ -138,9 +140,10 @@ export class InklingPanel {
     const wwBar = document.querySelector(".wordweaver-embed__bar");
     if (wwBar && !wwBar.querySelector(".minimize-btn")) {
       this._attachMinimizeButton(wwBar, () => {
-        this.app?.wordWeaverEmbed?.setSize?.("minimized");
-        this.app?.layerManager?.close("wordweaver");
-        this._returnToHomeSurface();
+        // Single-panel model: minimizing WordWeaver closes the surface to the
+        // idle cosmos backdrop (same path as re-tapping the bottom WordWeaver
+        // icon). Must exit immersive — setSize() alone left it full-screen.
+        void this.app?._handleBottomNavTab?.("wordweaver", { toggle: true });
       });
     }
 
@@ -210,7 +213,8 @@ export class InklingPanel {
   }
 
   showWelcomeIfNeeded() {
-    if (this.messagesEl?.childElementCount > 0) return;
+    if (this._welcomed) return;
+    this._welcomed = true;
     const email = document.getElementById("auth-account-label")?.textContent?.trim() || "";
     const html = escapeHtml(getInklingWelcomeMessage(getDisplayName(email))).replace(/\n/g, "<br>");
     this._appendBubble("inkling", html);
@@ -515,6 +519,11 @@ export class InklingPanel {
     if (!upcoming.length) return;
     const n = upcoming.length;
     const first = upcoming[0];
+    // Dedup: don't re-post an identical digest (the cron tick + visibilitychange
+    // were appending the same "Heads up" bubble repeatedly).
+    const digestKey = `${n}|${first.title}|${first.timeLabel}`;
+    if (digestKey === this._lastDigestKey) return;
+    this._lastDigestKey = digestKey;
     if (!this.isOpen()) {
       document.getElementById("inkling-fab")?.classList.add("inkling-fab--pulse");
     }

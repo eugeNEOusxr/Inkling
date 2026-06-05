@@ -332,9 +332,21 @@ export class NotificationSettings {
       </p>
     `;
 
+    const aboutSection = document.createElement("section");
+    aboutSection.className =
+      "notification-settings-extra-section notification-settings-extra-section--about";
+    aboutSection.innerHTML = `
+      <h4 class="notification-settings-extra-title">About</h4>
+      <p class="notification-settings-extra-help">
+        Idle backdrop: star cluster Pismis 24 (James Webb Space Telescope).
+        Image credit: NASA, ESA, CSA, STScI.
+      </p>
+    `;
+
     extras.appendChild(soundByTypeSection);
     extras.appendChild(previewSection);
     extras.appendChild(quietSection);
+    extras.appendChild(aboutSection);
     extras.insertBefore(themeSection, extras.firstChild);
     extras.insertBefore(appearanceSection, extras.firstChild);
 

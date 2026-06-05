@@ -219,6 +219,13 @@ export class WordWeaverEmbed {
   }
 
   toggleSize() {
+    // In full-screen/immersive mode there is no corner-preview to shrink to, so
+    // the ▾ collapse control means "close WordWeaver to the idle surface". Ask
+    // the app to run its close-to-idle path (CalendarApp listens for this).
+    if (this._immersive) {
+      window.dispatchEvent(new CustomEvent("wordweaver:request-exit"));
+      return;
+    }
     this._applySize(this._size === "minimized" ? "expanded" : "minimized");
   }
 
