@@ -1776,6 +1776,64 @@ export function getEventsForYear(year) {
 }
 
 /**
+ * Per-month + per-day note density for a year, computed in one pass over the
+ * year's events. This is the data seam the 3D WordWeaver Calendar reads to drive
+ * level-of-detail zoom, per-day glow/heat, and the golden "busy month" atom —
+ * so the renderer never has to query the model per cell. Built on the tested
+ * {@link getEventsForYear} (same federation behaviour: saved month merged).
+ *
+ * @param {number} year
+ * @returns {{
+ *   year: number,
+ *   total: number,
+ *   monthCounts: number[],
+ *   dayCounts: Record<string, number>,
+ *   busiestMonthIndex: number,
+ *   maxMonthCount: number,
+ *   maxDayCount: number
+ * }} monthCounts is length 12 (index 0 = January); dayCounts keyed by ISO
+ *    "YYYY-MM-DD"; busiestMonthIndex is 0-based (-1 when the year is empty).
+ */
+export function getYearTopology(year) {
+  ensureInitialized();
+  const records = getEventsForYear(year);
+
+  const monthCounts = new Array(12).fill(0);
+  /** @type {Record<string, number>} */
+  const dayCounts = {};
+  let maxDayCount = 0;
+
+  for (const r of records) {
+    const iso = r.date;
+    if (typeof iso !== "string" || iso.length < 7) continue;
+    const monthIndex = Number(iso.slice(5, 7)) - 1;
+    if (monthIndex >= 0 && monthIndex < 12) monthCounts[monthIndex] += 1;
+    const next = (dayCounts[iso] ?? 0) + 1;
+    dayCounts[iso] = next;
+    if (next > maxDayCount) maxDayCount = next;
+  }
+
+  let busiestMonthIndex = -1;
+  let maxMonthCount = 0;
+  for (let m = 0; m < 12; m++) {
+    if (monthCounts[m] > maxMonthCount) {
+      maxMonthCount = monthCounts[m];
+      busiestMonthIndex = m;
+    }
+  }
+
+  return {
+    year,
+    total: records.length,
+    monthCounts,
+    dayCounts,
+    busiestMonthIndex,
+    maxMonthCount,
+    maxDayCount
+  };
+}
+
+/**
  * @param {string} id
  * @returns {StoredTimelineEvent | null}
  */
