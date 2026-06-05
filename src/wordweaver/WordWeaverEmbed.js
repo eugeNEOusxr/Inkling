@@ -1,5 +1,8 @@
 import { segmentFromTime, buildSegmentModule } from "../inkling-core/timelineNode.js";
 import { WordWeaverScene } from "./WordWeaverScene.js";
+import { WordWeaverChrome } from "./WordWeaverChrome.js";
+import { getCalendarMode } from "./calendarMode.js";
+import * as bus from "../utils/EventBus.js";
 import { WEAVE_LAYOUT_MODES } from "./layoutModes.js";
 import { syncCalendarDayToWeaver, getWeaverNodesForSegment } from "./calendarWordWeaverSync.js";
 import { getAllTimelineNodes } from "../inkling-core/timelineStorage.js";
@@ -53,6 +56,8 @@ export class WordWeaverEmbed {
     this._homeParent = null;
     /** @type {Node | null} */
     this._homeNext = null;
+    /** @type {WordWeaverChrome | null} */
+    this._chrome = new WordWeaverChrome(this);
 
     this.layoutEditor = new CustomLayoutEditor({
       onPreviewStart: () => this._beginCustomEdit(),
@@ -110,6 +115,10 @@ export class WordWeaverEmbed {
       if (this._scene && this._date) this.refresh();
     };
     window.addEventListener("inkling:appearance-change", this._onAppearanceChange);
+
+    this._onShellForChrome = () => this._syncFlightChrome();
+    document.addEventListener("inkling:shell-surface", this._onShellForChrome);
+    this._offModeForChrome = bus.on("modeChanged", () => this._syncFlightChrome());
 
     queueMicrotask(() => {
       const params = new URLSearchParams(window.location.search);
@@ -245,6 +254,14 @@ export class WordWeaverEmbed {
     );
   }
 
+  _syncFlightChrome() {
+    const active =
+      Boolean(this._scene) &&
+      this._isStageActive() &&
+      getCalendarMode() === "3d";
+    this._chrome?.setActive(active);
+  }
+
   /**
    * Move panel to document.body so it stacks above the stage backdrop (top-chrome is z-index 10070).
    * @param {boolean} active
@@ -291,6 +308,7 @@ export class WordWeaverEmbed {
     document.body.classList.add("wordweaver-immersive");
     const today = this._todayIso();
     this.show(today, this._time || "12:00", false, { immersive: true });
+    this._syncFlightChrome();
   }
 
   exitImmersive() {
@@ -298,6 +316,7 @@ export class WordWeaverEmbed {
     document.body.classList.remove("wordweaver-immersive");
     document.body.classList.remove("wordweaver-layout-editing");
     this._attachToStage(this._isStageActive());
+    this._syncFlightChrome();
   }
 
   _todayIso() {
@@ -384,6 +403,7 @@ export class WordWeaverEmbed {
       keepGuide: Boolean(opts.keepGuide)
     });
     this._scene?.assertMonthGridLayout?.();
+    this._syncFlightChrome();
     requestAnimationFrame(() => this._scene?._resize?.());
     setTimeout(() => this._scene?._resize?.(), 150);
   }
@@ -460,6 +480,7 @@ export class WordWeaverEmbed {
     });
     this._scene.setLayoutMode(this._layoutMode);
     this._scene.assertMonthGridLayout?.();
+    this._syncFlightChrome();
   }
 
   /**
@@ -512,6 +533,7 @@ export class WordWeaverEmbed {
     document.body.classList.remove("wordweaver-layout-editing");
     this._attachToStage(false);
     this.exitImmersive();
+    this._syncFlightChrome();
     if (this.headlineEl) this.headlineEl.textContent = "WordWeaver";
     if (this.dateEl) this.dateEl.textContent = "";
     if (this.dailyEl) this.dailyEl.innerHTML = "";
@@ -523,6 +545,14 @@ export class WordWeaverEmbed {
   }
 
   dispose() {
+    this._offModeForChrome?.();
+    this._offModeForChrome = null;
+    if (this._onShellForChrome) {
+      document.removeEventListener("inkling:shell-surface", this._onShellForChrome);
+      this._onShellForChrome = null;
+    }
+    this._chrome?.dispose();
+    this._chrome = null;
     this._scene?.dispose();
     this._scene = null;
   }

@@ -2,13 +2,21 @@
  * Touch flight controls — forward pad, fly / descend, optional joystick.
  */
 import { isMobileWordWeaver } from "./mobileWordWeaverEnv.js";
+import { getCalendarMode } from "./calendarMode.js";
 
 const ENABLE_QUERY = "(max-width: 900px), (hover: none) and (pointer: coarse)";
 
 export function shouldShowWordWeaverMobileControls() {
+  if (typeof window === "undefined") return false;
+  const onWordWeaver3d =
+    (document.body?.classList.contains("inkling-tab-wordweaver") ||
+      document.body?.classList.contains("wordweaver-immersive")) &&
+    getCalendarMode() === "3d";
+  if (!onWordWeaver3d) return false;
+  if (document.body?.classList.contains("inkling-native-shell")) return true;
   if (!isMobileWordWeaver()) return false;
   if (!window.matchMedia) return true;
-  return window.matchMedia(ENABLE_QUERY).matches || document.body?.classList.contains("inkling-native-shell");
+  return window.matchMedia(ENABLE_QUERY).matches;
 }
 
 function clamp(v, min = -1, max = 1) {
@@ -97,11 +105,19 @@ export class WordWeaverMobileControls {
       .ww-mobile-nav {
         position: absolute;
         inset: auto 8px 12px 8px;
-        z-index: 6;
+        z-index: 25;
         display: flex;
         align-items: flex-end;
         gap: 10px;
         pointer-events: none;
+      }
+      /* The gate sets [hidden]; without this, the display:flex above overrides it
+         and the overlay shows on desktop too. Honor the hidden attribute. */
+      .ww-mobile-nav[hidden] { display: none !important; }
+      body.inkling-tab-wordweaver #wordweaver-embed-mount,
+      body.inkling-tab-wordweaver .wordweaver-embed__mount,
+      body.wordweaver-immersive #wordweaver-embed-mount {
+        overflow: visible !important;
       }
       .ww-mobile-nav.is-active { pointer-events: auto; }
       .ww-mobile-nav__forward-pad {
@@ -259,7 +275,7 @@ export class WordWeaverMobileControls {
     if (e.pointerId !== this._padPointerId) return;
     e.preventDefault();
     const dy = this._padStartY - e.clientY;
-    this._padForward = clamp(0.2 + dy / 120, 0, 1);
+    this._padForward = clamp(0.2 + dy / 100, 0, 1.15);
     this.onInputChange();
   }
 

@@ -30,6 +30,8 @@ const ENV_LAYER = 0;
 const CONTENT_LAYER = 1;
 
 const _envLoader = new GLTFLoader();
+const _flyDir = new THREE.Vector3();
+const _flyRight = new THREE.Vector3();
 
 /**
  * WordWeaver 3D viewport — spatial thought-weaving with multiple layout modes.
@@ -132,6 +134,11 @@ export class WordWeaverScene {
      *   duration: number
      * } | null} */
     this._cameraFocus = null;
+    /** Grid flight input from WordWeaverChrome (forward, strafe, lift ∈ [-1, 1]). */
+    this._flightForward = 0;
+    this._flightStrafe = 0;
+    this._flightLift = 0;
+    this._flightSpeed = 14;
     this._raf = 0;
     this._resizeObserver = null;
     this._clock = new THREE.Clock();
@@ -170,6 +177,7 @@ export class WordWeaverScene {
 
     // M5 redesign M1: single-month wall grid (ring createYearLayout retired in-place)
     this._rebuildMonthGrid();
+    this._syncLegacyFlightMovement();
     getCalendar2D().mount(this.container);
     this._renderPaused = true;
     this._applyCalendarMode(getCalendarMode());
@@ -191,7 +199,49 @@ export class WordWeaverScene {
    * @param {number} lift
    */
   setFlightInput(forward, strafe, lift) {
+    if (this._monthGridLayoutActive) {
+      this._flightForward = forward;
+      this._flightStrafe = strafe;
+      this._flightLift = lift;
+      return;
+    }
     this._timelineViewport?.setFlightInput?.(forward, strafe, lift);
+  }
+
+  _updateGridFlight(delta) {
+    const forward = this._flightForward;
+    const strafe = this._flightStrafe;
+    const lift = this._flightLift;
+    if (!forward && !strafe && !lift) return;
+
+    const speed = this._flightSpeed * delta;
+    this.camera.getWorldDirection(_flyDir);
+    _flyDir.y = 0;
+    if (_flyDir.lengthSq() < 1e-6) _flyDir.set(0, 0, -1);
+    else _flyDir.normalize();
+
+    _flyRight.crossVectors(_flyDir, this.camera.up).normalize();
+
+    if (forward) {
+      this.camera.position.addScaledVector(_flyDir, forward * speed);
+      this.controls.target.addScaledVector(_flyDir, forward * speed);
+    }
+    if (strafe) {
+      this.camera.position.addScaledVector(_flyRight, strafe * speed);
+      this.controls.target.addScaledVector(_flyRight, strafe * speed);
+    }
+    if (lift) {
+      this.camera.position.y += lift * speed;
+      this.controls.target.y += lift * speed;
+    }
+  }
+
+  _syncLegacyFlightMovement() {
+    const gridActive = this._monthGridLayoutActive;
+    this._timelineViewport?.setMovementEnabled?.(!gridActive);
+    if (gridActive) {
+      this._timelineViewport?.setFlightInput?.(0, 0, 0);
+    }
   }
 
   /**
@@ -247,11 +297,15 @@ export class WordWeaverScene {
     this._suppressLegacy3DLayout();
     if (!is3d) {
       if (this._monthGrid?.root) this._monthGrid.root.visible = false;
+      this._flightForward = 0;
+      this._flightStrafe = 0;
+      this._flightLift = 0;
       return;
     }
     if (!this._monthGrid) this._rebuildMonthGrid();
     if (this._monthGrid?.root) this._monthGrid.root.visible = true;
     this._frameMonthGridCamera();
+    this._syncLegacyFlightMovement();
     this._applyForegroundLayers();
   }
 
@@ -832,7 +886,9 @@ export class WordWeaverScene {
       this._updateCameraFocus(now);
       this._yearLayout?.update(delta, t, this.camera);
       this._monthGrid?.update(delta, t);
-      if (!this._monthGridLayoutActive) {
+      if (this._monthGridLayoutActive) {
+        this._updateGridFlight(delta);
+      } else {
         this._timelineViewport?.update(delta);
       }
     }

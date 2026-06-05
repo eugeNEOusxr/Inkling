@@ -16,11 +16,14 @@ function createFreeCameraMovement(camera, controls) {
   let extForward = 0;
   let extStrafe = 0;
   let extLift = 0;
+  let enabled = true;
 
   const onKeyDown = (e) => {
+    if (!enabled) return;
     keys[e.code] = true;
   };
   const onKeyUp = (e) => {
+    if (!enabled) return;
     keys[e.code] = false;
   };
 
@@ -29,11 +32,24 @@ function createFreeCameraMovement(camera, controls) {
 
   return {
     /**
+     * @param {boolean} on
+     */
+    setEnabled(on) {
+      enabled = on;
+      if (!enabled) {
+        for (const k of Object.keys(keys)) delete keys[k];
+        extForward = 0;
+        extStrafe = 0;
+        extLift = 0;
+      }
+    },
+    /**
      * @param {number} forward -1..1
      * @param {number} strafe -1..1
      * @param {number} lift -1..1
      */
     setFlightInput(forward, strafe, lift) {
+      if (!enabled) return;
       extForward = forward;
       extStrafe = strafe;
       extLift = lift;
@@ -42,6 +58,7 @@ function createFreeCameraMovement(camera, controls) {
      * @param {number} delta
      */
     update(delta) {
+      if (!enabled) return;
       const speed = MOVE_SPEED * delta;
       const forward =
         (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) + extForward;
@@ -203,6 +220,12 @@ export function mountWordWeaverTimeline(opts) {
      */
     setFlightInput(forward, strafe, lift) {
       movement?.setFlightInput(forward, strafe, lift);
+    },
+    /**
+     * @param {boolean} on
+     */
+    setMovementEnabled(on) {
+      movement?.setEnabled(on);
     },
     /**
      * @param {number} delta
