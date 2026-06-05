@@ -79,6 +79,19 @@ if (await skip.count().catch(() => 0)) {
 // Let the WebGL scene mount, build the grid, and render a frame or two.
 await page.waitForTimeout(waitMs);
 
+// Optionally flip the time-of-day segment (morning|afternoon|night) before capture.
+const segment = opt("segment", null);
+if (segment) {
+  const segBtn = page.locator(`[data-segment="${segment}"]`);
+  if (await segBtn.count().catch(() => 0)) {
+    console.log(`→ switching segment → ${segment}`);
+    await segBtn.first().click({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+  } else {
+    console.log(`  (no [data-segment="${segment}"] button found — skipping)`);
+  }
+}
+
 await page.screenshot({ path: out, fullPage: false });
 console.log(`✓ saved ${out}`);
 await browser.close();
