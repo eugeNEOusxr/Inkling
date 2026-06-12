@@ -917,8 +917,12 @@ export class WordWeaverScene {
     let best = null;
     let bestD = Infinity;
     for (const c of clusters) {
-      const dx = hit.x - c.monthCenter.x;
-      const dy = hit.y - c.monthCenter.y;
+      // Compare to the cluster's visual CENTER, not its month sphere (which sits at
+      // the top) — otherwise a click low in a month's grid snaps to the row below.
+      const cx = c.monthCenter.x;
+      const cy = c.monthCenter.y - (c.monthLayout?.bounds?.height ?? 16) * 0.45;
+      const dx = hit.x - cx;
+      const dy = hit.y - cy;
       const d = dx * dx + dy * dy;
       if (d < bestD) {
         bestD = d;

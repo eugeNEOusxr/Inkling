@@ -33,10 +33,18 @@ export const SCENIC_BACKDROP_URLS = {
  * @type {Record<number, { day: string, night: string }>}
  */
 export const MONTH_SCENES = {
-  0: { day: "/assets/backgrounds/january-day.jpg", night: "/assets/backgrounds/january-night.jpg" }, // January — spacewalk / new beginnings
-  1: { day: "/assets/backgrounds/balloon-day.jpg", night: "/assets/backgrounds/balloon-night.jpg" }, // February
-  5: { day: "/assets/backgrounds/beach-day.png", night: "/assets/backgrounds/beach-night.jpg" }, // June
-  6: { day: "/assets/backgrounds/waverunner-day.jpg", night: "/assets/backgrounds/waverunner-night.jpg" } // July
+  0: { day: "/assets/backgrounds/january-day.jpg", night: "/assets/backgrounds/january-night.jpg" }, // January — spacewalk
+  1: { day: "/assets/backgrounds/balloon-day.jpg", night: "/assets/backgrounds/balloon-night.jpg" }, // February — hot air balloons
+  2: { day: "/assets/backgrounds/march-day.jpg", night: "/assets/backgrounds/march-night.jpg" }, // March — cherry blossom
+  3: { day: "/assets/backgrounds/april-day.jpg", night: "/assets/backgrounds/april-night.jpg" }, // April — tulips
+  4: { day: "/assets/backgrounds/may-day.jpg", night: "/assets/backgrounds/may-night.jpg" }, // May — wildflower meadow
+  5: { day: "/assets/backgrounds/beach-day.png", night: "/assets/backgrounds/beach-night.jpg" }, // June — beach
+  6: { day: "/assets/backgrounds/waverunner-day.jpg", night: "/assets/backgrounds/waverunner-night.jpg" }, // July — waverunners
+  7: { day: "/assets/backgrounds/august-day.jpg", night: "/assets/backgrounds/august-night.jpg" }, // August — lavender
+  8: { day: "/assets/backgrounds/september-day.jpg", night: "/assets/backgrounds/september-night.jpg" }, // September — vineyard
+  9: { day: "/assets/backgrounds/october-day.jpg", night: "/assets/backgrounds/october-night.jpg" }, // October — autumn forest
+  10: { day: "/assets/backgrounds/november-day.jpg", night: "/assets/backgrounds/november-night.jpg" }, // November — misty mountains
+  11: { day: "/assets/backgrounds/december-day.jpg", night: "/assets/backgrounds/december-night.jpg" } // December — winter day / aurora night
 };
 
 /**
@@ -670,6 +678,7 @@ function formatDayHeading(iso) {
   try {
     return new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, {
       weekday: "short",
+      year: "numeric",
       month: "short",
       day: "numeric"
     });
