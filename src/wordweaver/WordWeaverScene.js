@@ -311,8 +311,14 @@ export class WordWeaverScene {
       return;
     }
     if (!this._monthGrid) this._rebuildMonthGrid();
-    if (this._monthGrid?.root) this._monthGrid.root.visible = true;
-    this._frameMonthGridCamera();
+    // Respect the drill-down: only show + re-frame the YEAR grid at the year level.
+    // While drilled into a month/day, keep it hidden so it can't "stick" behind the view.
+    if (this._navLevel === "year") {
+      if (this._monthGrid?.root) this._monthGrid.root.visible = true;
+      this._frameMonthGridCamera();
+    } else if (this._monthGrid?.root) {
+      this._monthGrid.root.visible = false;
+    }
     this._syncLegacyFlightMovement();
     this._applyForegroundLayers();
   }
@@ -328,6 +334,10 @@ export class WordWeaverScene {
     }
     if (this._monthGridLayoutActive) {
       this._suppressLegacy3DLayout();
+    }
+    // Don't reveal a freshly-built year grid while drilled into a month/day.
+    if (this._navLevel && this._navLevel !== "year" && this._monthGrid?.root) {
+      this._monthGrid.root.visible = false;
     }
     this._applyForegroundLayers();
   }
