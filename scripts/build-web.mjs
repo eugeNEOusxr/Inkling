@@ -21,7 +21,10 @@ const dist = path.join(root, "dist");
 const explicitRootFiles = ["manifest.json", "service-worker.js", "inkling-config.js"];
 
 // Top-level directories served by the app (skipped silently if absent).
-const dirsToCopy = ["src", "public", "assets", "data", "icons", "fonts", "vendor"];
+// NOTE: the root data/ dir is the backend's USER-ACCOUNT store (emails, password
+// hashes, IPs) — it must never ship to a static/public host. The only client-facing
+// data file (word-neighborhood.json) is sourced from public/data/ via the flatten below.
+const dirsToCopy = ["src", "public", "assets", "icons", "fonts", "vendor"];
 
 async function rmrf(target) {
   await fs.rm(target, { recursive: true, force: true });
