@@ -34,7 +34,19 @@ export function requireAuth() {
  * @returns {Promise<boolean>}
  */
 export async function requireAuthForApp() {
-  if (new URLSearchParams(window.location.search).has("embedded")) {
+  const params = new URLSearchParams(window.location.search);
+  if (params.has("embedded")) {
+    return true;
+  }
+
+  // Public/guest deep-link: ?skip or ?guest enters offline guest mode (no account)
+  // and remembers it, so a shared link lands straight in the app with no login wall.
+  if (params.has("skip") || params.has("guest")) {
+    try {
+      localStorage.setItem(SKIP_LOGIN_KEY, "true");
+    } catch {
+      /* ignore */
+    }
     return true;
   }
 
