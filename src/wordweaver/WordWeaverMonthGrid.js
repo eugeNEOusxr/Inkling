@@ -33,6 +33,7 @@ export const SCENIC_BACKDROP_URLS = {
  * @type {Record<number, { day: string, night: string }>}
  */
 export const MONTH_SCENES = {
+  0: { day: "/assets/backgrounds/january-day.jpg", night: "/assets/backgrounds/january-night.jpg" }, // January — spacewalk / new beginnings
   1: { day: "/assets/backgrounds/balloon-day.jpg", night: "/assets/backgrounds/balloon-night.jpg" }, // February
   5: { day: "/assets/backgrounds/beach-day.png", night: "/assets/backgrounds/beach-night.jpg" }, // June
   6: { day: "/assets/backgrounds/waverunner-day.jpg", night: "/assets/backgrounds/waverunner-night.jpg" } // July
