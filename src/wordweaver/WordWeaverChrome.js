@@ -104,26 +104,28 @@ export class WordWeaverChrome {
     if (!this._isWordWeaverActive()) return;
     if (this._isTypingTarget(e.target)) return;
 
-    // Rough day view: ↑/↓ scan the day's notes, Escape returns to the year grid.
+    // Drill-down nav: Escape steps up a level (day→month→year); ↑/↓ scan notes in day view.
     const dayScene = this.embed?._scene;
-    if (dayScene?._inDayView) {
-      if (e.code === "ArrowUp") {
-        e.preventDefault();
-        e.stopPropagation();
-        dayScene.dayViewStep(1);
-        return;
-      }
-      if (e.code === "ArrowDown") {
-        e.preventDefault();
-        e.stopPropagation();
-        dayScene.dayViewStep(-1);
-        return;
-      }
+    if (dayScene?._navLevel && dayScene._navLevel !== "year") {
       if (e.code === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        dayScene.exitDayView();
+        dayScene.navBack();
         return;
+      }
+      if (dayScene._navLevel === "day") {
+        if (e.code === "ArrowUp") {
+          e.preventDefault();
+          e.stopPropagation();
+          dayScene.dayViewStep(1);
+          return;
+        }
+        if (e.code === "ArrowDown") {
+          e.preventDefault();
+          e.stopPropagation();
+          dayScene.dayViewStep(-1);
+          return;
+        }
       }
     }
 

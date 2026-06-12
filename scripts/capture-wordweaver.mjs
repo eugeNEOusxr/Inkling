@@ -95,11 +95,13 @@ if (segment) {
 }
 
 if (click) {
-  const [cx, cy] = String(click).split(",").map(Number);
-  if (Number.isFinite(cx) && Number.isFinite(cy)) {
-    console.log(`→ click at (${cx}, ${cy})`);
-    await page.mouse.click(cx, cy);
-    await page.waitForTimeout(1800);
+  for (const pair of String(click).split(";")) {
+    const [cx, cy] = pair.split(",").map(Number);
+    if (Number.isFinite(cx) && Number.isFinite(cy)) {
+      console.log(`→ click at (${cx}, ${cy})`);
+      await page.mouse.click(cx, cy);
+      await page.waitForTimeout(1800);
+    }
   }
 }
 

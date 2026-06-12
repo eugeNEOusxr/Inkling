@@ -121,7 +121,9 @@ export class WordWeaverScene {
     this._hovered = null;
     /** @type {import("./WordWeaverMonthGrid.js").WordWeaverYearGrid | WordWeaverMonthGrid | null} */
     this._monthGrid = null;
-    this._inDayView = false;
+    this._navLevel = "year"; // "year" | "month" | "day"
+    this._navMonthGrid = null;
+    this._navMonthIndex = 0;
     this._daySel = 0;
     /** @type {{ group: import("three").Group, items: Array<{ mesh: import("three").Mesh, y: number, event: any }>, dispose: () => void } | null} */
     this._dayView = null;
@@ -864,13 +866,22 @@ export class WordWeaverScene {
   _handlePointerDown(event) {
     // Year-grid mode: click-to-zoom into a rough day view (click again to exit).
     if (this._monthGridLayoutActive) {
-      if (this._inDayView) return; // stay in the day view — ↑/↓ scan, Escape exits
-      const monthIndex = this._pickMonthAt(event);
-      if (monthIndex != null) {
-        event.preventDefault();
-        event.stopPropagation();
-        this.enterDayView(monthIndex);
+      if (this._navLevel === "year") {
+        const monthIndex = this._pickMonthAt(event);
+        if (monthIndex != null) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.enterMonthView(monthIndex);
+        }
+      } else if (this._navLevel === "month") {
+        const iso = this._pickDayAt(event);
+        if (iso) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.enterDayViewIso(iso);
+        }
       }
+      // "day" level: clicks reserved for timeframe/note interaction (next milestone)
       return;
     }
     const picked = this._pick(event);
@@ -933,40 +944,111 @@ export class WordWeaverScene {
   }
 
   /**
-   * Zoom into a rough day view for the given month (representative day).
+   * Drill year → MONTH: show that month's numbered-day grid.
    * @param {number} monthIndex 0-11
    */
-  enterDayView(monthIndex) {
+  enterMonthView(monthIndex) {
     const year = this._monthGrid?.year ?? new Date().getFullYear();
-    const dayIso = representativeDayIso(year, monthIndex);
+    this._dayView?.dispose();
+    this._dayView = null;
+    this._navMonthGrid?.dispose();
+    if (this._monthGrid?.root) this._monthGrid.root.visible = false;
+    this._navMonthGrid = createMonthGrid(this.scene, { year, monthIndex });
+    this._navMonthIndex = monthIndex;
+    this._navLevel = "month";
+    this.controls.minDistance = 2;
+    this.controls.maxDistance = 120;
+    this.camera.far = Math.max(this.camera.far, 200);
+    this.camera.updateProjectionMatrix();
+    this._navMonthGrid.frameCamera(this.camera, this.controls);
+    this._ensureBackButton();
+    this._updateBackButton();
+  }
+
+  /**
+   * Drill month → DAY: that specific day's timeframe spheres.
+   * @param {string} dayIso
+   */
+  enterDayViewIso(dayIso) {
     this._dayView?.dispose();
     this._dayView = createDayView(this.scene, dayIso, this._scenicBackdropSegment ?? "afternoon");
-    this._inDayView = true;
+    if (this._navMonthGrid?.root) this._navMonthGrid.root.visible = false;
+    this._navLevel = "day";
     this._daySel = 0;
-    if (this._monthGrid?.root) this._monthGrid.root.visible = false;
     this.controls.minDistance = 4;
     this.controls.maxDistance = 120;
     this.camera.far = Math.max(this.camera.far, 200);
     this.camera.updateProjectionMatrix();
     this._applyDaySelection();
-    this._ensureBackButton().style.display = "block";
+    this._ensureBackButton();
+    this._updateBackButton();
   }
 
-  exitDayView() {
-    this._dayView?.dispose();
-    this._dayView = null;
-    this._inDayView = false;
-    if (this._backBtn) this._backBtn.style.display = "none";
-    if (this._monthGrid?.root) this._monthGrid.root.visible = true;
-    this._monthGrid?.frameCamera(this.camera, this.controls);
+  /** Go up one level: day → month → year. */
+  navBack() {
+    if (this._navLevel === "day") {
+      this._dayView?.dispose();
+      this._dayView = null;
+      if (this._navMonthGrid?.root) this._navMonthGrid.root.visible = true;
+      this._navMonthGrid?.frameCamera(this.camera, this.controls);
+      this._navLevel = "month";
+    } else if (this._navLevel === "month") {
+      this._navMonthGrid?.dispose();
+      this._navMonthGrid = null;
+      if (this._monthGrid?.root) this._monthGrid.root.visible = true;
+      this._monthGrid?.frameCamera(this.camera, this.controls);
+      this._navLevel = "year";
+    }
+    this._updateBackButton();
   }
 
-  /** Lazily create the "← Back to year" button shown only in the day view. */
+  /**
+   * Ray-cast the click onto the grid plane; return the nearest day's ISO in the
+   * current month-view grid.
+   * @param {PointerEvent} event
+   * @returns {string | null}
+   */
+  _pickDayAt(event) {
+    const cells = this._navMonthGrid?._layout?.cells;
+    if (!cells?.length) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    this._pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this._pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    this._raycaster.setFromCamera(this._pointer, this.camera);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const hit = new THREE.Vector3();
+    if (!this._raycaster.ray.intersectPlane(plane, hit)) return null;
+    let best = null;
+    let bestD = Infinity;
+    for (const c of cells) {
+      const dx = hit.x - c.x;
+      const dy = hit.y - c.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return best ? best.iso : null;
+  }
+
+  _updateBackButton() {
+    const btn = this._backBtn;
+    if (!btn) return;
+    if (this._navLevel === "year") {
+      btn.style.display = "none";
+    } else {
+      btn.style.display = "block";
+      btn.textContent = this._navLevel === "day" ? "← Back to month" : "← Back to year";
+    }
+  }
+
+  /** Lazily create the "← Back" button shown when drilled into a month/day. */
   _ensureBackButton() {
     if (this._backBtn) return this._backBtn;
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.textContent = "← Back to year";
+    btn.textContent = "← Back";
     btn.className = "ww-day-back-btn";
     Object.assign(btn.style, {
       position: "absolute",
@@ -984,7 +1066,7 @@ export class WordWeaverScene {
     });
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      this.exitDayView();
+      this.navBack();
     });
     (this.container || document.body).appendChild(btn);
     this._backBtn = btn;
