@@ -104,6 +104,29 @@ export class WordWeaverChrome {
     if (!this._isWordWeaverActive()) return;
     if (this._isTypingTarget(e.target)) return;
 
+    // Rough day view: ↑/↓ scan the day's notes, Escape returns to the year grid.
+    const dayScene = this.embed?._scene;
+    if (dayScene?._inDayView) {
+      if (e.code === "ArrowUp") {
+        e.preventDefault();
+        e.stopPropagation();
+        dayScene.dayViewStep(1);
+        return;
+      }
+      if (e.code === "ArrowDown") {
+        e.preventDefault();
+        e.stopPropagation();
+        dayScene.dayViewStep(-1);
+        return;
+      }
+      if (e.code === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        dayScene.exitDayView();
+        return;
+      }
+    }
+
     const code = e.code;
 
     if (code === "ArrowUp" || code === "ArrowDown" || code === "ArrowLeft" || code === "ArrowRight") {

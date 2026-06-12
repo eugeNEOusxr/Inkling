@@ -21,7 +21,7 @@ import { mountWordWeaverMainUI } from "../MainUI.js";
 import * as bus from "../utils/EventBus.js";
 import { getCalendarMode } from "./calendarMode.js";
 import { getCalendar2D } from "./Calendar2D.js";
-import { createMonthGrid, createYearGrid, WordWeaverMonthGrid } from "./WordWeaverMonthGrid.js";
+import { createMonthGrid, createYearGrid, createDayView, representativeDayIso, WordWeaverMonthGrid } from "./WordWeaverMonthGrid.js";
 import { isWordWeaverTabActive } from "../calendar/ui/shellSurfaces.js";
 
 /** Served from public/environments/ (copied from Meshy export). */
@@ -121,6 +121,10 @@ export class WordWeaverScene {
     this._hovered = null;
     /** @type {import("./WordWeaverMonthGrid.js").WordWeaverYearGrid | WordWeaverMonthGrid | null} */
     this._monthGrid = null;
+    this._inDayView = false;
+    this._daySel = 0;
+    /** @type {{ group: import("three").Group, items: Array<{ mesh: import("three").Mesh, y: number, event: any }>, dispose: () => void } | null} */
+    this._dayView = null;
     /** M5 M1: month wall-grid is the active 3D layout; legacy timeline/weave stay mounted but hidden. */
     this._monthGridLayoutActive = true;
     /** @type {import("../inkling-core/timelineNode.js").DaySegment | string | null} */
@@ -858,6 +862,17 @@ export class WordWeaverScene {
   }
 
   _handlePointerDown(event) {
+    // Year-grid mode: click-to-zoom into a rough day view (click again to exit).
+    if (this._monthGridLayoutActive) {
+      if (this._inDayView) return; // stay in the day view — ↑/↓ scan, Escape exits
+      const monthIndex = this._pickMonthAt(event);
+      if (monthIndex != null) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.enterDayView(monthIndex);
+      }
+      return;
+    }
     const picked = this._pick(event);
     if (!picked) return;
     if (picked.dayBlock) {
@@ -882,6 +897,126 @@ export class WordWeaverScene {
       text: node.text,
       node
     });
+  }
+
+  /**
+   * Ray-cast the click onto the grid plane (z=0); return the nearest month cluster index.
+   * @param {PointerEvent} event
+   * @returns {number | null}
+   */
+  _pickMonthAt(event) {
+    const clusters = this._monthGrid?._layout?.clusters;
+    if (!clusters?.length) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    this._pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this._pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    this._raycaster.setFromCamera(this._pointer, this.camera);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const hit = new THREE.Vector3();
+    if (!this._raycaster.ray.intersectPlane(plane, hit)) return null;
+    let best = null;
+    let bestD = Infinity;
+    for (const c of clusters) {
+      const dx = hit.x - c.monthCenter.x;
+      const dy = hit.y - c.monthCenter.y;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    return best ? best.monthIndex : null;
+  }
+
+  /**
+   * Zoom into a rough day view for the given month (representative day).
+   * @param {number} monthIndex 0-11
+   */
+  enterDayView(monthIndex) {
+    const year = this._monthGrid?.year ?? new Date().getFullYear();
+    const dayIso = representativeDayIso(year, monthIndex);
+    this._dayView?.dispose();
+    this._dayView = createDayView(this.scene, dayIso, this._scenicBackdropSegment ?? "afternoon");
+    this._inDayView = true;
+    this._daySel = 0;
+    if (this._monthGrid?.root) this._monthGrid.root.visible = false;
+    this.controls.minDistance = 4;
+    this.controls.maxDistance = 120;
+    this.camera.far = Math.max(this.camera.far, 200);
+    this.camera.updateProjectionMatrix();
+    this._applyDaySelection();
+    this._ensureBackButton().style.display = "block";
+  }
+
+  exitDayView() {
+    this._dayView?.dispose();
+    this._dayView = null;
+    this._inDayView = false;
+    if (this._backBtn) this._backBtn.style.display = "none";
+    if (this._monthGrid?.root) this._monthGrid.root.visible = true;
+    this._monthGrid?.frameCamera(this.camera, this.controls);
+  }
+
+  /** Lazily create the "← Back to year" button shown only in the day view. */
+  _ensureBackButton() {
+    if (this._backBtn) return this._backBtn;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "← Back to year";
+    btn.className = "ww-day-back-btn";
+    Object.assign(btn.style, {
+      position: "absolute",
+      left: "12px",
+      top: "64px",
+      zIndex: "30",
+      padding: "9px 15px",
+      borderRadius: "10px",
+      background: "rgba(8, 14, 28, 0.85)",
+      color: "#e2e8f0",
+      border: "1px solid rgba(120, 200, 255, 0.45)",
+      font: "600 13px system-ui, sans-serif",
+      cursor: "pointer",
+      display: "none"
+    });
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.exitDayView();
+    });
+    (this.container || document.body).appendChild(btn);
+    this._backBtn = btn;
+    return btn;
+  }
+
+  /**
+   * Walk the selection through the day's notes (↑ = later, ↓ = earlier).
+   * @param {number} dir +1 / -1
+   */
+  dayViewStep(dir) {
+    const items = this._dayView?.items;
+    if (!items?.length) return;
+    this._daySel = Math.max(0, Math.min(items.length - 1, this._daySel + dir));
+    this._applyDaySelection();
+  }
+
+  /** Highlight the selected note + pan the camera to scan to it. */
+  _applyDaySelection() {
+    const items = this._dayView?.items;
+    if (!items?.length) {
+      this.controls.target.set(0, 0.5, 0);
+      this.camera.position.set(0, 0.5, 22);
+      this.controls.update();
+      return;
+    }
+    items.forEach((it, i) => {
+      const on = i === this._daySel;
+      it.mesh.scale.setScalar(on ? 1.75 : 1);
+      const mat = it.mesh.material;
+      if (mat && "emissiveIntensity" in mat) mat.emissiveIntensity = on ? 1.4 : 0.5;
+    });
+    const y = items[this._daySel].y;
+    this.controls.target.set(2.4, y, 0);
+    this.camera.position.set(2.4, y, 18);
+    this.controls.update();
   }
 
   _tick() {

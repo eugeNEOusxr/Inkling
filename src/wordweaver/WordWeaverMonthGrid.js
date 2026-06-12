@@ -34,7 +34,8 @@ export const SCENIC_BACKDROP_URLS = {
  */
 export const MONTH_SCENES = {
   1: { day: "/assets/backgrounds/balloon-day.jpg", night: "/assets/backgrounds/balloon-night.jpg" }, // February
-  5: { day: "/assets/backgrounds/beach-day.png", night: "/assets/backgrounds/beach-night.jpg" } // June
+  5: { day: "/assets/backgrounds/beach-day.png", night: "/assets/backgrounds/beach-night.jpg" }, // June
+  6: { day: "/assets/backgrounds/waverunner-day.jpg", night: "/assets/backgrounds/waverunner-night.jpg" } // July
 };
 
 /**
@@ -613,6 +614,224 @@ export class WordWeaverYearGrid {
     this.disposeContent();
     this.scene.remove(this.root);
   }
+}
+
+/** Crisp month backdrop for the day view — light scrim only (readability test). */
+function buildDayBackdropTexture(source) {
+  const sw = /** @type {HTMLImageElement} */ (source).width || 1600;
+  const sh = /** @type {HTMLImageElement} */ (source).height || 900;
+  const w = Math.min(1920, sw);
+  const h = Math.max(1, Math.round((w / sw) * sh));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.drawImage(source, 0, 0, w, h);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.2)"; // light scrim only — keep it crisp
+    ctx.fillRect(0, 0, w, h);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// ── Rough DAY VIEW (click-to-zoom prototype) ───────────────────────────────
+const DAY_VIEW_SPHERE_GEO = new THREE.SphereGeometry(0.42, 22, 22);
+const DAY_VIEW_HEIGHT = 12;
+
+/** Category/keyword → color for day-view time spheres (rough palette). */
+const DAY_CATEGORY_COLORS = [
+  [["alarm", "wake"], 0xe5484d],
+  [["sleep", "rest", "wind down"], 0x6e56cf],
+  [["workout", "exercise", "gym", "run"], 0x30a46c],
+  [["nutrition", "meal", "food", "eat", "lunch", "dinner", "breakfast", "water"], 0xf5d90a],
+  [["read", "study", "learn"], 0x0091ff],
+  [["work", "task", "meeting", "deep", "zoom"], 0x00a2c7],
+  [["social", "appointment", "appt", "birthday"], 0xd6409f]
+];
+
+function dayCategoryColor(category, text) {
+  const hay = `${category || ""} ${text || ""}`.toLowerCase();
+  for (const [keys, color] of DAY_CATEGORY_COLORS) {
+    if (keys.some((k) => hay.includes(k))) return color;
+  }
+  return 0x8b8d98;
+}
+
+function parseHHMM(t) {
+  const m = /(\d{1,2}):(\d{2})/.exec(String(t || ""));
+  if (!m) return 12 * 60;
+  return Math.max(0, Math.min(1439, Number(m[1]) * 60 + Number(m[2])));
+}
+
+function formatDayHeading(iso) {
+  try {
+    return new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric"
+    });
+  } catch {
+    return iso;
+  }
+}
+
+/**
+ * Representative day ISO for a month: first day with notes, else the 15th.
+ * @param {number} year
+ * @param {number} monthIndex 0-11
+ */
+export function representativeDayIso(year, monthIndex) {
+  const topo = getYearTopology(year);
+  const prefix = `${year}-${String(monthIndex + 1).padStart(2, "0")}-`;
+  let best = null;
+  let bestCount = 0;
+  for (const [iso, count] of Object.entries(topo.dayCounts)) {
+    if (iso.startsWith(prefix) && count > bestCount) {
+      bestCount = count;
+      best = iso;
+    }
+  }
+  return best ?? `${prefix}15`;
+}
+
+/**
+ * Rough DAY VIEW: a vertical line of category-colored time-spheres for one day
+ * (12am low → 11:59pm high) + a date heading, per-event time/text labels, and a
+ * connecting line. Returns { group, dispose }.
+ * @param {THREE.Scene} scene
+ * @param {string} dayIso
+ */
+export function createDayView(scene, dayIso, segment = "afternoon") {
+  const group = new THREE.Group();
+  group.name = "ww-day-view";
+  const events = getEventsForDate(dayIso);
+
+  // Crisp, full month backdrop behind the day timeline (readability test).
+  const monthIndex = Number(dayIso.slice(5, 7)) - 1;
+  const sceneUrls = MONTH_SCENES[monthIndex];
+  let bgMesh = null;
+  if (sceneUrls) {
+    const url = segment === "night" ? sceneUrls.night : sceneUrls.day;
+    const bgMat = new THREE.MeshBasicMaterial({ color: 0x111418, toneMapped: false, depthWrite: false });
+    bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), bgMat);
+    bgMesh.name = "ww-day-view-bg";
+    bgMesh.scale.set(96, 60, 1);
+    bgMesh.position.set(2.4, 1, -30);
+    bgMesh.renderOrder = -10;
+    group.add(bgMesh);
+    const bgImg = new Image();
+    bgImg.crossOrigin = "anonymous";
+    bgImg.onload = () => {
+      bgMat.map = buildDayBackdropTexture(bgImg);
+      bgMat.color.set(0xffffff);
+      bgMat.needsUpdate = true;
+    };
+    bgImg.src = url;
+  }
+
+  /** @type {Array<{ mesh: THREE.Mesh, mat: THREE.Material, tex?: THREE.Texture }>} */
+  const labels = [];
+  /** @type {THREE.Mesh[]} */
+  const spheres = [];
+  /** @type {Array<{ mesh: THREE.Mesh, y: number, event: any }>} */
+  const items = [];
+
+  const heading = createLabelSprite(formatDayHeading(dayIso), {
+    fontSize: "700 60px system-ui, sans-serif",
+    fill: "#f8fafc",
+    width: 768,
+    height: 128,
+    planeW: 6,
+    planeH: 1
+  });
+  heading.mesh.position.set(0, DAY_VIEW_HEIGHT / 2 + 1.7, 0);
+  group.add(heading.mesh);
+  labels.push(heading);
+
+  if (!events.length) {
+    const empty = createLabelSprite("No notes this day", {
+      fontSize: "600 44px system-ui, sans-serif",
+      fill: "#94a3b8",
+      width: 768,
+      height: 96,
+      planeW: 5,
+      planeH: 0.7
+    });
+    group.add(empty.mesh);
+    labels.push(empty);
+  } else {
+    /** @type {THREE.Vector3[]} */
+    const linePts = [];
+    for (const ev of events) {
+      const minutes = parseHHMM(ev.time);
+      const y = (minutes / 1439) * DAY_VIEW_HEIGHT - DAY_VIEW_HEIGHT / 2;
+      const color = dayCategoryColor(ev.category, ev.text);
+      const mat = new THREE.MeshStandardMaterial({
+        color,
+        emissive: new THREE.Color(color).multiplyScalar(0.3),
+        emissiveIntensity: 0.6,
+        roughness: 0.4,
+        metalness: 0.1
+      });
+      const mesh = new THREE.Mesh(DAY_VIEW_SPHERE_GEO, mat);
+      mesh.position.set(0, y, 0);
+      group.add(mesh);
+      spheres.push(mesh);
+      items.push({ mesh, y, event: ev });
+      linePts.push(new THREE.Vector3(0, y, 0));
+
+      const lab = createLabelSprite(`${ev.time}   ${String(ev.text || "").slice(0, 40)}`, {
+        fontSize: "600 40px system-ui, sans-serif",
+        fill: "#e2e8f0",
+        width: 1100,
+        height: 88,
+        planeW: 8,
+        planeH: 0.64
+      });
+      lab.mesh.position.set(4.8, y, 0.02);
+      group.add(lab.mesh);
+      labels.push(lab);
+    }
+    linePts.push(new THREE.Vector3(0, DAY_VIEW_HEIGHT / 2 + 1.4, 0));
+    linePts.sort((a, b) => a.y - b.y);
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(linePts),
+      new THREE.LineBasicMaterial({ color: 0x5fb0ff, transparent: true, opacity: 0.5 })
+    );
+    line.name = "ww-day-view-line";
+    group.add(line);
+  }
+
+  group.layers.set(1);
+  group.traverse((o) => o.layers.set(1));
+  scene.add(group);
+
+  return {
+    group,
+    items,
+    dispose() {
+      scene.remove(group);
+      for (const s of spheres) {
+        if (s.material instanceof THREE.Material) s.material.dispose();
+      }
+      for (const l of labels) {
+        l.mesh.geometry.dispose();
+        l.mat.dispose();
+        l.tex?.dispose();
+      }
+      const line = group.getObjectByName("ww-day-view-line");
+      if (line instanceof THREE.Line) line.geometry.dispose();
+      if (bgMesh) {
+        bgMesh.geometry.dispose();
+        if (bgMesh.material instanceof THREE.Material) {
+          bgMesh.material.map?.dispose();
+          bgMesh.material.dispose();
+        }
+      }
+    }
+  };
 }
 
 /**

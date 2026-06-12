@@ -31,6 +31,8 @@ const opt = (name, fallback) => {
 const url = opt("url", process.env.CAPTURE_URL || "http://localhost:3080/?tab=wordweaver");
 const waitMs = Number(opt("wait", process.env.CAPTURE_WAIT || 4500));
 const mobile = flag("mobile");
+const click = opt("click", null); // "x,y" viewport coords to click before capture
+const press = opt("press", null); // comma-separated keys to press after the click (e.g. ArrowUp,ArrowUp)
 const ts = new Date().toISOString().replace(/[:.]/g, "-");
 const out = opt("out", process.env.CAPTURE_OUT || `screenshots/wordweaver-${ts}.png`);
 
@@ -90,6 +92,24 @@ if (segment) {
   } else {
     console.log(`  (no [data-segment="${segment}"] button found — skipping)`);
   }
+}
+
+if (click) {
+  const [cx, cy] = String(click).split(",").map(Number);
+  if (Number.isFinite(cx) && Number.isFinite(cy)) {
+    console.log(`→ click at (${cx}, ${cy})`);
+    await page.mouse.click(cx, cy);
+    await page.waitForTimeout(1800);
+  }
+}
+
+if (press) {
+  for (const k of String(press).split(",").map((s) => s.trim()).filter(Boolean)) {
+    console.log(`→ press ${k}`);
+    await page.keyboard.press(k);
+    await page.waitForTimeout(600);
+  }
+  await page.waitForTimeout(600);
 }
 
 await page.screenshot({ path: out, fullPage: false });
