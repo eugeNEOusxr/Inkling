@@ -121,26 +121,32 @@ const yearSharedGeometry = {
 };
 
 const sharedMaterial = {
-  month: new THREE.MeshStandardMaterial({
+  month: new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
-    metalness: 0.12,
-    roughness: 0.38,
+    metalness: 0.2,
+    roughness: 0.16,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.12,
     emissive: new THREE.Color(0x334455),
-    emissiveIntensity: 0.25
+    emissiveIntensity: 0.3
   }),
-  day: new THREE.MeshStandardMaterial({
+  day: new THREE.MeshPhysicalMaterial({
     color: 0xff8822,
-    metalness: 0.08,
-    roughness: 0.42,
+    metalness: 0.28,
+    roughness: 0.19,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.1,
     emissive: new THREE.Color(0x552200),
-    emissiveIntensity: 0.18
+    emissiveIntensity: 0.22
   }),
-  note: new THREE.MeshStandardMaterial({
+  note: new THREE.MeshPhysicalMaterial({
     color: 0x3399ff,
-    metalness: 0.1,
-    roughness: 0.4,
+    metalness: 0.28,
+    roughness: 0.16,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.1,
     emissive: new THREE.Color(0x113366),
-    emissiveIntensity: 0.35
+    emissiveIntensity: 0.4
   })
 };
 
@@ -325,9 +331,13 @@ export class WordWeaverMonthGrid {
     const b = this._layout?.bounds ?? { width: 12, height: 11 };
     const span = Math.max(b.width, b.height);
     controls.maxDistance = 120;
-    controls.minDistance = span * 0.35;
-    controls.target.set(0, -span * 0.12, 0);
-    camera.position.set(0, -span * 0.08, span * 1.05 + 6);
+    controls.minDistance = span * 0.3;
+    controls.target.set(0, -span * 0.28, 0);
+    camera.position.set(0, -span * 0.28, span * 1.15 + 8);
+    // Reset orientation so a tilt carried over from flying the year view can't
+    // leave us aimed at just the top sphere.
+    camera.up.set(0, 1, 0);
+    camera.lookAt(controls.target);
     controls.update();
   }
 
