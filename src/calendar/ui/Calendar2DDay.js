@@ -18,6 +18,8 @@ import {
   deleteEvent,
   buildStartTimeIso,
   getCategoryColor,
+  classifyText,
+  getEventsForYear,
   todayIsoDate
 } from "../../wordweaver/timelineModel.js";
 
@@ -31,6 +33,16 @@ const CATEGORIES = [
   ["study", "Study"], ["creative", "Creative"], ["errands", "Errands"],
   ["appointment", "Appointment"], ["reminder", "Reminder"]
 ];
+
+/** Quick title prompts + autocomplete seeds (merged with the user's own past events). */
+const COMMON_TITLES = [
+  "Team meeting", "Lunch with ", "Workout", "Gym session", "Doctor appointment",
+  "Dentist", "Call with ", "Coffee with ", "Project deadline", "Grocery run",
+  "Pick up ", "Birthday", "Dinner with ", "Study session", "Standup",
+  "1:1 with ", "Pay rent", "Flight to ", "Date night", "Reminder to "
+];
+/** Title chips always offered as quick prompts. */
+const TITLE_PROMPTS = ["Meeting", "Lunch", "Workout", "Call", "Errand", "Reminder"];
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -323,9 +335,65 @@ export class Calendar2DDay {
     }, 60000);
   }
 
+  // --- Inkling autosuggest (local, instant) ---
+
+  /** Build the completion corpus from the user's own events + common phrases. */
+  _buildCorpus() {
+    const seen = new Set();
+    const out = [];
+    const add = (s) => {
+      const t = String(s ?? "").trim();
+      if (t && t.length <= 60 && !seen.has(t.toLowerCase())) { seen.add(t.toLowerCase()); out.push(t); }
+    };
+    try {
+      for (const r of getEventsForYear(new Date().getFullYear())) {
+        add(r.title);
+        if (r.text && r.text !== r.title) add(r.text);
+      }
+    } catch { /* ignore */ }
+    for (const c of COMMON_TITLES) add(c);
+    this._corpus = out;
+  }
+
+  /** Predict the rest of a phrase given what's typed so far. */
+  _predict(typed) {
+    if (!this._corpus || typed.length < 2) return "";
+    const low = typed.toLowerCase();
+    for (const phrase of this._corpus) {
+      if (phrase.length > typed.length && phrase.toLowerCase().startsWith(low)) {
+        return phrase.slice(typed.length);
+      }
+    }
+    return "";
+  }
+
+  /** Inline ghost-completion: append the prediction as a selected suffix; Tab/→ accepts. */
+  _attachTypeahead(input) {
+    input.addEventListener("keydown", (e) => {
+      const hasSuggestion = input.selectionStart !== input.selectionEnd && input.selectionEnd === input.value.length;
+      if (hasSuggestion && (e.key === "Tab" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }
+    });
+    input.addEventListener("input", (e) => {
+      if (e.inputType && e.inputType.startsWith("delete")) return;
+      // After a forward keystroke the selected suffix (if any) was replaced, so
+      // value is the real typed text with a collapsed caret at the end.
+      if (input.selectionStart !== input.value.length) return;
+      const typed = input.value;
+      const sug = this._predict(typed);
+      if (sug) {
+        input.value = typed + sug;
+        input.setSelectionRange(typed.length, input.value.length);
+      }
+    });
+  }
+
   // --- event editor ---
 
   _openEditor(ev, startMin) {
+    if (!this._corpus) this._buildCorpus();
     const isEdit = ev && ev.id && getEventById(ev.id);
     const startMinutes = ev?.startTime ? minutesOf(ev.startTime) : startMin;
     const endMinutes = ev?.endTime ? minutesOf(ev.endTime) : Math.min(DAY_MIN, startMinutes + this.slot);
@@ -365,6 +433,41 @@ export class Calendar2DDay {
       o.value = val; o.textContent = label;
       if (val === (ev?.category ?? "work")) o.selected = true;
       catSel.appendChild(o);
+    }
+
+    // Inkling autosuggest: ghost word-completion on title + description.
+    this._attachTypeahead(titleInput);
+    this._attachTypeahead(descInput);
+
+    // Auto-category: Inkling reads the words and picks the color in the
+    // background, unless the user manually chooses one.
+    let catTouched = Boolean(isEdit);
+    catSel.addEventListener("change", () => { catTouched = true; });
+    const autoCat = () => {
+      if (catTouched) return;
+      const text = `${titleInput.value} ${descInput.value}`.trim();
+      if (text.length < 3) return;
+      let c = classifyText(text);
+      if (c === "errand") c = "errands";
+      if (c === "default") return;
+      if ([...catSel.options].some((o) => o.value === c)) catSel.value = c;
+    };
+    titleInput.addEventListener("input", autoCat);
+    descInput.addEventListener("input", autoCat);
+
+    // Title prompt chips (quick fills): common prompts + the user's recent titles.
+    const chips = document.createElement("div");
+    chips.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 12px";
+    const recent = (this._corpus || []).filter((s) => !s.endsWith(" ")).slice(0, 3);
+    const promptSet = [...new Set([...TITLE_PROMPTS, ...recent])].slice(0, 7);
+    for (const p of promptSet) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.textContent = p.trim();
+      chip.style.cssText =
+        "background:#eef2ff;color:#4338ca;border:0;border-radius:999px;padding:5px 11px;font:600 12px system-ui;cursor:pointer";
+      chip.addEventListener("click", () => { titleInput.value = p; autoCat(); titleInput.focus(); });
+      chips.appendChild(chip);
     }
 
     const heading = document.createElement("div");
@@ -419,7 +522,7 @@ export class Calendar2DDay {
       actions.append(del);
     }
 
-    card.append(heading, field("Title", titleInput), field("Description", descInput), times, field("Category", catSel), actions);
+    card.append(heading, field("Title", titleInput), chips, field("Description", descInput), times, field("Category", catSel), actions);
     overlay.appendChild(card);
     document.body.appendChild(overlay);
     titleInput.focus();
