@@ -1087,7 +1087,7 @@ export class CalendarApp {
     this.inklingPanel.minimize();
     this.wordWeaverEmbed?.exitImmersive();
     this.wordWeaverEmbed?.hide();
-    this._weaverJournal?.hide();
+    this._weaverGalaxy?.hide();
     this._cal2dDay?.close();
     this.layerManager.close("wordweaver");
 
@@ -1139,15 +1139,15 @@ export class CalendarApp {
     }
   }
 
-  /** WordWeaver Journal — 365 day-platforms + walls, calendar teleport. Lazy-loaded. */
+  /** WordWeaver galaxy — clustered orbiting note-spheres + click→day sidebar. */
   async _openConstellation() {
     this.wordWeaverEmbed?.exitImmersive();
     this.wordWeaverEmbed?.hide();
-    if (!this._weaverJournal) {
-      const { WeaverJournal } = await import("../wordweaver/WeaverJournal.js");
-      this._weaverJournal = new WeaverJournal(this.scene, this.camera, this.controls);
+    if (!this._weaverGalaxy) {
+      const { WeaverGalaxy } = await import("../wordweaver/WeaverGalaxy.js");
+      this._weaverGalaxy = new WeaverGalaxy(this.scene, this.camera, this.controls);
     }
-    this._weaverJournal.show();
+    this._weaverGalaxy.show();
   }
 
   /** Schedule tab = the 2D day-view editor (Google-style). Lazy-loaded. */
@@ -1712,7 +1712,7 @@ export class CalendarApp {
   }
 
   update() {
-    this._weaverJournal?.update();
+    this._weaverGalaxy?.update();
   }
 
   _detectNativeRuntime() {
