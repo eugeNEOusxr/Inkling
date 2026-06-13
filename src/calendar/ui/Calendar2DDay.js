@@ -23,7 +23,7 @@ import {
   getEventsForMonth,
   todayIsoDate
 } from "../../wordweaver/timelineModel.js";
-import { openTextStylePicker, textStyleCss, getTextStyleRaw } from "./TextStylePicker.js";
+import { openTextStylePicker, textStyleCss, getTextStyleRaw, getTextAnim, textAnimCss } from "./TextStylePicker.js";
 
 const SLOT_PX = { 15: 30, 30: 42, 60: 66 }; // row height per slot size (taller so 15-min rows don't cram)
 const DAY_MIN = 24 * 60;
@@ -262,10 +262,10 @@ export class Calendar2DDay {
     document.body.appendChild(root);
     this.root = root;
 
-    // Re-render when the user picks a new text style so notes update live.
-    window.addEventListener("inkling:text-style", () => {
-      if (this.root && this.root.style.display !== "none") this.render();
-    });
+    // Re-render when the user picks a new text style or animation (live update).
+    const reRender = () => { if (this.root && this.root.style.display !== "none") this.render(); };
+    window.addEventListener("inkling:text-style", reRender);
+    window.addEventListener("inkling:text-anim", reRender);
   }
 
   _navBtn(label, onClick) {
@@ -443,7 +443,8 @@ export class Calendar2DDay {
       // otherwise the default crisp white outline.
       const userStyle = getTextStyleRaw();
       const styleCss = userStyle ? textStyleCss(userStyle) : "";
-      const titleStyle = styleCss || `text-shadow:${BLOCK_TITLE_OUTLINE}`;
+      const animCss = textAnimCss(getTextAnim());
+      const titleStyle = (styleCss || `text-shadow:${BLOCK_TITLE_OUTLINE}`) + (animCss ? `;${animCss}` : "");
       block.innerHTML =
         `<div style="${scrollLine};font-weight:800;font-size:12.5px;${titleStyle}"><span style="opacity:0.92">${clockLabel(startMin)}</span> · ${titleTxt}</div>` +
         (descTxt

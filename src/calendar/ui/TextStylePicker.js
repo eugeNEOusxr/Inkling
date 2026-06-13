@@ -8,7 +8,29 @@
  */
 
 const PREF_KEY = "inkling-text-style";
+const ANIM_KEY = "inkling-text-anim";
 const SAMPLE = "Today";
+
+/** Animation options → CSS `animation` value (keyframes injected once). */
+const ANIMS = [
+  ["none", "None", ""],
+  ["pulse", "Pulse", "ink-pulse 1.6s ease-in-out infinite"],
+  ["float", "Float", "ink-float 2.6s ease-in-out infinite"],
+  ["shimmer", "Shimmer", "ink-shimmer 1.8s ease-in-out infinite"],
+  ["wobble", "Wobble", "ink-wobble 2.2s ease-in-out infinite"]
+];
+
+function injectAnimKeyframes() {
+  if (document.getElementById("inkling-text-anim-css")) return;
+  const st = document.createElement("style");
+  st.id = "inkling-text-anim-css";
+  st.textContent =
+    "@keyframes ink-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}" +
+    "@keyframes ink-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}" +
+    "@keyframes ink-shimmer{0%,100%{filter:brightness(1)}50%{filter:brightness(1.6)}}" +
+    "@keyframes ink-wobble{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg)}}";
+  document.head.appendChild(st);
+}
 
 /** Each style: id, name, inline CSS for the sample, and optional tile backdrop. */
 const GROUPS = [
@@ -68,6 +90,17 @@ export function textStyleCss(value) {
   return STYLE_INDEX[value]?.css ?? "";
 }
 
+/** Current animation id (default "none"). */
+export function getTextAnim() {
+  try { return localStorage.getItem(ANIM_KEY) || "none"; } catch { return "none"; }
+}
+
+/** CSS `animation:` value for the chosen animation (empty for none). */
+export function textAnimCss(value) {
+  const a = ANIMS.find((x) => x[0] === (value ?? getTextAnim()));
+  return a && a[2] ? `animation:${a[2]}` : "";
+}
+
 /**
  * Map a style value → Real3DText material params for extruded 3D text.
  * The 3D-group looks change material/finish; 2D/2.5D picks fall back to a clean
@@ -120,6 +153,16 @@ function _select(value) {
   _onPick?.(value);
 }
 
+function _selectAnim(id) {
+  try { localStorage.setItem(ANIM_KEY, id); } catch { /* ignore */ }
+  _panel?.querySelectorAll("[data-anim]").forEach((b) => {
+    const on = b.dataset.anim === id;
+    b.style.background = on ? "#6366f1" : "#1e293b";
+    b.style.color = on ? "#fff" : "#cbd5e1";
+  });
+  try { window.dispatchEvent(new CustomEvent("inkling:text-anim", { detail: { value: id } })); } catch { /* ignore */ }
+}
+
 function _build() {
   if (_panel) return;
   const overlay = document.createElement("div");
@@ -140,6 +183,29 @@ function _build() {
   done.addEventListener("click", () => closeTextStylePicker());
   head.append(title, done);
   overlay.appendChild(head);
+
+  // Animation selector (applies on top of any style).
+  injectAnimKeyframes();
+  const animRow = document.createElement("div");
+  animRow.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px";
+  const animLabel = document.createElement("span");
+  animLabel.textContent = "Animation:";
+  animLabel.style.cssText = "font:700 13px system-ui;color:#a5b4fc";
+  animRow.appendChild(animLabel);
+  const curAnim = getTextAnim();
+  for (const [id, name, anim] of ANIMS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.anim = id;
+    b.textContent = name;
+    b.style.cssText =
+      "border:0;border-radius:999px;padding:7px 13px;font:700 12px system-ui;cursor:pointer;" +
+      (anim ? `animation:${anim};` : "") +
+      `background:${id === curAnim ? "#6366f1" : "#1e293b"};color:${id === curAnim ? "#fff" : "#cbd5e1"}`;
+    b.addEventListener("click", () => _selectAnim(id));
+    animRow.appendChild(b);
+  }
+  overlay.appendChild(animRow);
 
   for (const group of GROUPS) {
     const section = document.createElement("div");

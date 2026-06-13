@@ -916,6 +916,8 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
       const params = text3dParams(textStyle, color);
       const fontSize = 0.58;
       const lineH = 0.74;
+      // Standoff distance the text keeps from the sphere so they're never crowded.
+      const NOTE_TEXT_GAP = DAY_VIEW_SPHERE_GEO.parameters.radius + 2.6;
       const startY = y + ((lines.length - 1) * lineH) / 2; // center the block on the sphere
       lines.forEach((line, li) => {
         const t3d = createReal3DText(line, {
@@ -924,8 +926,8 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
           depth: Math.min(params.depth ?? 0.2, 0.16) // shallower → less bulky
         });
         const tg = t3d.getGroup();
-        // Rough left-anchor (Real3DText centers each line): shift right by ~half width.
-        tg.position.set(3.0 + line.length * fontSize * 0.29, startY - li * lineH, 0.08);
+        // Left-anchor at the standoff gap (Real3DText centers each line → shift right by half width).
+        tg.position.set(NOTE_TEXT_GAP + line.length * fontSize * 0.29, startY - li * lineH, 0.08);
         tg.layers.set(1);
         tg.traverse((o) => o.layers.set(1));
         group.add(tg);
