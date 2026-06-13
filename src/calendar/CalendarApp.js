@@ -1088,6 +1088,7 @@ export class CalendarApp {
     this.wordWeaverEmbed?.exitImmersive();
     this.wordWeaverEmbed?.hide();
     this._weaverJournal?.hide();
+    this._cal2dDay?.close();
     this.layerManager.close("wordweaver");
 
     beginAppTabSurface(tab);
@@ -1104,8 +1105,7 @@ export class CalendarApp {
         break;
       case "writer":
         document.body.classList.add("inkling-stage-open");
-        this._showStageBackdrop(true);
-        await this.openNotebookDayByDate(date);
+        await this._openScheduleDay(date);
         break;
       case "wordweaver":
         this.notebookWall.setVisible(false);
@@ -1148,6 +1148,15 @@ export class CalendarApp {
       this._weaverJournal = new WeaverJournal(this.scene, this.camera, this.controls);
     }
     this._weaverJournal.show();
+  }
+
+  /** Schedule tab = the 2D day-view editor (Google-style). Lazy-loaded. */
+  async _openScheduleDay(date) {
+    if (!this._cal2dDay) {
+      const { Calendar2DDay } = await import("./ui/Calendar2DDay.js");
+      this._cal2dDay = new Calendar2DDay();
+    }
+    this._cal2dDay.open(date ?? this._getTodayDate?.() ?? new Date().toISOString().slice(0, 10));
   }
 
   _showWordWeaverPreview(dateStr, time) {

@@ -63,6 +63,37 @@ function hhmm(min) {
   return `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
 }
 
+// --- color helpers (vivid, high-contrast blocks on a white base) ---
+function hexToRgb(hex) {
+  const h = String(hex).replace("#", "");
+  const f = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = parseInt(f, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function rgbToHex(r, g, b) {
+  return "#" + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+}
+function luminance(hex) {
+  const [r, g, b] = hexToRgb(hex);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+/** Darken a hex by fraction f (0..1). */
+function darken(hex, f) {
+  const [r, g, b] = hexToRgb(hex);
+  return rgbToHex(r * (1 - f), g * (1 - f), b * (1 - f));
+}
+/** A saturated diagonal gradient for an event block; light hues are deepened so
+ *  white text always reads. */
+function blockFill(hex) {
+  const base = luminance(hex) > 0.6 ? darken(hex, 0.42) : hex;
+  return `linear-gradient(135deg, ${base}, ${darken(base, 0.28)})`;
+}
+
+// Layered text-shadow "extrusions" → CSS 3D text inside the 2D grid.
+const HEADER_3D =
+  "0 1px 0 #cbd5e1,0 2px 0 #bcc6d6,0 3px 0 #aab6c8,0 4px 8px rgba(15,23,42,0.28)";
+const BLOCK_TITLE_3D = "0 1px 0 rgba(0,0,0,0.45),0 2px 4px rgba(0,0,0,0.35)";
+
 export class Calendar2DDay {
   constructor() {
     this.iso = todayIsoDate();
@@ -124,7 +155,8 @@ export class Calendar2DDay {
     today.style.width = "auto";
     today.style.padding = "0 12px";
     const title = document.createElement("div");
-    title.style.cssText = "flex:1;font-weight:700;font-size:17px;color:#0f172a";
+    title.style.cssText =
+      `flex:1;font-weight:800;font-size:18px;color:#0f172a;text-shadow:${HEADER_3D};letter-spacing:0.2px`;
     this._title = title;
 
     const slotSel = document.createElement("select");
@@ -223,11 +255,14 @@ export class Calendar2DDay {
       const block = document.createElement("div");
       block.style.cssText =
         `position:absolute;left:${GUTTER + 6}px;right:10px;top:${top}px;height:${height}px;` +
-        `background:${color}22;border-left:4px solid ${color};border-radius:6px;padding:3px 8px;` +
-        "overflow:hidden;cursor:pointer;box-sizing:border-box";
+        `background:${blockFill(color)};border-left:5px solid ${darken(color, 0.45)};border-radius:8px;padding:4px 10px;` +
+        "overflow:hidden;cursor:pointer;box-sizing:border-box;color:#fff;" +
+        `box-shadow:0 3px 10px ${color}55,0 1px 2px rgba(0,0,0,0.25);transition:transform .12s ease`;
       block.innerHTML =
-        `<div style="font-weight:700;font-size:12px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(rec.title || rec.text || "Untitled")}</div>` +
-        `<div style="font-size:11px;color:#475569">${clockLabel(startMin)}</div>`;
+        `<div style="font-weight:800;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:${BLOCK_TITLE_3D}">${escapeHtml(rec.title || rec.text || "Untitled")}</div>` +
+        `<div style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.92);text-shadow:0 1px 1px rgba(0,0,0,0.35)">${clockLabel(startMin)}</div>`;
+      block.addEventListener("mouseenter", () => { block.style.transform = "translateY(-1px) scale(1.006)"; });
+      block.addEventListener("mouseleave", () => { block.style.transform = "none"; });
       block.addEventListener("click", (e) => { e.stopPropagation(); this._openEditor(full ?? rec, startMin); });
       this._grid.appendChild(block);
     }
