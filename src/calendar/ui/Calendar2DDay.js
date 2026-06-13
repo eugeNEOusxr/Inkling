@@ -191,13 +191,14 @@ export class Calendar2DDay {
     root.style.cssText =
       "position:fixed;top:0;left:0;right:0;bottom:calc(62px + env(safe-area-inset-bottom,0px));" +
       "z-index:11000;display:none;flex-direction:column;" +
-      "background:#ffffff;color:#1e293b;font:500 14px system-ui,-apple-system,sans-serif";
+      "background:radial-gradient(ellipse at 50% -10%, #1c2550 0%, #0c1226 52%, #05070f 100%);" +
+      "color:#e6ebff;font:500 14px system-ui,-apple-system,sans-serif";
 
     // Header bar
     const head = document.createElement("div");
     head.style.cssText =
       "flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:12px 14px;" +
-      "border-bottom:1px solid #e2e8f0;background:#f8fafc";
+      "border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(10,15,32,0.65)";
     const prev = this._navBtn("‹", () => this.shiftDay(-1));
     const next = this._navBtn("›", () => this.shiftDay(1));
     const today = this._navBtn("Today", () => this.setDate(todayIsoDate()));
@@ -205,12 +206,13 @@ export class Calendar2DDay {
     today.style.padding = "0 12px";
     const title = document.createElement("div");
     title.style.cssText =
-      `flex:1;font-weight:800;font-size:18px;color:#0f172a;text-shadow:${HEADER_3D};letter-spacing:0.2px`;
+      "flex:1;font-weight:800;font-size:18px;color:#f1f5ff;letter-spacing:0.2px;" +
+      "text-shadow:0 1px 2px rgba(0,0,0,0.6),0 0 16px rgba(129,140,248,0.45)";
     this._title = title;
 
     const slotSel = document.createElement("select");
     slotSel.style.cssText =
-      "border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;background:#fff;color:#0f172a;font:600 13px system-ui";
+      "border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 8px;background:rgba(255,255,255,0.08);color:#e6ebff;font:600 13px system-ui";
     for (const s of [15, 30, 60]) {
       const o = document.createElement("option");
       o.value = String(s); o.textContent = `${s} min`;
@@ -221,7 +223,7 @@ export class Calendar2DDay {
     this._slotSel = slotSel;
     const zoomLabel = document.createElement("span");
     zoomLabel.textContent = "Zoom";
-    zoomLabel.style.cssText = "font-size:12px;color:#64748b";
+    zoomLabel.style.cssText = "font-size:12px;color:#a5b4fc";
     this._zoomEls = [zoomLabel, slotSel];
 
     // Day / Month view toggle.
@@ -251,7 +253,7 @@ export class Calendar2DDay {
 
     // Scrollable grid
     const scroll = document.createElement("div");
-    scroll.style.cssText = "flex:1;overflow:auto;position:relative;background:#fff";
+    scroll.style.cssText = "flex:1;overflow:auto;position:relative;background:transparent";
     const grid = document.createElement("div");
     grid.style.cssText = "position:relative;width:100%";
     scroll.appendChild(grid);
@@ -272,8 +274,8 @@ export class Calendar2DDay {
     const b = document.createElement("button");
     b.textContent = label;
     b.style.cssText =
-      "height:34px;min-width:34px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;" +
-      "color:#0f172a;font:700 15px system-ui;cursor:pointer;flex:0 0 auto";
+      "height:34px;min-width:34px;border:1px solid rgba(255,255,255,0.18);border-radius:8px;background:rgba(255,255,255,0.07);" +
+      "color:#e6ebff;font:700 15px system-ui;cursor:pointer;flex:0 0 auto";
     b.addEventListener("click", onClick);
     return b;
   }
@@ -294,10 +296,10 @@ export class Calendar2DDay {
     const legend = document.createElement("div");
     legend.style.cssText =
       "display:flex;flex-wrap:wrap;gap:9px 16px;margin-bottom:14px;padding:10px 12px;" +
-      "background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px";
+      "background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px";
     for (const [val, label] of CATEGORIES) {
       const item = document.createElement("span");
-      item.style.cssText = "display:inline-flex;align-items:center;gap:6px;font:600 12px system-ui;color:#475569";
+      item.style.cssText = "display:inline-flex;align-items:center;gap:6px;font:600 12px system-ui;color:#c3cae6";
       item.innerHTML =
         `<span style="width:12px;height:12px;border-radius:50%;background:${getCategoryColor(val)};box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>${label}`;
       legend.appendChild(item);
@@ -310,7 +312,7 @@ export class Calendar2DDay {
     for (const w of ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) {
       const c = document.createElement("div");
       c.textContent = w;
-      c.style.cssText = `text-align:center;font:700 12px system-ui;color:#475569;text-shadow:${TIME_LABEL_3D}`;
+      c.style.cssText = "text-align:center;font:700 12px system-ui;color:#a5b4fc;text-shadow:0 1px 2px rgba(0,0,0,0.5)";
       dow.appendChild(c);
     }
     wrap.appendChild(dow);
@@ -341,13 +343,13 @@ export class Calendar2DDay {
 
       const cell = document.createElement("div");
       cell.style.cssText =
-        "min-height:74px;border:1px solid #e2e8f0;border-radius:10px;padding:6px;cursor:pointer;" +
-        `background:${inMonth ? "#fff" : "#f8fafc"};` +
-        (isToday ? "outline:2px solid #2563eb;outline-offset:-2px;" : "");
+        "min-height:74px;border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px;cursor:pointer;" +
+        `background:${inMonth ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.015)"};` +
+        (isToday ? "outline:2px solid #818cf8;outline-offset:-2px;" : "");
       const num = document.createElement("div");
       num.textContent = String(dayNum);
       num.style.cssText =
-        `font:800 14px system-ui;color:${inMonth ? "#0f172a" : "#94a3b8"};text-shadow:${TIME_LABEL_3D}`;
+        `font:800 14px system-ui;color:${inMonth ? "#e6ebff" : "#6b7494"};text-shadow:0 1px 2px rgba(0,0,0,0.5)`;
       cell.appendChild(num);
 
       const colors = inMonth ? (byDate[iso] || []) : [];
@@ -398,14 +400,14 @@ export class Calendar2DDay {
       const line = document.createElement("div");
       line.style.cssText =
         `position:absolute;left:${GUTTER}px;right:0;top:${min * pxPerMin}px;height:0;` +
-        `border-top:1px solid ${isHour ? "#e2e8f0" : "#f1f5f9"}`;
+        `border-top:1px solid ${isHour ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.06)"}`;
       this._grid.appendChild(line);
       if (isHour && min < DAY_MIN) {
         const lab = document.createElement("div");
         lab.textContent = clockLabel(min);
         lab.style.cssText =
           `position:absolute;left:0;width:${GUTTER - 8}px;top:${min * pxPerMin - 8}px;` +
-          `text-align:right;font:700 11.5px system-ui;color:#475569;text-shadow:${TIME_LABEL_3D};letter-spacing:0.2px`;
+          `text-align:right;font:700 11.5px system-ui;color:#aab4d4;letter-spacing:0.2px;text-shadow:0 1px 2px rgba(0,0,0,0.5)`;
         this._grid.appendChild(lab);
       }
     }
@@ -414,8 +416,11 @@ export class Calendar2DDay {
     const hit = document.createElement("div");
     hit.style.cssText = `position:absolute;left:${GUTTER}px;right:0;top:0;height:${gridH}px;cursor:pointer`;
     hit.addEventListener("click", (e) => {
+      // rect.top already reflects the scroll offset (hit lives inside the scroll
+      // container), so e.clientY - rect.top is the true y in grid coords — adding
+      // scrollTop would double-count and register the wrong time.
       const rect = hit.getBoundingClientRect();
-      const yPx = e.clientY - rect.top + this._scroll.scrollTop - 0;
+      const yPx = e.clientY - rect.top;
       let min = Math.round(yPx / pxPerMin / this.slot) * this.slot;
       min = Math.max(0, Math.min(DAY_MIN - this.slot, min));
       this._openEditor(null, min);
