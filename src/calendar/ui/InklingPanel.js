@@ -64,7 +64,7 @@ export class InklingPanel {
     document.getElementById("inkling-confirm-yes")?.addEventListener("click", () => this._confirmSchedule(true));
     document.getElementById("inkling-confirm-no")?.addEventListener("click", () => this._confirmSchedule(false));
 
-    document.getElementById("inkling-fab")?.addEventListener("click", () => this.openWithContext());
+    this._initOrb();
 
     // Seed the welcome message first so it can never be buried by a proactive
     // digest or alert bubble that fires before the user opens the panel.
@@ -214,6 +214,109 @@ export class InklingPanel {
 
   isOpen() {
     return this.el && !this.el.classList.contains("hidden");
+  }
+
+  // --- Inkling orb (draggable metallic sphere + options menu) ---
+
+  _initOrb() {
+    const orb = document.getElementById("inkling-fab");
+    if (!orb) return;
+    this._orb = orb;
+    try {
+      const pos = JSON.parse(localStorage.getItem("inkling-orb-pos") || "null");
+      if (pos && Number.isFinite(pos.left) && Number.isFinite(pos.top)) this._placeOrb(pos.left, pos.top);
+    } catch { /* ignore */ }
+
+    let startX = 0, startY = 0, originLeft = 0, originTop = 0, moved = false;
+    const onMove = (e) => {
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      if (!moved && Math.hypot(dx, dy) > 6) { moved = true; orb.classList.add("inkling-orb--dragging"); }
+      if (moved) {
+        const left = Math.max(6, Math.min(window.innerWidth - orb.offsetWidth - 6, originLeft + dx));
+        const top = Math.max(6, Math.min(window.innerHeight - orb.offsetHeight - 6, originTop + dy));
+        this._placeOrb(left, top);
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      orb.classList.remove("inkling-orb--dragging");
+      if (moved) {
+        const r = orb.getBoundingClientRect();
+        try { localStorage.setItem("inkling-orb-pos", JSON.stringify({ left: r.left, top: r.top })); } catch { /* ignore */ }
+      } else {
+        this._toggleOrbMenu();
+      }
+    };
+    orb.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      const r = orb.getBoundingClientRect();
+      startX = e.clientX; startY = e.clientY; originLeft = r.left; originTop = r.top; moved = false;
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+    });
+  }
+
+  _placeOrb(left, top) {
+    const orb = this._orb;
+    if (!orb) return;
+    orb.style.left = `${left}px`;
+    orb.style.top = `${top}px`;
+    orb.style.right = "auto";
+    orb.style.bottom = "auto";
+    if (this._orbMenu?.classList.contains("open")) this._positionOrbMenu();
+  }
+
+  _buildOrbMenu() {
+    if (this._orbMenu) return;
+    const menu = document.createElement("div");
+    menu.id = "inkling-orb-menu";
+    const mk = (label, fn) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "inkling-orb-action";
+      b.textContent = label;
+      b.addEventListener("click", () => { menu.classList.remove("open"); fn(); });
+      return b;
+    };
+    menu.append(
+      mk("💬  Chat with Inkling", () => this.openWithContext()),
+      mk("＋  New event", () => this._orbNewEvent()),
+      mk("📅  Go to today", () => this._orbToday())
+    );
+    document.body.appendChild(menu);
+    this._orbMenu = menu;
+    document.addEventListener("pointerdown", (e) => {
+      if (menu.classList.contains("open") && !menu.contains(e.target) && e.target !== this._orb) {
+        menu.classList.remove("open");
+      }
+    });
+  }
+
+  _toggleOrbMenu() {
+    this._buildOrbMenu();
+    const open = this._orbMenu.classList.toggle("open");
+    if (open) this._positionOrbMenu();
+  }
+
+  _positionOrbMenu() {
+    const orb = this._orb, menu = this._orbMenu;
+    if (!orb || !menu) return;
+    const r = orb.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(window.innerWidth - 200, r.left + r.width / 2 - 90))}px`;
+    menu.style.top = "auto";
+    menu.style.bottom = `${window.innerHeight - r.top + 10}px`;
+  }
+
+  async _orbNewEvent() {
+    await this.app?._handleBottomNavTab?.("writer", { toggle: false });
+    this.app?._cal2dDay?._openEditor?.(null, 9 * 60);
+  }
+
+  async _orbToday() {
+    await this.app?._handleBottomNavTab?.("writer", { toggle: false });
+    const cal = this.app?._cal2dDay;
+    if (cal) { cal.iso = new Date().toISOString().slice(0, 10); cal.setView?.("day"); }
   }
 
   /** Avatar tap → open Inkling aware of the page you're on, with title help. */

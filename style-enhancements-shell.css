@@ -122,9 +122,9 @@ body.weaver-journal-active #three-canvas {
   pointer-events: auto !important;
 }
 
-/* Inkling floating avatar — replaces the Inkling bottom-nav tab. Always present
-   (above the bottom nav) except while the Inkling panel itself is open. Overrides
-   the older notebook-layout hide of .inkling-fab. */
+/* Inkling orb — a draggable, metallic, glowing assistant sphere (replaces the
+   Inkling bottom-nav tab). Hover glows; click pops an options menu; one option
+   expands the chat window. Always present except while the chat panel is open. */
 body.inkling-notebook-layout #inkling-fab.inkling-avatar {
   display: flex !important;
   align-items: center;
@@ -132,18 +132,57 @@ body.inkling-notebook-layout #inkling-fab.inkling-avatar {
   position: fixed;
   right: 16px;
   bottom: calc(84px + env(safe-area-inset-bottom, 0px));
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   padding: 0;
   border: 0;
   border-radius: 50%;
-  font-size: 24px;
+  font-size: 26px;
   color: #fff;
-  background: radial-gradient(circle at 35% 30%, #818cf8, #4f46e5 60%, #3730a3);
-  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.4);
-  cursor: pointer;
+  text-shadow: 0 0 10px rgba(199, 210, 254, 0.9), 0 1px 2px rgba(0, 0, 0, 0.4);
+  background:
+    radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 34%),
+    radial-gradient(circle at 68% 80%, rgba(49, 46, 129, 0.95), rgba(49, 46, 129, 0) 60%),
+    radial-gradient(circle at 50% 42%, #a5b4fc 0%, #6366f1 42%, #4338ca 72%, #312e81 100%);
+  box-shadow:
+    0 10px 30px rgba(79, 70, 229, 0.55),
+    0 0 22px rgba(129, 140, 248, 0.65),
+    inset 0 2px 6px rgba(255, 255, 255, 0.55),
+    inset 0 -8px 14px rgba(30, 27, 75, 0.6);
+  cursor: grab;
   z-index: 11005;
-  animation: inkling-avatar-float 4s ease-in-out infinite;
+  overflow: hidden;
+  animation: inkling-orb-float 4s ease-in-out infinite;
+  transition: transform 0.18s ease, box-shadow 0.25s ease;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Sweeping specular sheen — high-tech shine. */
+body.inkling-notebook-layout #inkling-fab.inkling-avatar::before {
+  content: "";
+  position: absolute;
+  inset: -30%;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.6) 38deg, rgba(255,255,255,0) 86deg, rgba(255,255,255,0) 360deg);
+  mix-blend-mode: screen;
+  opacity: 0.5;
+  animation: inkling-orb-sheen 5s linear infinite;
+  pointer-events: none;
+}
+body.inkling-notebook-layout #inkling-fab.inkling-avatar:hover {
+  transform: scale(1.08);
+  animation-play-state: paused;
+  box-shadow:
+    0 14px 40px rgba(79, 70, 229, 0.7),
+    0 0 40px rgba(129, 140, 248, 0.98),
+    inset 0 2px 6px rgba(255, 255, 255, 0.75),
+    inset 0 -8px 14px rgba(30, 27, 75, 0.6);
+}
+body.inkling-notebook-layout #inkling-fab.inkling-avatar.inkling-orb--dragging {
+  cursor: grabbing;
+  animation: none;
+  transition: none;
 }
 
 /* Inkling panel must sit above the Schedule overlay (z 11000) so it's usable
@@ -154,9 +193,43 @@ body.inkling-notebook-layout #inkling-fab.inkling-avatar {
 body.inkling-notebook-layout.inkling-open #inkling-fab.inkling-avatar {
   display: none !important;
 }
-@keyframes inkling-avatar-float {
+@keyframes inkling-orb-float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-5px); }
+}
+@keyframes inkling-orb-sheen { to { transform: rotate(360deg); } }
+
+/* Options menu that rises from the orb on click. */
+#inkling-orb-menu {
+  position: fixed;
+  z-index: 11006;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+}
+#inkling-orb-menu.open { display: flex; }
+#inkling-orb-menu .inkling-orb-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 18, 32, 0.92);
+  color: #e0e7ff;
+  border: 1px solid rgba(129, 140, 248, 0.5);
+  border-radius: 999px;
+  padding: 9px 15px;
+  font: 700 13px system-ui;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 14px rgba(99, 102, 241, 0.35);
+  animation: inkling-orb-rise 0.22s ease both;
+}
+#inkling-orb-menu .inkling-orb-action:hover {
+  background: rgba(67, 56, 202, 0.95);
+  border-color: #a5b4fc;
+}
+@keyframes inkling-orb-rise {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: none; }
 }
 
 /* Hard gate: when the journal is NOT active, ALL its fixed overlays are gone —
