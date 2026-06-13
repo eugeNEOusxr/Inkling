@@ -14,7 +14,10 @@ export class VerticalTimeWheel {
     this._scrollRaf = 0;
 
     this.root.innerHTML = "";
-    this.root.className = "vertical-time-wheel";
+    // Add, don't overwrite: the mount carries `notebook-writer-wheel-mount hidden`
+    // and clobbering className strips `hidden`, leaving the wheel stacked on top of
+    // the clock and collapsing the timeline below it.
+    this.root.classList.add("vertical-time-wheel");
 
     const viewport = document.createElement("div");
     viewport.className = "vertical-time-wheel__viewport";

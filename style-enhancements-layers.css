@@ -209,7 +209,9 @@ body.inkling-notebook-layout #wall-toggle {
 
   /* —— Phone spatial layout: layers use full viewport —— */
   body.inkling-notebook-layout {
-    --writer-panel-pad-top: calc(var(--inkling-chrome-h, 52px) + env(safe-area-inset-top, 0px));
+    /* Full-screen schedule covers the chrome, so only reserve the status-bar
+       safe area at top (no 130px chrome gap = no wasted top quarter). */
+    --writer-panel-pad-top: calc(env(safe-area-inset-top, 0px) + 8px);
     --writer-panel-pad-bottom: calc(var(--inkling-bottom-nav-h, 62px) + env(safe-area-inset-bottom, 0px));
   }
 

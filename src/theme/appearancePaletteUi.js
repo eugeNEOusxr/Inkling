@@ -1,7 +1,12 @@
 import { APPEARANCE_GROUPS } from "./appearancePalettes.js";
 
-/** @type {import('./appearancePalettes.js').AppearancePaletteId[]} */
-export const APPEARANCE_DISPLAY_ORDER = ["feminine", "masculine", "neutral"];
+/**
+ * Appearance palettes (feminine/masculine/neutral) are all hidden for now — TBD
+ * once sphere colors are settled. Empty list = the picker renders no chips.
+ * Re-add ids here to restore the chooser.
+ * @type {import('./appearancePalettes.js').AppearancePaletteId[]}
+ */
+export const APPEARANCE_DISPLAY_ORDER = [];
 
 /**
  * @param {HTMLElement} root

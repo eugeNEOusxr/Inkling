@@ -2,6 +2,43 @@
  * Inkling + WordWeaver conversational routing — intent, tone, context, side chat.
  */
 
+import { classifyText, CategoryColors } from "../../wordweaver/timelineModel.js";
+
+/** @typedef {{ category: string, priority: string, icon: string, color: string }} ClassifiedEvent */
+
+const EVENT_ICONS = {
+  health: "♥",
+  study: "📚",
+  work: "💼",
+  personal: "✦",
+  creative: "🎨",
+  errands: "🛒",
+  errand: "🛒",
+  finance: "💰",
+  appointment: "📅",
+  deadline: "⚠",
+  reminder: "⏰",
+  alarm: "⏰",
+  default: "•"
+};
+
+/**
+ * Classify note/event text for 3D calendar surfaces.
+ * @param {string} text
+ * @returns {ClassifiedEvent}
+ */
+export function classifyEvent(text) {
+  const raw = String(text ?? "").trim();
+  const category = classifyText(raw);
+  const key = category === "errand" ? "errands" : category;
+  const color = CategoryColors[key] ?? CategoryColors.default;
+  let priority = "normal";
+  if (/urgent|asap|emergency|critical/i.test(raw)) priority = "high";
+  else if (/deadline|due|important/i.test(raw)) priority = "medium";
+  const icon = EVENT_ICONS[key] ?? EVENT_ICONS.default;
+  return { category: key, priority, icon, color };
+}
+
 /** @typedef {'openWriter'|'openCalendar'|'openWordWeaver'|'storeNote'|'createAlert'|'sideConversation'|'askClarification'|'none'} BrainAction */
 
 /**
@@ -362,7 +399,7 @@ function buildSideResponse(text, tone, intents, state) {
     .find((t) => t.role === "assistant")?.content;
 
   if (intents.includes("meta_questions_ai")) {
-    return `I'm Inkling${name} — your calendar and notebook companion. I help you capture notes, plan time, and explore WordWeaver's 3D timeline. Say what you need in plain language.`;
+    return `I'm Inkling${name} — your calendar and notebook companion. I help you capture notes, plan time, and explore the Calendar's 3D timeline. Say what you need in plain language.`;
   }
   if (intents.includes("emotional_distress")) {
     return `I hear you${name}, and I'm glad you said something. I'm not a crisis service — if you're in danger, please reach out to someone you trust or local emergency help. I can still help you jot things down or organize your day when you're ready.`;
@@ -380,10 +417,10 @@ function buildSideResponse(text, tone, intents, state) {
     return `Ha — I'm better at calendars than comedy${name}. Want to switch back to notes, or keep the banter going?`;
   }
   if (intents.includes("confusion") || intents.includes("clarification_requests")) {
-    return `Let me clarify${name}. Tell me if you want to **write a note**, **check your schedule**, or **open WordWeaver** — I'll follow your lead.`;
+    return `Let me clarify${name}. Tell me if you want to **write a note**, **check your schedule**, or **open the Calendar** — I'll follow your lead.`;
   }
   if (intents.includes("conversational_banter")) {
-    return `Hey${name}! I'm here. Notes, schedule, Writer, or WordWeaver — what sounds good?`;
+    return `Hey${name}! I'm here. Notes, Schedule, or Calendar — what sounds good?`;
   }
   if (lastAssistant && /\?\s*$/.test(lastAssistant) && /^(yes|yeah|yep|ok|okay|sure)\b/i.test(text)) {
     return `Whenever you're ready, confirm with **Yes, add it** or tell me the day and time again.`;
@@ -449,12 +486,12 @@ function routeAction(intents, tone, text, context, state) {
     };
   }
 
-  if (/\b(wordweaver|3d timeline|weave|thought space)\b/i.test(lower)) {
+  if (/\b(calendar|3d calendar|wordweaver|3d timeline|weave|thought space)\b/i.test(lower)) {
     return {
       route: "openWordWeaver",
       action: "openWordWeaver",
       payload,
-      aiResponse: "Opening WordWeaver — your 3D timeline and thought space."
+      aiResponse: "Opening the Calendar — your days as 3D month worlds."
     };
   }
 

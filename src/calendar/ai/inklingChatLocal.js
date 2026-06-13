@@ -56,7 +56,7 @@ export function runLocalInklingChat(opts) {
 
   if (brain.action === "openWordWeaver") {
     return {
-      reply: brain.aiResponse ?? "Opening WordWeaver.",
+      reply: brain.aiResponse ?? "Opening the Calendar.",
       action: "open_wordweaver",
       proposal: null,
       source: "local",

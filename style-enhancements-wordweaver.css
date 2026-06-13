@@ -29,7 +29,7 @@ body.wordweaver-immersive #wordweaver-embed.wordweaver-embed--stage {
   position: fixed !important;
   left: 8px !important;
   right: 8px !important;
-  top: calc(var(--inkling-top-bar-h, var(--inkling-chrome-h, 48px)) + env(safe-area-inset-top, 0px)) !important;
+  top: calc(52px + env(safe-area-inset-top, 0px)) !important; /* clear the nav only, not the full chrome — was ~132px (1/6 blank) */
   bottom: calc(var(--inkling-bottom-nav-h, 62px) + 8px + env(safe-area-inset-bottom, 0px)) !important;
   z-index: 10200 !important;
   width: auto !important;
@@ -352,7 +352,8 @@ body.inkling-tab-wordweaver #wordweaver-embed .wordweaver-daily-panel {
   body.inkling-tab-wordweaver #wordweaver-embed.wordweaver-embed--stage {
     left: 4px !important;
     right: 4px !important;
-    top: calc(var(--inkling-chrome-h, 52px) + 4px + env(safe-area-inset-top, 0px)) !important;
+    /* Clear only a thin nav strip — was the full ~136px chrome (the 1/6 blank). */
+    top: calc(52px + env(safe-area-inset-top, 0px)) !important;
     bottom: calc(var(--inkling-bottom-nav-h, 62px) + 4px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
@@ -381,15 +382,64 @@ body.inkling-tab-wordweaver #wordweaver-embed .wordweaver-daily-panel {
     font-size: 11px;
   }
 
-  .wordweaver-daily-panel {
-    max-height: 100px;
-    font-size: 11px;
+  /* Mobile declutter: erase the appointments/reminders "wall" + insights text
+     so the 3D scene fills the screen instead of being buried. */
+  body.inkling-tab-wordweaver .wordweaver-daily-panel,
+  body.inkling-tab-wordweaver .wordweaver-remarks {
+    display: none !important;
+  }
+
+  /* Trim the top bar to Today + Morning/Afternoon/Night. The rest
+     (brand, Week/Month view, style picker, Customize) hides behind ⋯. */
+  body.inkling-tab-wordweaver .wordweaver-embed__bar .wordweaver-embed__bar-titles,
+  body.inkling-tab-wordweaver .wordweaver-embed__bar .ww-view-links,
+  body.inkling-tab-wordweaver .wordweaver-embed__bar .wordweaver-embed__layout-label,
+  body.inkling-tab-wordweaver .wordweaver-embed__bar #wordweaver-layout-edit-btn {
+    display: none !important;
+  }
+
+  /* ⋯ options toggle is phone-only. */
+  .wordweaver-embed__bar .ww-options-toggle {
+    display: inline-flex !important;
+  }
+
+  /* When ⋯ is open, reveal the moved controls (they wrap onto a second row). */
+  body.inkling-tab-wordweaver .wordweaver-embed__bar.ww-options-open .ww-view-links,
+  body.inkling-tab-wordweaver .wordweaver-embed__bar.ww-options-open .wordweaver-embed__layout-label,
+  body.inkling-tab-wordweaver .wordweaver-embed__bar.ww-options-open #wordweaver-layout-edit-btn {
+    display: inline-flex !important;
+  }
+
+  .wordweaver-embed__bar {
+    flex-wrap: wrap !important;
   }
 
   .wordweaver-embed__seg {
     padding: 4px 6px;
     font-size: 10px;
   }
+}
+
+/* ⋯ options toggle — hidden on desktop (controls are all inline there). */
+.ww-options-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 30px;
+  margin-left: auto;
+  border-radius: 8px;
+  border: 1px solid rgba(78, 230, 230, 0.35);
+  background: rgba(8, 14, 28, 0.85);
+  color: #e2e8f0;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wordweaver-embed__bar.ww-options-open .ww-options-toggle {
+  border-color: rgba(212, 175, 55, 0.6);
+  color: #fde68a;
 }
 
 .sr-only {

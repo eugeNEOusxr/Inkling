@@ -3,6 +3,7 @@ import { createScene } from "./scene.js";
 import { CalendarApp } from "./calendar/CalendarApp.js";
 import { requireAuthForApp, signOut } from "./auth/requireAuth.js";
 import { getSession } from "./auth/session.js";
+import { clearAuthSkip } from "./auth/authSkip.js";
 import { scheduleCloudSync } from "./auth/cloudSync.js";
 import { registerInklingTimelineBridge } from "./wordweaver/InklingTimelineBridge.js";
 import { registerInklingApp } from "./App.js";
@@ -26,6 +27,20 @@ if (accountLabel) {
 }
 
 document.getElementById("btn-sign-out")?.addEventListener("click", () => signOut());
+
+// Guests (auth skipped, no session) get a top-right "Log in" button.
+const loginBtn = document.getElementById("btn-top-login");
+if (loginBtn) {
+  if (!session?.token) {
+    loginBtn.classList.remove("hidden");
+    loginBtn.addEventListener("click", () => {
+      clearAuthSkip();
+      window.location.reload();
+    });
+  } else {
+    loginBtn.classList.add("hidden");
+  }
+}
 
 const canvas = document.getElementById("three-canvas");
 const { scene, camera, renderer, controls } = createScene(canvas);

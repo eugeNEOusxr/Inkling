@@ -4,7 +4,7 @@
  */
 
 import * as THREE from "three";
-import { getYearTopology, getEventsForDate } from "./timelineModel.js";
+import { getYearTopology, getEventsForDate, classifyText, CategoryColors } from "./timelineModel.js";
 import {
   computeMonthGridLayout,
   computeYearGridLayout,
@@ -58,8 +58,8 @@ function monthSceneUrl(monthIndex, segment) {
   return segment === "night" ? scene.night : scene.day;
 }
 const BACKDROP_MAX_WIDTH = 1920;
-const BACKDROP_OVERLAY_ALPHA = 0.3;
-const BACKDROP_BLUR_PX = 5;
+const BACKDROP_OVERLAY_ALPHA = 0.14;
+const BACKDROP_BLUR_PX = 2;
 /** Just behind day spheres (z ≈ 0.08) in the current-month cluster. */
 const BACKBOARD_Z = -0.16;
 
@@ -89,7 +89,7 @@ function buildMutedBackdropTexture(source) {
     ctx.fillStyle = "#0a1018";
     ctx.fillRect(0, 0, w, h);
     if (typeof ctx.filter === "string") {
-      ctx.filter = `saturate(62%) blur(${BACKDROP_BLUR_PX}px)`;
+      ctx.filter = `saturate(92%) blur(${BACKDROP_BLUR_PX}px)`;
     }
     ctx.drawImage(source, 0, 0, w, h);
     if (typeof ctx.filter === "string") ctx.filter = "none";
@@ -102,8 +102,16 @@ function buildMutedBackdropTexture(source) {
   return tex;
 }
 
-const NOTE_CAP = 6;
-const NOTE_STACK_STEP = 0.32;
+// Cap + step tuned so a day's note stack never reaches the white month sphere
+// (row 0) or the day sphere above it (lower rows) — fixes the June collision.
+const NOTE_CAP = 3;
+const NOTE_STACK_STEP = 0.28;
+const DEFAULT_NOTE_COLOR = "#3399ff";
+
+/** Coordinated note color from its text (category palette). */
+function noteColorFor(text) {
+  return CategoryColors[classifyText(text)] ?? DEFAULT_NOTE_COLOR;
+}
 
 const RADIUS = GRID_RADIUS;
 
@@ -150,10 +158,30 @@ const sharedMaterial = {
   })
 };
 
+/** White base so per-instance setColorAt() shows true category colors. */
+const noteColorMaterial = new THREE.MeshPhysicalMaterial({
+  color: 0xffffff,
+  metalness: 0.28,
+  roughness: 0.16,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.1,
+  emissive: new THREE.Color(0x0a0a0a),
+  emissiveIntensity: 0.12
+});
+
 const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
+
+/** Gentle "breathing" glow so the spheres feel alive (shared by both grids). */
+function pulseSpheres(elapsed) {
+  const t = (Math.sin(elapsed * 1.6) + 1) * 0.5; // 0..1
+  sharedMaterial.month.emissiveIntensity = 0.26 + t * 0.12;
+  sharedMaterial.day.emissiveIntensity = 0.18 + t * 0.18;
+  sharedMaterial.note.emissiveIntensity = 0.32 + t * 0.28;
+  noteColorMaterial.emissiveIntensity = 0.08 + t * 0.18;
+}
 
 /**
  * @param {string} text
@@ -229,8 +257,10 @@ export class WordWeaverMonthGrid {
     const dayInstances = [];
     /** @type {Array<{ x: number, y: number, z: number, iso: string, dayIndex: number }>} */
     const noteInstances = [];
-    /** @type {Array<{ from: THREE.Vector3, to: THREE.Vector3 }>} */
-    const connectorPairs = [];
+    /** @type {THREE.Color[]} per-note colors, parallel to noteInstances */
+    const noteColors = [];
+    /** @type {Array<{ from: THREE.Vector3, to: THREE.Vector3, color: THREE.Color }>} */
+    const connectorSegs = [];
 
     for (const cell of this._layout.cells) {
       dayInstances.push({ x: cell.x, y: cell.y, z: 0.08, iso: cell.iso, day: cell.day });
@@ -238,15 +268,16 @@ export class WordWeaverMonthGrid {
       if (count <= 0) continue;
 
       const events = getEventsForDate(cell.iso).slice(0, NOTE_CAP);
+      // Walk up the stack, drawing a colored line from each point to the next note.
+      let prev = new THREE.Vector3(cell.x, cell.y + RADIUS.day * 0.85, 0.1);
       events.forEach((ev, i) => {
-        const noteY =
-          cell.y + RADIUS.day + RADIUS.note + 0.06 + i * NOTE_STACK_STEP;
-        const pos = { x: cell.x, y: noteY, z: 0.12, iso: cell.iso, dayIndex: cell.day };
-        noteInstances.push(pos);
-        connectorPairs.push({
-          from: new THREE.Vector3(cell.x, cell.y + RADIUS.day * 0.85, 0.1),
-          to: new THREE.Vector3(cell.x, noteY - RADIUS.note, 0.11)
-        });
+        const noteY = cell.y + RADIUS.day + RADIUS.note + 0.06 + i * NOTE_STACK_STEP;
+        const color = new THREE.Color(noteColorFor(ev?.text ?? ev?.title ?? ev?.note ?? ""));
+        noteInstances.push({ x: cell.x, y: noteY, z: 0.12, iso: cell.iso, dayIndex: cell.day });
+        noteColors.push(color);
+        const here = new THREE.Vector3(cell.x, noteY, 0.11);
+        connectorSegs.push({ from: prev.clone(), to: here.clone(), color });
+        prev = here;
       });
     }
 
@@ -254,18 +285,26 @@ export class WordWeaverMonthGrid {
     this._addInstancedTier("day", dayInstances);
     this._addInstancedTier("note", noteInstances);
 
+    // Paint each note its coordinated category color.
+    const noteMesh = noteInstances.length ? this._instanced[this._instanced.length - 1] : null;
+    if (noteMesh) {
+      noteMesh.material = noteColorMaterial;
+      noteColors.forEach((c, i) => noteMesh.setColorAt(i, c));
+      if (noteMesh.instanceColor) noteMesh.instanceColor.needsUpdate = true;
+    }
+
     const monthName = MONTH_NAMES[this.monthIndex] ?? "Month";
     const monthLabel = createLabelSprite(monthName, {
-      fontSize: "700 44px system-ui, sans-serif",
+      fontSize: "800 176px system-ui, sans-serif",
       fill: "#f8fafc",
-      width: 512,
-      height: 128,
-      planeW: 2.8,
-      planeH: 0.72
+      width: 2048,
+      height: 512,
+      planeW: 11.2,
+      planeH: 2.88
     });
     monthLabel.mesh.position.set(
       this._layout.monthCenter.x,
-      this._layout.monthCenter.y + RADIUS.month + 0.55,
+      this._layout.monthCenter.y + RADIUS.month + 1.9,
       0.25
     );
     this.root.add(monthLabel.mesh);
@@ -286,23 +325,31 @@ export class WordWeaverMonthGrid {
       this._labels.push(label);
     }
 
-    if (connectorPairs.length) {
-      const positions = new Float32Array(connectorPairs.length * 6);
-      connectorPairs.forEach((pair, i) => {
+    if (connectorSegs.length) {
+      const positions = new Float32Array(connectorSegs.length * 6);
+      const colors = new Float32Array(connectorSegs.length * 6);
+      connectorSegs.forEach((seg, i) => {
         const o = i * 6;
-        positions[o] = pair.from.x;
-        positions[o + 1] = pair.from.y;
-        positions[o + 2] = pair.from.z;
-        positions[o + 3] = pair.to.x;
-        positions[o + 4] = pair.to.y;
-        positions[o + 5] = pair.to.z;
+        positions[o] = seg.from.x;
+        positions[o + 1] = seg.from.y;
+        positions[o + 2] = seg.from.z;
+        positions[o + 3] = seg.to.x;
+        positions[o + 4] = seg.to.y;
+        positions[o + 5] = seg.to.z;
+        colors[o] = seg.color.r;
+        colors[o + 1] = seg.color.g;
+        colors[o + 2] = seg.color.b;
+        colors[o + 3] = seg.color.r;
+        colors[o + 4] = seg.color.g;
+        colors[o + 5] = seg.color.b;
       });
       const geom = new THREE.BufferGeometry();
       geom.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
       const mat = new THREE.LineBasicMaterial({
-        color: 0x66bbff,
+        vertexColors: true,
         transparent: true,
-        opacity: 0.45,
+        opacity: 0.75,
         depthWrite: false
       });
       this._connectors = new THREE.LineSegments(geom, mat);
@@ -348,8 +395,9 @@ export class WordWeaverMonthGrid {
   update(_delta, elapsed) {
     if (this._monthLabel?.mesh) {
       this._monthLabel.mesh.position.y =
-        (this._layout?.monthCenter.y ?? 0) + RADIUS.month + 0.55 + Math.sin(elapsed * 1.1) * 0.06;
+        (this._layout?.monthCenter.y ?? 0) + RADIUS.month + 1.9 + Math.sin(elapsed * 1.1) * 0.06;
     }
+    pulseSpheres(elapsed);
   }
 
   disposeContent() {
@@ -530,9 +578,11 @@ export class WordWeaverYearGrid {
 
   /**
    * @param {number} _delta
-   * @param {number} _elapsed
+   * @param {number} elapsed
    */
-  update(_delta, _elapsed) {}
+  update(_delta, elapsed) {
+    pulseSpheres(elapsed);
+  }
 
   /** Poster planes behind each month that has a configured scene (MONTH_SCENES). */
   _mountBackboards() {

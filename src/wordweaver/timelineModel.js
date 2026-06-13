@@ -242,16 +242,55 @@ export function sortTimelineForDisplay(entries) {
  *   alertMinutesFromNow?: number
  * }>}
  */
+// A deliberately busy, color-varied sample month so the 3D calendar feels alive.
+// Bodies contain category keywords (classifyText) → distinct sphere colors:
+// health=red, study=green, work=yellow, personal=blue, creative=purple, errand=orange.
 const STARTER_EVENT_TEMPLATES = [
-  { dayOffset: 0, time: "08:00", type: "note", title: "Morning plan", body: "Review goals and set intentions for today.", category: "personal", priority: 1 },
-  { dayOffset: 0, time: "09:30", type: "task", title: "Deep work block", body: "Focus session — notifications off.", category: "work", priority: 2 },
-  { dayOffset: 1, time: "11:00", type: "appointment", title: "Team sync", body: "Weekly check-in with the project group.", category: "work", priority: 1 },
-  { dayOffset: 2, time: "14:00", type: "study", title: "Read & notes", body: "Chapter review and summary notes.", category: "study", priority: 1 },
-  { dayOffset: -3, time: "10:00", type: "note", title: "Grocery list", body: "Pick up vegetables and meal prep basics.", category: "errands", priority: 0 },
-  { dayOffset: 5, time: "15:30", type: "creative", title: "Sketch ideas", body: "Explore layout concepts for the calendar.", category: "creative", priority: 1 },
-  { dayOffset: -25, time: "07:30", type: "health", title: "Morning walk", body: "Light cardio and stretch routine.", category: "health", priority: 1 },
+  // Today — busy (3 differentiated notes → colored spheres + connecting lines)
+  { dayOffset: 0, time: "07:00", type: "health", title: "Morning workout", body: "Gym session and a healthy breakfast.", category: "health", priority: 1 },
+  { dayOffset: 0, time: "10:00", type: "appointment", title: "Team meeting", body: "Project standup call with the office.", category: "work", priority: 2 },
+  { dayOffset: 0, time: "17:30", type: "task", title: "Grocery run", body: "Grocery store pickup on the way home.", category: "errands", priority: 1 },
+  // Tomorrow — busy
+  { dayOffset: 1, time: "08:30", type: "study", title: "Exam prep", body: "Study for the course exam, read chapter 4.", category: "study", priority: 2 },
+  { dayOffset: 1, time: "13:00", type: "creative", title: "Design draft", body: "Sketch and design the new layout art.", category: "creative", priority: 1 },
+  { dayOffset: 1, time: "19:00", type: "note", title: "Family dinner", body: "Dinner at home with family.", category: "personal", priority: 1 },
+  // +2 — busy
+  { dayOffset: 2, time: "09:00", type: "appointment", title: "Doctor visit", body: "Doctor checkup — health review.", category: "health", priority: 2 },
+  { dayOffset: 2, time: "15:00", type: "task", title: "Project deadline", body: "Finish the project and send the email.", category: "work", priority: 3 },
+  { dayOffset: 2, time: "20:00", type: "creative", title: "Paint", body: "Evening painting session.", category: "creative", priority: 0 },
+  // +3
+  { dayOffset: 3, time: "06:30", type: "health", title: "Run", body: "Morning workout run.", category: "health", priority: 1 },
+  { dayOffset: 3, time: "11:00", type: "study", title: "Homework", body: "Homework and class notes.", category: "study", priority: 1 },
+  // +5
+  { dayOffset: 5, time: "12:00", type: "task", title: "Bank errand", body: "Bank visit and mail drop.", category: "errands", priority: 1 },
+  { dayOffset: 5, time: "16:00", type: "creative", title: "Write music", body: "Write and record music ideas.", category: "creative", priority: 1 },
+  // +7 — busy
+  { dayOffset: 7, time: "09:00", type: "task", title: "Email + calls", body: "Work emails and client calls.", category: "work", priority: 2 },
+  { dayOffset: 7, time: "12:30", type: "health", title: "Lunch walk", body: "Healthy lunch and a short walk.", category: "health", priority: 0 },
+  { dayOffset: 7, time: "21:00", type: "note", title: "Friends", body: "Party with friends.", category: "personal", priority: 1 },
+  // +10
+  { dayOffset: 10, time: "10:00", type: "study", title: "Course reading", body: "Read course material, learn module 3.", category: "study", priority: 1 },
+  { dayOffset: 10, time: "14:00", type: "task", title: "Shopping", body: "Shop for supplies at the store.", category: "errands", priority: 0 },
+  // +12
+  { dayOffset: 12, time: "11:00", type: "appointment", title: "Office meeting", body: "Project meeting at the office.", category: "work", priority: 2 },
+  // +14
+  { dayOffset: 14, time: "15:30", type: "creative", title: "Draw", body: "Draw and design concept art.", category: "creative", priority: 1 },
+  { dayOffset: 14, time: "18:30", type: "note", title: "Relax at home", body: "Relax at home, personal time.", category: "personal", priority: 0 },
+  // +18
+  { dayOffset: 18, time: "08:00", type: "study", title: "Study block", body: "Exam study and review.", category: "study", priority: 2 },
+  { dayOffset: 18, time: "13:00", type: "appointment", title: "Dentist", body: "Doctor / dentist cleaning.", category: "health", priority: 2 },
+  // +20 — busy
+  { dayOffset: 20, time: "09:30", type: "task", title: "Project work", body: "Deep work on the project, office call.", category: "work", priority: 2 },
+  { dayOffset: 20, time: "12:00", type: "task", title: "Grocery", body: "Grocery and pharmacy pickup.", category: "errands", priority: 1 },
+  { dayOffset: 20, time: "17:00", type: "creative", title: "Design review", body: "Design and art review.", category: "creative", priority: 1 },
+  // Past weeks (so they aren't empty)
+  { dayOffset: -2, time: "07:30", type: "health", title: "Workout", body: "Gym workout and breakfast.", category: "health", priority: 1 },
+  { dayOffset: -5, time: "10:00", type: "study", title: "Class", body: "Class and homework review.", category: "study", priority: 1 },
+  { dayOffset: -8, time: "14:00", type: "task", title: "Meeting", body: "Work meeting and emails.", category: "work", priority: 1 },
+  { dayOffset: -12, time: "19:00", type: "note", title: "Family time", body: "Family dinner at home.", category: "personal", priority: 0 },
+  // Far-future demo
   { dayOffset: 40, time: "13:00", type: "appointment", title: "Dentist reminder", body: "Routine cleaning — bring insurance card.", category: "health", priority: 2 },
-  { dayOffset: 1, time: "18:00", type: "task", title: "Deadline prep", body: "Finalize slides for tomorrow's review.", category: "work", priority: 3 },
+  // Alert demo (keep)
   {
     dayOffset: 0,
     time: "16:00",

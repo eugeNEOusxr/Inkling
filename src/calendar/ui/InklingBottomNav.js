@@ -1,5 +1,6 @@
 /**
- * Fixed bottom icon bar — Calendar, Writer, WordWeaver, Wall, Inkling.
+ * Fixed bottom icon bar — Calendar (3D, data-tab="wordweaver"), Schedule
+ * (data-tab="writer"), Inkling, Alerts.
  */
 export class InklingBottomNav {
   /**

@@ -50,7 +50,14 @@ async function resolveStaticFile(pathname) {
 async function serveFile(res, filePath) {
   const ext = path.extname(filePath);
   const data = await fs.readFile(filePath);
-  res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
+  res.writeHead(200, {
+    "Content-Type": MIME[ext] || "application/octet-stream",
+    // Dev server: never cache source/assets so a normal reload always loads the
+    // latest JS/CSS (no stale ES modules). The static prod build is separate.
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+    Pragma: "no-cache",
+    Expires: "0"
+  });
   res.end(data);
 }
 

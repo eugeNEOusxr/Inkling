@@ -24,6 +24,26 @@ body.inkling-tab-wordweaver .top-chrome__bar {
   flex-shrink: 0;
 }
 
+/* The top bar must span full width so "June 2026" (left) can't overlap the
+   Login/bell/settings actions (right). It was collapsing to content width. */
+#top-chrome .top-chrome__bar {
+  width: 100% !important;
+  box-sizing: border-box !important;
+  gap: 8px;
+}
+/* Month label keeps its natural width on the left; actions hug the right edge. */
+#top-chrome .top-chrome__month-block {
+  flex: 0 1 auto !important;
+  min-width: 0 !important;
+}
+#top-chrome .top-chrome__month {
+  white-space: nowrap;
+}
+#top-chrome .top-chrome__actions {
+  margin-left: auto !important;
+  flex-shrink: 0 !important;
+}
+
 /* Bell Alerts in view nav */
 .inkling-view-nav__bell {
   display: inline-flex;
@@ -49,10 +69,31 @@ body:not(.inkling-tab-calendar) #three-canvas {
   opacity: 0 !important;
 }
 
-body.inkling-tab-calendar #three-canvas {
-  visibility: visible;
-  pointer-events: auto;
-  opacity: 1;
+body.inkling-tab-calendar #three-canvas,
+body.inkling-tab-constellation #three-canvas {
+  visibility: visible !important;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+}
+
+/* The WordWeaver helix renders into the main scene; show it on its tab. */
+body.inkling-tab-constellation.inkling-surface-idle #three-canvas {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+/* Small-calendar dock removed everywhere — it's a distraction. Date nav lives
+   in the WordWeaver embed bar and the Schedule's date chooser. */
+#notebook-calendar-dock {
+  display: none !important;
+}
+
+/* …and reclaim the sidebar's reserved left padding (~228px) so the top bar
+   spans full width — otherwise "June 2026" overlaps the Login/bell/settings. */
+body.inkling-tab-wordweaver #top-chrome.top-chrome,
+body.inkling-tab-constellation #top-chrome.top-chrome {
+  padding-left: 12px !important;
 }
 
 body.inkling-surface-idle #three-canvas {

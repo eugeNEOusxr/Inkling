@@ -48,6 +48,7 @@ export class NotebookWriterPanel {
     this.onCommitAppointment = callbacks.onCommitAppointment ?? (() => {});
     this.onDeleteAppointment = callbacks.onDeleteAppointment ?? (() => {});
     this.onMinimize = callbacks.onMinimize ?? (() => {});
+    this.onPickDate = callbacks.onPickDate ?? (() => {});
 
     this.el = document.getElementById("notebook-writer-panel");
     this.titleEl = document.getElementById("notebook-writer-day-title");
@@ -58,6 +59,7 @@ export class NotebookWriterPanel {
     this.hintEl = document.getElementById("notebook-writer-hint");
     this.schedulesTitleEl = document.getElementById("notebook-writer-schedules-title");
     this.backButton = document.getElementById("btn-writer-back-month");
+    this.datePicker = document.getElementById("notebook-writer-date-picker");
     this.clockMount = document.getElementById("notebook-writer-clock");
     this.wheelMount = document.getElementById("notebook-writer-wheel-mount");
     this.timeToggleBtn = document.getElementById("btn-writer-time-toggle");
@@ -80,13 +82,20 @@ export class NotebookWriterPanel {
     if (this.backButton) this.backButton.innerHTML = `${iconBack} Back to month`;
 
     this._injectChromeButtons();
-    this._buildHourStrip();
+    // Hour-strip chips (12a/1a…) retired — the clock + scrolling the timeline
+    // are the only time pickers now.
+    if (this.hourStripEl) this.hourStripEl.style.display = "none";
     this._bindModeTabs();
     this._mountClock();
     this._mountWheel();
 
     this.timeToggleBtn?.addEventListener("click", () => this._toggleTimeUi());
     this.backButton?.addEventListener("click", () => this.hide());
+    // Date chooser → loads that day and syncs the Calendar (formerly WordWeaver).
+    this.datePicker?.addEventListener("change", () => {
+      const iso = this.datePicker.value;
+      if (iso) this.onPickDate(iso);
+    });
   }
 
   _bindModeTabs() {
@@ -262,6 +271,7 @@ export class NotebookWriterPanel {
     if (this.subtitleEl) {
       this.subtitleEl.textContent = `${weekday}, ${MONTH_NAMES[month - 1]} ${dayNum}`;
     }
+    if (this.datePicker) this.datePicker.value = day.date;
 
     this.modeTabsEl?.querySelectorAll("[data-writer-mode]").forEach((btn) => {
       const active = btn.getAttribute("data-writer-mode") === mode;
@@ -373,7 +383,10 @@ export class NotebookWriterPanel {
     this._clock?.setHour(Number(hour));
     this._wheel?.setHour(Number(hour));
     this._dayScroller?.selectTime(time, true);
-    this._dayScroller?.focusSlotAtTime(time);
+    // Only pull focus into the slot's text field on an explicit user pick.
+    // On the silent open() call this would yank the page down to the times
+    // (and pop the mobile keyboard), hiding the clock the user just zoomed to.
+    if (notify) this._dayScroller?.focusSlotAtTime(time);
     this._highlightHourChip(hour);
     if (notify) this.onHourSelect(hour);
   }
@@ -414,6 +427,9 @@ export class NotebookWriterPanel {
       onSelect: (payload) => {
         const hour = String(Number(payload.time.split(":")[0]));
         this._selectedHour = hour;
+        // Clock follows the chosen slot (setHour is programmatic — no onChange loop).
+        this._clock?.setHour(Number(hour));
+        this._wheel?.setHour(Number(hour));
         this._highlightHourChip(hour);
         this.onHourSelect(hour);
       },
@@ -487,6 +503,38 @@ export class NotebookWriterPanel {
           track.scrollTop += e.deltaY;
         },
         { passive: false }
+      );
+    }
+
+    // Scroll to pick: the clock follows whichever slot is centered in the track.
+    if (track && !track.dataset.clockSyncBound) {
+      track.dataset.clockSyncBound = "1";
+      let raf = 0;
+      track.addEventListener(
+        "scroll",
+        () => {
+          cancelAnimationFrame(raf);
+          raf = requestAnimationFrame(() => {
+            const trackRect = track.getBoundingClientRect();
+            const centerY = trackRect.top + track.clientHeight / 2;
+            let bestHour = null;
+            let bestDist = Infinity;
+            track.querySelectorAll(".day-scroller__row").forEach((row) => {
+              const r = row.getBoundingClientRect();
+              const dist = Math.abs(r.top + r.height / 2 - centerY);
+              if (dist < bestDist) {
+                bestDist = dist;
+                bestHour = Number((row.getAttribute("data-time") || "0:0").split(":")[0]);
+              }
+            });
+            if (bestHour != null && String(bestHour) !== this._selectedHour) {
+              this._selectedHour = String(bestHour);
+              this._clock?.setHour(bestHour);
+              this._wheel?.setHour(bestHour);
+            }
+          });
+        },
+        { passive: true }
       );
     }
 

@@ -10,6 +10,7 @@ const TAB_CLASS = {
   calendar: "inkling-tab-calendar",
   writer: "inkling-tab-writer",
   wordweaver: "inkling-tab-wordweaver",
+  constellation: "inkling-tab-constellation",
   alerts: "inkling-tab-alerts",
   inkling: "inkling-tab-inkling"
 };
@@ -70,7 +71,10 @@ export function beginAppTabSurface(tab) {
   document.body.classList.remove(...TAB_CLASSES);
   const cls = TAB_CLASS[tab];
   if (cls) document.body.classList.add(cls);
-  if (tab === "calendar" || tab === "writer" || tab === "wordweaver" || tab === "alerts" || tab === "inkling") {
-    setShellSurface(tab);
+  if (
+    tab === "calendar" || tab === "writer" || tab === "wordweaver" ||
+    tab === "constellation" || tab === "alerts" || tab === "inkling"
+  ) {
+    setShellSurface(/** @type {ShellSurface} */ (tab === "constellation" ? "wordweaver" : tab));
   }
 }

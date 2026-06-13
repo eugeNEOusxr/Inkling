@@ -3423,6 +3423,69 @@ body.inkling-open .inkling-fab {
   color: #e0e7ff;
 }
 
+.top-chrome__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.top-chrome__login {
+  pointer-events: auto;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(129, 140, 248, 0.6);
+  background: linear-gradient(180deg, #6366f1, #4f46e5);
+  color: #f8fafc;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.top-chrome__login:hover {
+  background: linear-gradient(180deg, #818cf8, #6366f1);
+}
+.top-chrome__login.hidden {
+  display: none;
+}
+
+.top-chrome__alerts {
+  position: relative;
+  pointer-events: auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(10, 14, 26, 0.92);
+  color: #cbd5e1;
+  font-size: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.top-chrome__alerts:hover {
+  border-color: #818cf8;
+  color: #e0e7ff;
+}
+.top-chrome__alerts-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.top-chrome__alerts-badge.hidden {
+  display: none;
+}
+
 #calendar-nav {
   position: static;
   transform: none;
@@ -3812,6 +3875,27 @@ body.inkling-notebook-layout .mini-month-cal__day {
   color: #94a3b8;
 }
 
+/* Date chooser in the schedule header (top-left) — links to the Calendar. */
+.notebook-writer-date-picker {
+  display: inline-block;
+  margin: 0 0 2px;
+  padding: 4px 8px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #f1f5f9;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(99, 102, 241, 0.45);
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+  color-scheme: dark;
+  cursor: pointer;
+  max-width: 100%;
+}
+.notebook-writer-date-picker:focus-visible {
+  outline: 2px solid #818cf8;
+  outline-offset: 1px;
+}
+
 /* Writer: right half on wide screens only */
 @media (min-width: 769px) {
 body.inkling-notebook-layout #notebook-writer-panel:not(.hidden) {
@@ -3819,7 +3903,7 @@ body.inkling-notebook-layout #notebook-writer-panel:not(.hidden) {
   top: 0 !important;
   right: 0 !important;
   bottom: 0 !important;
-  left: 50% !important;
+  left: 0 !important; /* full-screen schedule */
   width: auto !important;
   height: auto !important;
   z-index: 10200 !important;
@@ -3838,7 +3922,7 @@ body.inkling-notebook-layout #notebook-writer-panel:not(.hidden) .notebook-write
 }
 
 body.inkling-notebook-layout .notebook-writer-panel-inner .thread-header {
-  padding: 72px 16px 8px !important;
+  padding: 14px 16px 8px !important;
 }
 }
 
@@ -4050,8 +4134,10 @@ body.inkling-notebook-layout .notebook-writer-schedules {
   body.inkling-notebook-layout #notebook-writer-panel:not(.hidden) {
     left: 0 !important;
     right: 0 !important;
-    top: auto !important;
+    top: 0 !important;
     bottom: 0 !important;
+    /* Size to the top/bottom insets (status bar + bottom nav) instead of a fixed
+       100dvh that overflows past them. Full screen, not a 3/4 bottom sheet. */
     height: auto !important;
     max-height: none !important;
   }
@@ -4068,12 +4154,38 @@ body.inkling-notebook-layout .notebook-writer-schedules {
     padding: 10px 12px 6px !important;
   }
 
+  /* Only one time picker (clock OR wheel) ever takes layout space, and the row
+     never wraps — otherwise both stack and starve the timeline below. */
+  body.inkling-notebook-layout .notebook-writer-time-picker-row {
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    max-height: 30dvh !important;
+  }
+  body.inkling-notebook-layout #notebook-writer-clock.hidden,
+  body.inkling-notebook-layout #notebook-writer-wheel-mount.hidden {
+    display: none !important;
+  }
+
+  /* Compact analog clock on mobile so the note timeline gets the screen.
+     NOTE: CircularTimePicker overwrites the mount's className (dropping
+     `notebook-writer-clock`), so target by id, not that class. */
+  #notebook-writer-clock .circular-clock,
+  #notebook-writer-clock .circular-clock svg,
+  #notebook-writer-clock .circular-clock__bezel {
+    width: 128px !important;
+    height: 128px !important;
+  }
+  #notebook-writer-clock .circular-clock {
+    height: auto !important;
+  }
+
   body.inkling-notebook-layout .notebook-writer-hour-strip {
     max-height: min(200px, 30vh);
   }
 
+  /* Guarantee the timeline keeps real, scrollable height on mobile. */
   body.inkling-notebook-layout .notebook-writer-body.panel-card {
-    min-height: 0 !important;
+    min-height: 40dvh !important;
     margin: 0 8px !important;
     padding: 6px !important;
     overflow: hidden !important;
@@ -4087,25 +4199,27 @@ body.inkling-notebook-layout .notebook-writer-schedules {
     touch-action: pan-y;
   }
 
+  /* The track is the single scroll container (enforced in DayScroller JS).
+     The wrap stays a passthrough so the two don't nest and fight. */
   body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track-wrap {
     flex: 1 !important;
     min-height: 180px !important;
-    max-height: min(48vh, 480px) !important;
-    overflow-x: hidden !important;
-    overflow-y: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
     display: flex !important;
     flex-direction: row !important;
     touch-action: pan-y;
-    scrollbar-width: thin;
-    scrollbar-color: #888 #222;
   }
 
   body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller--timeline .day-scroller__track {
     flex: 1 1 auto !important;
-    min-height: min-content !important;
-    max-height: none !important;
-    overflow: visible !important;
+    min-height: 180px !important;
+    max-height: min(52dvh, 520px) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
     touch-action: pan-y;
+    scrollbar-width: thin;
+    scrollbar-color: #888 #222;
   }
 
   body.inkling-notebook-layout .notebook-writer-scroller-mount .day-scroller__scroll-rail {
@@ -4693,7 +4807,7 @@ body.inkling-notification-wall #notification-wall-panel .notification-wall-inner
   top: 0;
   right: 0;
   bottom: 0;
-  left: min(38%, 440px);
+  left: 0; /* full-screen schedule, not an offset side panel */
   z-index: 10001;
   overflow: hidden;
   pointer-events: auto;

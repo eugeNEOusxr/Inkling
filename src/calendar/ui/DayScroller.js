@@ -65,7 +65,7 @@ export default class DayScroller {
   constructor(container, opts = {}) {
     this.container = container;
     this.date = opts.date ?? todayIso();
-    this.selectedIndex = timeToSlotIndex(opts.time ?? "09:00");
+    this.selectedIndex = timeToSlotIndex(opts.time ?? "00:00");
     this.onSelect = opts.onSelect ?? (() => {});
     this.onCommit = opts.onCommit ?? (() => {});
     this.onDateChange = opts.onDateChange ?? (() => {});
@@ -123,7 +123,7 @@ export default class DayScroller {
     // with inline !important so no stylesheet edit can remove the scroll again.
     if (this.inlineNotes && this.orientation === "vertical") {
       track.style.setProperty("overflow-y", "auto", "important");
-      track.style.setProperty("max-height", "min(60dvh, 600px)", "important");
+      track.style.setProperty("max-height", "min(52dvh, 520px)", "important");
       track.style.setProperty("-webkit-overflow-scrolling", "touch");
       track.style.setProperty("touch-action", "pan-y");
     }
@@ -205,11 +205,18 @@ export default class DayScroller {
 
     wrap.style.minHeight = "0";
     if (this.inlineNotes && this.orientation === "vertical") {
-      wrap.style.overflowY = "auto";
-      wrap.style.overflowX = "hidden";
-      wrap.style.maxHeight = "min(56vh, 520px)";
-      track.style.overflow = "visible";
-      track.style.maxHeight = "none";
+      // Single scroll container = the track (see the regression guard in
+      // _enableTouchScroll). The wrap must stay a passthrough so we don't nest
+      // two scrollers and so scrollToTime targets the element that actually
+      // moves. Inline !important beats any stylesheet that tries to re-add a
+      // max-height/overflow to the wrap.
+      wrap.style.setProperty("overflow", "visible", "important");
+      wrap.style.setProperty("max-height", "none", "important");
+      wrap.style.setProperty("height", "auto", "important");
+      wrap.style.setProperty("padding", "0", "important");
+      track.style.setProperty("overflow-y", "auto", "important");
+      track.style.setProperty("overflow-x", "hidden", "important");
+      track.style.setProperty("max-height", "min(52dvh, 520px)", "important");
     } else {
       track.style.overflowY = "scroll";
       track.style.maxHeight = track.style.maxHeight || "min(58vh, 480px)";
@@ -266,7 +273,7 @@ export default class DayScroller {
     comment.rows = 1;
     comment.placeholder = "Type a note…";
     comment.value = this.slotNotes[time] ?? "";
-    comment.addEventListener("focus", () => this._selectIndex(i, true));
+    comment.addEventListener("focus", () => this._selectIndex(i, true, true));
     comment.addEventListener("input", () => {
       this.slotNotes[time] = comment.value;
       row.classList.toggle("has-note", Boolean(comment.value.trim()));
@@ -342,7 +349,7 @@ export default class DayScroller {
     titleInput.className = "day-scroller__slot-appointment-input";
     titleInput.setAttribute("aria-label", `Appointment at ${time}`);
     titleInput.placeholder = "Appointment title…";
-    titleInput.addEventListener("focus", () => this._selectIndex(i, true));
+    titleInput.addEventListener("focus", () => this._selectIndex(i, true, true));
     titleInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -479,7 +486,7 @@ export default class DayScroller {
    * @param {number} index
    * @param {boolean} [silent] skip onSelect (sync from parent)
    */
-  _selectIndex(index, silent = false) {
+  _selectIndex(index, silent = false, skipScroll = false) {
     this.selectedIndex = index;
     const time = slotIndexToTime(index);
 
@@ -503,7 +510,10 @@ export default class DayScroller {
     if (this.noteInput) {
       this.noteInput.value = this.slotNotes[time] ?? "";
     }
-    this.scrollToTime(time, true);
+    // skipScroll: when the user taps/focuses a slot directly, don't re-center —
+    // that snap was making the clock-selected slot the only reachable one. Free
+    // scroll + tap any slot (incl. :30) now works.
+    if (!skipScroll) this.scrollToTime(time, true);
     if (!silent) {
       this.onSelect({
         date: this.date,
@@ -527,18 +537,21 @@ export default class DayScroller {
     const slot = this.track?.querySelector(selector);
     if (!slot) return;
     const vertical = this.orientation === "vertical";
-    const scrollRoot =
-      this.inlineNotes && this.orientation === "vertical"
-        ? this.el?.querySelector(".day-scroller__track-wrap")
-        : this.track;
-    if (scrollRoot && slot.offsetParent) {
-      const rowTop = slot.offsetTop;
-      const target =
-        rowTop - scrollRoot.clientHeight / 2 + slot.offsetHeight / 2;
-      scrollRoot.scrollTo({
-        top: Math.max(0, target),
-        behavior: smooth && !prefersReducedMotion() ? "smooth" : "auto"
-      });
+    // The track is the single scroll container (see _enableTouchScroll).
+    const scrollRoot = this.track;
+    if (vertical && scrollRoot && scrollRoot.scrollHeight > scrollRoot.clientHeight) {
+      // Rect-based delta so it works no matter what the slot's offsetParent is.
+      const slotRect = slot.getBoundingClientRect();
+      const rootRect = scrollRoot.getBoundingClientRect();
+      const delta =
+        slotRect.top - rootRect.top - scrollRoot.clientHeight / 2 + slot.offsetHeight / 2;
+      const target = Math.max(0, scrollRoot.scrollTop + delta);
+      // Direct assignment is reliable; scrollTo({behavior:"smooth"}) was silently
+      // no-op'ing here so picking a time never scrolled the slot into view.
+      if (smooth && !prefersReducedMotion() && typeof scrollRoot.scrollTo === "function") {
+        scrollRoot.scrollTo({ top: target, behavior: "smooth" });
+      }
+      scrollRoot.scrollTop = target;
       return;
     }
     slot.scrollIntoView({
@@ -584,7 +597,9 @@ export default class DayScroller {
     const field = row?.querySelector(
       ".day-scroller__slot-comment, .day-scroller__slot-appointment-input, .day-scroller__note-input"
     );
-    field?.focus?.();
+    // preventScroll: our scrollToTime already positioned the track; letting the
+    // browser scroll-on-focus would fight it and jump the panel.
+    field?.focus?.({ preventScroll: true });
   }
 
   setSlotNotes(notes) {

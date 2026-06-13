@@ -183,7 +183,10 @@ export class CircularTimePicker {
     const h12 = this.hour24 % 12 || 12;
     this._hour12 = h12;
     this._render();
-    this.onChange(this.hour24);
+    // NOTE: setHour is the *programmatic* setter (parent syncing the clock).
+    // It must NOT fire onChange, or selectHour()→setHour()→onChange()→selectHour()
+    // recurses infinitely and the tap never reaches the timeline. User input
+    // (_setFromPointer / _setAmPm) is what fires onChange.
   }
 
   getHour() {

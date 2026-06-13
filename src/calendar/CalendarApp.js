@@ -168,7 +168,8 @@ export class CalendarApp {
       onCommitNote: (payload) => this._commitSlotNote(payload),
       onCommitAppointment: (payload) => this._commitSlotAppointment(payload),
       onDeleteAppointment: (payload) => this._deleteSlotAppointment(payload),
-      onMinimize: () => this._minimizeWriterPanel()
+      onMinimize: () => this._minimizeWriterPanel(),
+      onPickDate: (iso) => this.openNotebookDayByDate(iso)
     });
 
     this.dayWindow = new DayWindow({
@@ -228,6 +229,10 @@ export class CalendarApp {
     this._configureMobileControls();
     this.bottomNav = new InklingBottomNav({
       onTab: (tab, meta) => this._handleBottomNavTab(tab, meta)
+    });
+    // Alerts moved to the top bar (bell next to settings).
+    document.getElementById("btn-top-alerts")?.addEventListener("click", () => {
+      void this.openAlertsPanel();
     });
     this.layerManager.setBackdropHandler(() => this._closeActiveLayer());
     this._bindStageBackdrop();
@@ -850,7 +855,7 @@ export class CalendarApp {
       return;
     }
     const last = getLastView();
-    const lastTime = last?.date === dateStr && last?.time ? last.time : "09:00";
+    const lastTime = last?.date === dateStr && last?.time ? last.time : "00:00";
     const hour = String(Number(lastTime.split(":")[0]));
     await this.openNotebookWriterPanel(dayId, hour);
   }
@@ -1082,6 +1087,7 @@ export class CalendarApp {
     this.inklingPanel.minimize();
     this.wordWeaverEmbed?.exitImmersive();
     this.wordWeaverEmbed?.hide();
+    this._weaverHelix?.hide();
     this.layerManager.close("wordweaver");
 
     beginAppTabSurface(tab);
@@ -1108,6 +1114,12 @@ export class CalendarApp {
         this.layerManager.open("wordweaver");
         this.wordWeaverEmbed?.enterImmersive();
         break;
+      case "constellation":
+        this.notebookWall.setVisible(false);
+        document.body.classList.add("inkling-stage-open");
+        this._showStageBackdrop(false);
+        await this._openConstellation();
+        break;
       case "inkling": {
         this.notebookWall.setVisible(false);
         document.body.classList.add("inkling-stage-open");
@@ -1125,6 +1137,17 @@ export class CalendarApp {
       default:
         break;
     }
+  }
+
+  /** WordWeaver notes-constellation (helix). Lazy-loaded self-contained view. */
+  async _openConstellation() {
+    this.wordWeaverEmbed?.exitImmersive();
+    this.wordWeaverEmbed?.hide();
+    if (!this._weaverHelix) {
+      const { WeaverHelix } = await import("../wordweaver/WeaverHelix.js");
+      this._weaverHelix = new WeaverHelix(this.scene, this.camera, this.controls);
+    }
+    this._weaverHelix.show();
   }
 
   _showWordWeaverPreview(dateStr, time) {
@@ -1679,7 +1702,9 @@ export class CalendarApp {
     });
   }
 
-  update() {}
+  update() {
+    this._weaverHelix?.update();
+  }
 
   _detectNativeRuntime() {
     // Phase 2 Tauri scaffold hook: detect native host safely.

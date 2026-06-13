@@ -109,9 +109,9 @@ body.inkling-notebook-layout #notebook-writer-panel:not(.hidden) {
   bottom: 0 !important;
   z-index: 10250 !important;
   display: flex !important;
-  align-items: center;
-  justify-content: center;
-  padding: calc(var(--inkling-chrome-h, 56px) + 8px) 12px calc(var(--inkling-bottom-nav-h) + 12px);
+  align-items: stretch;
+  justify-content: stretch;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 0 calc(var(--inkling-bottom-nav-h, 64px) + 12px);
   pointer-events: none !important;
   background: transparent !important;
   overflow: hidden !important;
@@ -119,13 +119,13 @@ body.inkling-notebook-layout #notebook-writer-panel:not(.hidden) {
 
 body.inkling-notebook-layout #notebook-writer-panel:not(.hidden) .notebook-writer-panel-inner {
   position: relative !important;
-  width: min(560px, 100%) !important;
+  width: 100% !important; /* full screen — was capped at 560px, leaving blank sides */
   max-width: 100% !important;
   max-height: 100% !important;
-  height: auto !important;
+  height: 100% !important;
   margin: 0 !important;
   pointer-events: auto !important;
-  border-radius: 14px !important;
+  border-radius: 0 !important;
   overflow: hidden !important;
   display: flex !important;
   flex-direction: column !important;

@@ -32,23 +32,35 @@
         <div class="top-chrome__bar">
           <div class="top-chrome__month-block">
             <span id="calendar-nav-month" class="top-chrome__month">June 2026</span>
-            <nav id="calendar-nav" class="top-chrome__nav" aria-label="Month navigation">
-              <button type="button" id="calendar-prev" title="Previous month">‹</button>
-              <button type="button" id="calendar-next" title="Next month">›</button>
-            </nav>
           </div>
-          <button
-            type="button"
-            id="btn-top-settings"
-            class="top-chrome__settings"
-            aria-label="Settings"
-            title="Settings"
-          >⚙</button>
+          <div class="top-chrome__actions">
+            <button
+              type="button"
+              id="btn-top-login"
+              class="top-chrome__login hidden"
+              aria-label="Log in"
+              title="Log in or create an account"
+            >Log in</button>
+            <button
+              type="button"
+              id="btn-top-alerts"
+              class="top-chrome__alerts"
+              aria-label="Alerts"
+              title="Alerts"
+            >🔔<span id="top-alerts-badge" class="top-chrome__alerts-badge hidden" aria-hidden="true"></span></button>
+            <button
+              type="button"
+              id="btn-top-settings"
+              class="top-chrome__settings"
+              aria-label="Settings"
+              title="Settings"
+            >⚙</button>
+          </div>
         </div>
         <div id="wordweaver-embed" class="wordweaver-embed wordweaver-embed--topbar" aria-label="WordWeaver">
           <div class="wordweaver-embed__bar">
             <div class="wordweaver-embed__bar-titles">
-              <span class="wordweaver-embed__brand">WordWeaver Calendar</span>
+              <span class="wordweaver-embed__brand">Calendar</span>
               <h2 id="wordweaver-embed-headline" class="wordweaver-embed__headline">Today</h2>
             </div>
             <div class="wordweaver-embed__date-nav" aria-label="Date">
@@ -378,8 +390,9 @@
           <header class="thread-header">
             <div class="thread-header-row">
               <div class="notebook-writer-header-main">
-                <h2 id="notebook-writer-day-title" class="reader-display-title">Notebook Writer</h2>
+                <input type="date" id="notebook-writer-date-picker" class="notebook-writer-date-picker" aria-label="Choose date — links to the Calendar" />
                 <p id="notebook-writer-day-subtitle" class="notebook-writer-day-subtitle"></p>
+                <h2 id="notebook-writer-day-title" class="reader-display-title">Notebook Writer</h2>
               </div>
               <button type="button" id="btn-writer-back-month" class="btn-nav-back">← Back to month</button>
             </div>
@@ -464,7 +477,7 @@
   </aside>
 
   <nav id="inkling-bottom-nav" class="inkling-bottom-nav" aria-label="Main navigation">
-    <button type="button" class="inkling-bottom-nav__btn" data-tab="calendar" aria-pressed="false">
+    <button type="button" class="inkling-bottom-nav__btn" data-tab="wordweaver" aria-pressed="false">
       <span class="inkling-bottom-nav__icon" aria-hidden="true">📅</span>
       <span class="inkling-bottom-nav__label">Calendar</span>
     </button>
@@ -472,8 +485,8 @@
       <span class="inkling-bottom-nav__icon" aria-hidden="true">🕐</span>
       <span class="inkling-bottom-nav__label">Schedule</span>
     </button>
-    <button type="button" class="inkling-bottom-nav__btn" data-tab="wordweaver" aria-pressed="false">
-      <span class="inkling-bottom-nav__icon" aria-hidden="true">🪡</span>
+    <button type="button" class="inkling-bottom-nav__btn" data-tab="constellation" aria-pressed="false">
+      <span class="inkling-bottom-nav__icon" aria-hidden="true">🕸️</span>
       <span class="inkling-bottom-nav__label">WordWeaver</span>
     </button>
     <button type="button" class="inkling-bottom-nav__btn" data-tab="inkling" aria-pressed="false">

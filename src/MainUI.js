@@ -45,6 +45,24 @@ export function mountWordWeaverMainUI() {
     bar.appendChild(nav);
   }
 
+  // ⋯ overflow toggle — phone-only (shown via CSS). Reveals the controls that are
+  // hidden on mobile (Week/Month view, style picker, Customize) so the trimmed bar
+  // keeps just Today + Morning/Afternoon/Night while the 3D fills the screen.
+  if (!bar.querySelector(".ww-options-toggle")) {
+    const moreBtn = document.createElement("button");
+    moreBtn.type = "button";
+    moreBtn.className = "ww-options-toggle";
+    moreBtn.setAttribute("aria-label", "More controls");
+    moreBtn.setAttribute("aria-expanded", "false");
+    moreBtn.textContent = "⋯";
+    moreBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = bar.classList.toggle("ww-options-open");
+      moreBtn.setAttribute("aria-expanded", String(open));
+    });
+    bar.appendChild(moreBtn);
+  }
+
   if (!document.getElementById("ww-view-links-style")) {
     const style = document.createElement("style");
     style.id = "ww-view-links-style";

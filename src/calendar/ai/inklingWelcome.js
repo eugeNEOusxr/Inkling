@@ -5,9 +5,15 @@
 export function getInklingWelcomeMessage(displayName) {
   const who = displayName || "friend";
   return (
-    `Welcome, ${who}. I'm Inkling — your calendar whisperer in this space.\n\n` +
-    `Inkling helps you see your days in three layers: the 3D month calendars behind you, ` +
-    `the Notebook Writer timeline for hour-by-hour notes, and WordWeaver for your 3D thought-weaving space. ` +
-    `Ask me what's on your schedule, find free time, or describe an appointment in plain language — I'll propose changes and wait for your confirmation before anything is saved.`
+    `Hey ${who} — I'm Inkling. Think of me as the friend who also happens to run your calendar. ` +
+    `We can just talk, or you can put me to work.\n\n` +
+    `Here's where I live, matching the icons at the bottom:\n` +
+    `• Calendar — your days as 3D month worlds you can fly through.\n` +
+    `• Schedule — the hour-by-hour timeline where every note becomes a glowing point on the day.\n` +
+    `• Inkling — that's me, right here, to chat or take orders.\n` +
+    `• Alerts — reminders and alarms that find you when it matters.\n\n` +
+    `Tell me what's on today, ask me to find you some free time, or describe a plan in plain words ` +
+    `("lunch with Sam Thursday at 1") — I'll set it up and always check with you before I save anything. ` +
+    `Or skip all that and just say hi.`
   );
 }
