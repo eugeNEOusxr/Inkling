@@ -225,6 +225,32 @@ export class WeaverGalaxy {
     if (hits.length) this._openSidebar(hits[0].object.userData.iso);
   }
 
+  /**
+   * Fly to + highlight the node(s) for a date and open its sidebar.
+   * (Inkling: "take me to my birthday on June 16" → this.)
+   * @param {string} iso
+   */
+  focusDate(iso) {
+    this._build();
+    const target = new THREE.Vector3();
+    let count = 0;
+    for (const nd of this._nodes) {
+      const on = nd.iso === iso;
+      nd.mesh.scale.setScalar(on ? 2.3 : 1);
+      nd.glow.scale.set(on ? 5 : 2.4, on ? 5 : 2.4, 1);
+      if (on) { target.add(nd.mesh.position); count++; }
+    }
+    if (count) {
+      target.multiplyScalar(1 / count);
+      this.camera.position.set(target.x, target.y, target.z + 16);
+      this.controls.target.copy(target);
+      this.camera.lookAt(target);
+      this.camera.updateProjectionMatrix();
+      this.controls.update();
+    }
+    this._openSidebar(iso);
+  }
+
   // --- sidebar backplate ---
 
   _buildSidebar() {

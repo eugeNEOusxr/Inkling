@@ -1150,6 +1150,12 @@ export class CalendarApp {
     this._weaverGalaxy.show();
   }
 
+  /** Open WordWeaver and fly to a specific day's node (Inkling "take me to …"). */
+  async navigateToWordWeaverDate(iso) {
+    await this._handleBottomNavTab("constellation", { toggle: false });
+    this._weaverGalaxy?.focusDate?.(iso);
+  }
+
   /** Schedule tab = the 2D day-view editor (Google-style). Lazy-loaded. */
   async _openScheduleDay(date) {
     if (!this._cal2dDay) {

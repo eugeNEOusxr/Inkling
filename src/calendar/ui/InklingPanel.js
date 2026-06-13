@@ -321,6 +321,26 @@ export class InklingPanel {
     if (cal) { cal.iso = new Date().toISOString().slice(0, 10); cal.setView?.("day"); }
   }
 
+  /** Detect "take me to <date>" navigation and return {iso,label} or null. */
+  _parseNavDate(text) {
+    const s = String(text).toLowerCase();
+    if (!/\b(take me to|go to|show me|jump to|navigate to|bring me to)\b/.test(s)) return null;
+    const MON = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    let mo = -1;
+    for (let i = 0; i < 12; i++) {
+      if (s.includes(MON[i].toLowerCase()) || new RegExp(`\\b${MON[i].slice(0, 3).toLowerCase()}\\b`).test(s)) { mo = i; break; }
+    }
+    let day = -1;
+    const dm = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\b/);
+    if (dm) day = +dm[1];
+    const md = s.match(/\b(\d{1,2})\/(\d{1,2})\b/);
+    if (md) { mo = +md[1] - 1; day = +md[2]; }
+    if (mo < 0 || day < 1 || day > 31) return null;
+    const y = new Date().getFullYear();
+    const iso = `${y}-${String(mo + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return { iso, label: `${MON[mo]} ${day}` };
+  }
+
   /** Avatar tap → open Inkling aware of the page you're on, with title help. */
   openWithContext() {
     this.expand();
@@ -490,6 +510,14 @@ export class InklingPanel {
     if (!text) return;
     this.inputEl.value = "";
     this._appendBubble("user", escapeHtml(text));
+
+    // "Take me to <date>" → fly to that day's node in WordWeaver.
+    const nav = this._parseNavDate(text);
+    if (nav) {
+      this._appendBubble("inkling", escapeHtml(`Taking you to ${nav.label} in WordWeaver ✦`));
+      this.app?.navigateToWordWeaverDate?.(nav.iso);
+      return;
+    }
 
     const brain = processUserInput(text, {
       userName: getDisplayName(),
