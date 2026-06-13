@@ -103,6 +103,25 @@ body.inkling-tab-constellation #top-chrome.top-chrome {
   padding-left: 12px !important;
 }
 
+/* WordWeaver Journal — keep the wall clean. The journal owns the body class
+   `weaver-journal-active` (the shell's inkling-tab-constellation gets stripped by
+   nav churn, so we don't rely on it). It has its own calendar navigator + Write
+   button, so hide the duplicate calendar chrome: the Today/Week/Month/Year view
+   switchers, the floating layer-launcher icon cluster (📅 ✎ 🪡 ✦), and the
+   "Month YYYY" label. Login / alerts / settings stay. */
+body.weaver-journal-active .inkling-view-nav,
+body.weaver-journal-active #inkling-layer-launcher,
+body.weaver-journal-active .top-chrome__month-block {
+  display: none !important;
+}
+
+/* Safeguard: keep the 3D canvas visible whenever the journal is active. */
+body.weaver-journal-active #three-canvas {
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
 body.inkling-surface-idle #three-canvas {
   visibility: hidden !important;
   pointer-events: none !important;

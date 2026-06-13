@@ -839,6 +839,9 @@ export class WeaverJournal {
     this._build();
     this.root.visible = true;
     this._active = true;
+    // Own stable body class — the shell's inkling-tab-constellation class gets
+    // stripped by nav churn, so the journal owns its own flag for CSS gating.
+    document.body.classList.add("weaver-journal-active");
     this._buildUi();
     this._setCalMinimized(false);
     this._buildMoveControls();
@@ -856,6 +859,7 @@ export class WeaverJournal {
     this.root.visible = false;
     this._active = false;
     this._tween = null;
+    document.body.classList.remove("weaver-journal-active");
     this._closeComposer();
     if (this._ui) this._ui.style.display = "none";
     if (this._calHandle) this._calHandle.style.display = "none";
