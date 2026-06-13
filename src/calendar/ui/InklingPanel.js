@@ -605,6 +605,11 @@ export class InklingPanel {
           this.app?.notificationService?.requestPermission?.();
         }
       } catch { /* ignore */ }
+      // Re-arm the scheduler so the new alert is picked up immediately.
+      try {
+        const { recomputeSchedule } = await import("../alerts/alertsScheduler.js");
+        recomputeSchedule();
+      } catch { /* ignore */ }
       this._appendBubble("inkling", escapeHtml(brain.aiResponse ?? "Okay, I'll alert you."));
       return true;
     }

@@ -24,6 +24,8 @@ import {
   todayIsoDate
 } from "../../wordweaver/timelineModel.js";
 import { openTextStylePicker, textStyleCss, getTextStyleRaw, getTextAnim, textAnimCss } from "./TextStylePicker.js";
+import { createAlert, addAlert, removeAlertsForEntry } from "../alerts/alertsModel.js";
+import { recomputeSchedule } from "../alerts/alertsScheduler.js";
 
 const SLOT_PX = { 15: 30, 30: 42, 60: 66 }; // row height per slot size (taller so 15-min rows don't cram)
 const DAY_MIN = 24 * 60;
@@ -723,7 +725,8 @@ export class Calendar2DDay {
     save.addEventListener("click", () => {
       const title = titleInput.value.trim() || "Untitled";
       const dateIso = dateInput.value || this.iso;
-      const startISO = buildStartTimeIso(dateIso, startInput.value || hhmm(startMinutes));
+      const startHHMM = startInput.value || hhmm(startMinutes);
+      const startISO = buildStartTimeIso(dateIso, startHHMM);
       const payload = {
         type: "appointment",
         title,
@@ -736,8 +739,22 @@ export class Calendar2DDay {
         _wwRender: { date: dateIso }
       };
       try {
-        if (isEdit) updateEvent(ev.id, payload);
-        else createEvent(payload);
+        const saved = isEdit ? updateEvent(ev.id, payload) : createEvent(payload);
+        // Bridge into the alerts store so the scheduler actually fires a
+        // timed notification at the event's start time. Build it from the real
+        // start time (the event's `.time` field is not derived from startTime).
+        try {
+          removeAlertsForEntry(saved.id); // clear any prior alert (time may have changed)
+          addAlert(createAlert({
+            time: startHHMM,
+            date: dateIso,
+            text: title,
+            category: catSel.value,
+            kind: "popup",
+            timelineEntryId: saved.id
+          }));
+          recomputeSchedule();
+        } catch (e) { console.warn("[Calendar2DDay] alert bridge failed", e); }
         this._maybeAskNotify();
         close();
         // Jump to the chosen date so the new/edited event is visible.

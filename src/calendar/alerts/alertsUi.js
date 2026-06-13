@@ -58,6 +58,26 @@ export function resolveAlertNavigateDate(alert) {
 }
 
 /**
+ * Show a native OS notification for a fired alert (best-effort; no-op unless
+ * the user has granted Notification permission).
+ * @param {import("./alertsModel.js").AlertRecord} [alert]
+ */
+function fireBrowserNotification(alert) {
+  try {
+    if (!alert || typeof Notification === "undefined") return;
+    if (Notification.permission !== "granted") return;
+    const title = alert.text || "Reminder";
+    const when = alert.time ? ` · ${formatTimelineDisplayTime(alert.time)}` : "";
+    const n = new Notification("⏰ Inkling reminder", {
+      body: `${title}${when}`,
+      tag: `inkling-alert-${alert.id ?? title}`,
+      requireInteraction: alert.priority >= 3
+    });
+    n.onclick = () => { try { window.focus(); } catch { /* ignore */ } n.close(); };
+  } catch { /* ignore */ }
+}
+
+/**
  * Wire canonical bus → badge + §7.5 popup toast (single surface).
  */
 export function initAlertsUi() {
@@ -76,6 +96,10 @@ export function initAlertsUi() {
         trigger: payload?.trigger
       });
     }
+    // Fire a real OS notification too (so it lands even when the tab is in the
+    // background). Browsers only deliver these once the user has granted
+    // permission — we prompt for that on reminder creation.
+    fireBrowserNotification(alert);
   });
   bus.on("eventUpdated", refreshBadge);
   bus.on("eventDeleted", refreshBadge);
