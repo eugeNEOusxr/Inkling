@@ -21,6 +21,7 @@ const MONTHS = [
 ];
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEKDAYS_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 // --- World geometry constants ---
 const CW = 5;        // day wall width
@@ -307,14 +308,14 @@ export class WeaverJournal {
     const center = this._cellPos(mo - 1, d, new THREE.Vector3());
     const ready = isReal3DFontReady();
 
-    // Header — weekday + day number.
+    // Header — day number + weekday, pinned at the very top of the wall.
     const dateObj = new Date(y, mo - 1, d);
-    const header = `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dateObj.getDay()]} ${MONTHS_SHORT[mo - 1]} ${d}`;
+    const header = `${d} ${WEEKDAYS_FULL[dateObj.getDay()]}`;
     const headText = createReal3DText(header, {
       fontSize: ready ? 0.5 : 0.42, depth: 0.12, color: 0x0b1020,
       glowColor: 0x6366f1, metalness: 0.3, roughness: 0.4, emissiveIntensity: 0.6
     });
-    headText.setPosition(center.x, center.y + CH * 0.34, 0.34);
+    headText.setPosition(center.x, center.y + CH * 0.42, 0.34);
     this._dayLayer.add(headText.getGroup());
     this._dayTexts.push(headText);
 
@@ -336,7 +337,8 @@ export class WeaverJournal {
 
   _openComposer() {
     if (!this._selectedIso) return;
-    this.teleportToDate(this._selectedIso);
+    this._focusWallForWriting(this._selectedIso);
+    this._setCalMinimized(true); // calendar auto-hides while writing
     this._buildComposer();
     this._composer.style.display = "block";
     this._refreshRemarksList();
@@ -344,8 +346,28 @@ export class WeaverJournal {
     this._composerInput?.focus();
   }
 
+  /** Zoom all the way in so the wall fills the screen (edges touching the top). */
+  _focusWallForWriting(iso) {
+    this._build();
+    this._selectedIso = iso;
+    const [y, mo, d] = iso.split("-").map(Number);
+    const center = this._cellPos(mo - 1, d, new THREE.Vector3());
+    this._saveCamOnce();
+    const fov = ((this.camera.fov ?? 60) * Math.PI) / 180;
+    let dist = (CH * 0.54) / Math.tan(fov / 2);
+    dist = Math.max(dist, (this.controls.minDistance ?? 4) + 0.5);
+    this._tweenCamera(
+      new THREE.Vector3(center.x, center.y, dist),
+      new THREE.Vector3(center.x, center.y, 0),
+      600
+    );
+    this._renderDayText(iso);
+    this._syncCalendarSelection(iso);
+  }
+
   _closeComposer() {
     if (this._composer) this._composer.style.display = "none";
+    this._setCalMinimized(false); // bring the calendar back to pick another day
     if (this._preview) {
       try { this._preview.dispose(); } catch { /* ignore */ }
       const g = this._preview.getGroup?.();
@@ -367,7 +389,9 @@ export class WeaverJournal {
     const [y, mo, d] = this._selectedIso.split("-").map(Number);
     const center = this._cellPos(mo - 1, d, new THREE.Vector3());
     const placedCount = (this._placed.get(this._selectedIso) ?? []).length;
-    const yOff = center.y - 0.6 - placedCount * (st.size * 0.95);
+    // Flow remarks downward from just under the header (upper area), so the live
+    // text shows in the clear top/right of the wall, above the bottom-left box.
+    const yOff = center.y + CH * 0.18 - placedCount * (st.size * 0.95);
     const t = createReal3DText(st.text || "Type here…", this._styleParams(st.style, st.size, st.color));
     t.setPosition(center.x, yOff, 0.5);
     this._dayLayer.add(t.getGroup());
@@ -382,7 +406,7 @@ export class WeaverJournal {
     const [y, mo, d] = this._selectedIso.split("-").map(Number);
     const center = this._cellPos(mo - 1, d, new THREE.Vector3());
     const arr = this._placed.get(this._selectedIso) ?? [];
-    const yOff = center.y - 0.6 - arr.length * (st.size * 0.95);
+    const yOff = center.y + CH * 0.18 - arr.length * (st.size * 0.95);
     arr.push({ text, style: st.style, color: st.color, size: st.size, x: center.x, y: yOff });
     this._placed.set(this._selectedIso, arr);
     st.text = "";
@@ -441,12 +465,13 @@ export class WeaverJournal {
     if (this._composer) return;
     const wrap = document.createElement("div");
     wrap.id = "weaver-journal-composer";
-    // Top of the screen: where your text becomes a memory on the wall.
+    // Bottom-left overlay: the wall fills the screen behind it, your live text
+    // showing through. Slightly translucent so the 3D text reads behind.
     wrap.style.cssText =
-      "position:fixed;left:50%;transform:translateX(-50%);top:calc(8px + env(safe-area-inset-top,0px));z-index:10270;" +
-      "width:min(560px,96vw);background:rgba(8,12,22,0.92);backdrop-filter:blur(10px);" +
-      "border:1px solid rgba(99,102,241,0.45);border-radius:14px;padding:12px;color:#e2e8f0;" +
-      "font:600 13px system-ui;box-shadow:0 14px 50px rgba(0,0,0,0.6)";
+      "position:fixed;left:12px;bottom:88px;z-index:10270;" +
+      "width:min(300px,82vw);background:rgba(8,12,22,0.82);backdrop-filter:blur(10px);" +
+      "border:1px solid rgba(99,102,241,0.45);border-radius:14px;padding:10px;color:#e2e8f0;" +
+      "font:600 12px system-ui;box-shadow:0 14px 50px rgba(0,0,0,0.6)";
 
     const head = document.createElement("div");
     head.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:8px";
@@ -680,6 +705,77 @@ export class WeaverJournal {
     if (this._calHandle) this._calHandle.style.display = min ? "block" : "none";
   }
 
+  // --- Free-move controls (pan + zoom) ---
+
+  /** Pan (dx,dy in world units) and/or zoom (dz>0 = closer). Cancels any tween. */
+  _nudge(dx, dy, dz) {
+    this._tween = null;
+    const cam = this.camera;
+    const ctr = this.controls;
+    cam.position.x += dx; ctr.target.x += dx;
+    cam.position.y += dy; ctr.target.y += dy;
+    if (dz) {
+      const dir = new THREE.Vector3().subVectors(ctr.target, cam.position);
+      const dist = dir.length();
+      if (dist > 1e-3) {
+        dir.normalize();
+        const minD = ctr.minDistance ?? 2;
+        const maxD = ctr.maxDistance ?? 2000;
+        const newDist = Math.min(Math.max(dist - dz, minD), maxD);
+        cam.position.addScaledVector(dir, dist - newDist);
+      }
+    }
+    ctr.update();
+  }
+
+  /** Press-and-hold repeats `fn` while held. */
+  _holdButton(btn, fn) {
+    let timer = null;
+    const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+    btn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      fn();
+      stop();
+      timer = setInterval(fn, 40);
+    });
+    for (const ev of ["pointerup", "pointerleave", "pointercancel"]) {
+      btn.addEventListener(ev, stop);
+    }
+  }
+
+  _buildMoveControls() {
+    if (this._movePad) return;
+    const pad = document.createElement("div");
+    pad.id = "weaver-journal-move";
+    pad.style.cssText =
+      "position:fixed;right:12px;bottom:88px;z-index:10260;display:grid;gap:6px;" +
+      "grid-template-columns:repeat(3,40px);grid-template-rows:repeat(3,40px);" +
+      "background:rgba(8,12,22,0.72);backdrop-filter:blur(8px);" +
+      "border:1px solid rgba(99,102,241,0.35);border-radius:14px;padding:8px";
+    const mk = (label, area, title, fn) => {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.title = title;
+      b.style.cssText =
+        "width:40px;height:40px;border:0;border-radius:9px;background:#1e293b;color:#e2e8f0;" +
+        `font:700 16px system-ui;cursor:pointer;touch-action:none;grid-area:${area}`;
+      this._holdButton(b, fn);
+      return b;
+    };
+    const STEP = 2.4;
+    const ZOOM = 1.8;
+    pad.append(
+      mk("▲", "1 / 2 / 2 / 3", "Up", () => this._nudge(0, STEP, 0)),
+      mk("◀", "2 / 1 / 3 / 2", "Left", () => this._nudge(-STEP, 0, 0)),
+      mk("＋", "2 / 2 / 3 / 3", "Zoom in", () => this._nudge(0, 0, ZOOM)),
+      mk("▶", "2 / 3 / 3 / 4", "Right", () => this._nudge(STEP, 0, 0)),
+      mk("▼", "3 / 2 / 4 / 3", "Down", () => this._nudge(0, -STEP, 0)),
+      mk("－", "3 / 3 / 4 / 4", "Zoom out", () => this._nudge(0, 0, -ZOOM))
+    );
+    document.body.appendChild(pad);
+    this._movePad = pad;
+  }
+
   _stepMonth(delta) {
     let mo = this._calMonth + delta;
     let yr = this._calYear;
@@ -745,6 +841,8 @@ export class WeaverJournal {
     this._active = true;
     this._buildUi();
     this._setCalMinimized(false);
+    this._buildMoveControls();
+    if (this._movePad) this._movePad.style.display = "grid";
     // Start at overview, but seed today's wall so the concept is visible.
     const n = new Date();
     const todayIso = isoFor(n.getFullYear(), n.getMonth(), n.getDate());
@@ -761,6 +859,7 @@ export class WeaverJournal {
     this._closeComposer();
     if (this._ui) this._ui.style.display = "none";
     if (this._calHandle) this._calHandle.style.display = "none";
+    if (this._movePad) this._movePad.style.display = "none";
     if (this._savedCam) {
       this.camera.position.copy(this._savedCam.pos);
       this.controls.target.copy(this._savedCam.target);
@@ -807,6 +906,8 @@ export class WeaverJournal {
     this._ui = null;
     this._calHandle?.remove();
     this._calHandle = null;
+    this._movePad?.remove();
+    this._movePad = null;
     this._composer?.remove();
     this._composer = null;
     this.scene.remove(this.root);
