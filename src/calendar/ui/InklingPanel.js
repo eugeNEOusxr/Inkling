@@ -516,10 +516,10 @@ export class InklingPanel {
     this.inputEl.value = "";
     this._appendBubble("user", escapeHtml(text));
 
-    // "Take me to <date>" → fly to that day's node in WordWeaver.
+    // "Take me to <date>" → open that day in the Schedule.
     const nav = this._parseNavDate(text);
     if (nav) {
-      this._appendBubble("inkling", escapeHtml(`Taking you to ${nav.label} in WordWeaver ✦`));
+      this._appendBubble("inkling", escapeHtml(`Opening ${nav.label} in your Schedule 🗓️`));
       this.app?.navigateToWordWeaverDate?.(nav.iso);
       return;
     }

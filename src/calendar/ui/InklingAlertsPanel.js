@@ -185,14 +185,30 @@ export class InklingAlerts {
     else this.hide();
   }
 
-  show() {
+  /**
+   * @param {{ full?: boolean, onClose?: () => void }} [opts]
+   *   full   — render as a centered full-screen surface (used as the Alerts tab)
+   *            instead of the right-edge slide-in (used from the orb badge).
+   *   onClose — called when the ✕ is pressed (e.g. to close the nav stage).
+   */
+  show(opts = {}) {
     this._buildPanel();
+    this._onClose = opts.onClose || null;
+    const full = !!opts.full;
+    this._panel.style.width = full ? "100%" : "min(360px,90vw)";
+    this._panel.style.borderLeft = full ? "0" : "1px solid rgba(244,114,182,0.4)";
+    this._panelBody.style.maxWidth = full ? "640px" : "none";
+    this._panelBody.style.margin = full ? "0 auto" : "0";
+    this._panelBody.style.width = full ? "100%" : "auto";
     this._render();
     this._panel.style.display = "flex";
   }
 
-  hide() {
+  hide({ silent = false } = {}) {
     if (this._panel) this._panel.style.display = "none";
+    const cb = this._onClose;
+    this._onClose = null;
+    if (cb && !silent) { try { cb(); } catch { /* ignore */ } }
   }
 
   dispose() {

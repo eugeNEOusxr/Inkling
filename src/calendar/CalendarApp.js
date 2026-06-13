@@ -965,7 +965,9 @@ export class CalendarApp {
     if (this.viewMode === "notification-wall") {
       await this.exitNotificationWall();
     }
-    openAlertsDropdown();
+    // Inkling's colour-coded alerts panel (right-edge slide-in) — used by the
+    // top-bar bell / orb. The Alerts nav tab opens it full-screen instead.
+    this.inklingPanel?.alerts?.show();
   }
 
   _closeBottomStage() {
@@ -979,6 +981,7 @@ export class CalendarApp {
     this.wordWeaverEmbed?.exitImmersive();
     this.wordWeaverEmbed?.hide();
     this.alertsPanel?.close();
+    this.inklingPanel?.alerts?.hide({ silent: true });
     closeAlertsDropdown();
     this.windowManager?.closeAllPanels();
     document.dispatchEvent(new CustomEvent("inkling:close-all-panels"));
@@ -1114,12 +1117,6 @@ export class CalendarApp {
         this.layerManager.open("wordweaver");
         this.wordWeaverEmbed?.enterImmersive();
         break;
-      case "constellation":
-        this.notebookWall.setVisible(false);
-        document.body.classList.add("inkling-stage-open");
-        this._showStageBackdrop(false);
-        await this._openConstellation();
-        break;
       case "inkling": {
         this.notebookWall.setVisible(false);
         document.body.classList.add("inkling-stage-open");
@@ -1132,28 +1129,24 @@ export class CalendarApp {
       case "alerts":
         document.body.classList.add("inkling-stage-open");
         this._showStageBackdrop(true);
-        await this.openAlertsPanel();
+        if (this.viewMode === "notification-wall") await this.exitNotificationWall();
+        // Full-screen Alerts surface; ✕ tears the nav stage back down.
+        this.inklingPanel?.alerts?.show({ full: true, onClose: () => this._closeBottomStage() });
         break;
       default:
         break;
     }
   }
 
-  /** WordWeaver galaxy — clustered orbiting note-spheres + click→day sidebar. */
-  async _openConstellation() {
-    this.wordWeaverEmbed?.exitImmersive();
-    this.wordWeaverEmbed?.hide();
-    if (!this._weaverGalaxy) {
-      const { WeaverGalaxy } = await import("../wordweaver/WeaverGalaxy.js");
-      this._weaverGalaxy = new WeaverGalaxy(this.scene, this.camera, this.controls);
-    }
-    this._weaverGalaxy.show();
-  }
-
-  /** Open WordWeaver and fly to a specific day's node (Inkling "take me to …"). */
+  /**
+   * Inkling "take me to <date>" → open that day in the Schedule.
+   * (The WordWeaver galaxy was retired; the Schedule is the day surface now.)
+   * Method name kept for existing callers.
+   */
   async navigateToWordWeaverDate(iso) {
-    await this._handleBottomNavTab("constellation", { toggle: false });
-    this._weaverGalaxy?.focusDate?.(iso);
+    await this._handleBottomNavTab("writer", { toggle: false });
+    const cal = this._cal2dDay;
+    if (cal && iso) { cal.iso = iso; cal.setView?.("day"); }
   }
 
   /** Schedule tab = the 2D day-view editor (Google-style). Lazy-loaded. */
