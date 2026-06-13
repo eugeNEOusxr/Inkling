@@ -6,6 +6,7 @@
 import * as THREE from "three";
 import { getYearTopology, getEventsForDate, classifyText, CategoryColors } from "./timelineModel.js";
 import { createReal3DText, preloadReal3DFont } from "./Real3DText.js";
+import { getTextStyle, text3dParams } from "../calendar/ui/TextStylePicker.js";
 import {
   computeMonthGridLayout,
   computeYearGridLayout,
@@ -780,6 +781,7 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
   const group = new THREE.Group();
   group.name = "ww-day-view";
   const events = getEventsForDate(dayIso);
+  const textStyle = getTextStyle(); // user-chosen 3D look (chrome/neon/gold/…)
   void preloadReal3DFont(); // beveled 3D note text needs the typeface loaded
   /** @type {import("./Real3DText.js").Real3DText[]} */
   const textNodes = [];
@@ -816,14 +818,15 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
 
   // Date heading — beveled 2.5D text (same family as the note text), brighter and
   // popped out so the day reads like a polished title.
+  const hp = text3dParams(textStyle, 0xf8fafc);
   const heading3d = createReal3DText(formatDayHeading(dayIso), {
     fontSize: 1.5,
     depth: 0.42,
-    color: 0xf8fafc,
-    glowColor: 0xf8fafc,
-    metalness: 0.35,
-    roughness: 0.3,
-    emissiveIntensity: 0.35
+    color: hp.color,
+    glowColor: hp.glowColor,
+    metalness: hp.metalness,
+    roughness: hp.roughness,
+    emissiveIntensity: hp.emissiveIntensity
   });
   const headingGroup = heading3d.getGroup();
   headingGroup.position.set(0, DAY_VIEW_HEIGHT / 2 + 2.1, 0);
@@ -868,12 +871,7 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
       const noteText = `${ev.time}  ${String(ev.text || "").slice(0, 26)}`;
       const t3d = createReal3DText(noteText, {
         fontSize: 0.82,
-        depth: 0.34,
-        color,
-        glowColor: color, // keep the hue vivid — no white wash
-        metalness: 0.25,
-        roughness: 0.4,
-        emissiveIntensity: 0.32
+        ...text3dParams(textStyle, color)
       });
       const tg = t3d.getGroup();
       tg.position.set(2.6 + noteText.length * 0.17, y, 0.08);

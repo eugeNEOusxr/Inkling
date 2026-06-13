@@ -69,6 +69,30 @@ export function textStyleCss(value) {
 }
 
 /**
+ * Map a style value → Real3DText material params for extruded 3D text.
+ * The 3D-group looks change material/finish; 2D/2.5D picks fall back to a clean
+ * vivid solid (a flat typeface can't take a 2D font swap in 3D).
+ * @param {string} value
+ * @param {number} baseColor hex int — the note's category color
+ */
+export function text3dParams(value, baseColor) {
+  switch (value) {
+    case "3D:chrome":
+      return { color: 0xd8dee9, glowColor: 0xffffff, metalness: 0.96, roughness: 0.08, emissiveIntensity: 0.12, depth: 0.34 };
+    case "3D:emboss":
+      return { color: baseColor, glowColor: baseColor, metalness: 0.2, roughness: 0.6, emissiveIntensity: 0.15, depth: 0.52 };
+    case "3D:neon":
+      return { color: baseColor, glowColor: baseColor, metalness: 0.0, roughness: 0.3, emissiveIntensity: 1.7, depth: 0.22 };
+    case "3D:gold":
+      return { color: 0xf5c542, glowColor: 0xfde68a, metalness: 0.92, roughness: 0.12, emissiveIntensity: 0.2, depth: 0.34 };
+    case "3D:glass":
+      return { color: 0xbfe3ff, glowColor: 0xffffff, metalness: 0.1, roughness: 0.08, emissiveIntensity: 0.25, depth: 0.3 };
+    default:
+      return { color: baseColor, glowColor: baseColor, metalness: 0.25, roughness: 0.4, emissiveIntensity: 0.32, depth: 0.34 };
+  }
+}
+
+/**
  * @param {(value: string) => void} [onPick]
  */
 export function openTextStylePicker(onPick) {
