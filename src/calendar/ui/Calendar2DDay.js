@@ -20,6 +20,7 @@ import {
   getCategoryColor,
   classifyText,
   getEventsForYear,
+  getEventsForMonth,
   todayIsoDate
 } from "../../wordweaver/timelineModel.js";
 
@@ -112,6 +113,7 @@ export class Calendar2DDay {
   constructor() {
     this.iso = todayIsoDate();
     this.slot = 30;
+    this.view = "day"; // "day" | "month"
     this.root = null;
     this._grid = null;
     this._editing = null; // event id being edited, or null for new
@@ -124,8 +126,17 @@ export class Calendar2DDay {
     if (iso) this.iso = iso;
     this._build();
     this.root.style.display = "flex";
-    this.render();
+    this.setView(this.view);
     this._startNowTimer();
+  }
+
+  setView(view) {
+    this.view = view;
+    this._scrolled = false;
+    if (this._dayBtn) this._dayBtn.style.background = view === "day" ? "#dbeafe" : "#fff";
+    if (this._monthBtn) this._monthBtn.style.background = view === "month" ? "#dbeafe" : "#fff";
+    for (const el of this._zoomEls ?? []) el.style.display = view === "day" ? "" : "none";
+    this.render();
   }
 
   close() {
@@ -137,7 +148,10 @@ export class Calendar2DDay {
 
   shiftDay(delta) {
     const [y, m, d] = this.iso.split("-").map(Number);
-    const dt = new Date(y, m - 1, d + delta);
+    // In month view the arrows page by month; in day view, by day.
+    const dt = this.view === "month"
+      ? new Date(y, m - 1 + delta, Math.min(d, 28))
+      : new Date(y, m - 1, d + delta);
     this.iso = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
     this.render();
   }
@@ -203,9 +217,17 @@ export class Calendar2DDay {
     const zoomLabel = document.createElement("span");
     zoomLabel.textContent = "Zoom";
     zoomLabel.style.cssText = "font-size:12px;color:#64748b";
+    this._zoomEls = [zoomLabel, slotSel];
+
+    // Day / Month view toggle.
+    const dayBtn = this._navBtn("Day", () => this.setView("day"));
+    const monthBtn = this._navBtn("Month", () => this.setView("month"));
+    for (const b of [dayBtn, monthBtn]) { b.style.width = "auto"; b.style.padding = "0 12px"; b.style.fontSize = "13px"; }
+    this._dayBtn = dayBtn;
+    this._monthBtn = monthBtn;
 
     const close = this._navBtn("✕", () => this.close());
-    head.append(prev, next, today, title, zoomLabel, slotSel, close);
+    head.append(prev, next, today, dayBtn, monthBtn, title, zoomLabel, slotSel, close);
 
     // Scrollable grid
     const scroll = document.createElement("div");
@@ -231,10 +253,111 @@ export class Calendar2DDay {
     return b;
   }
 
+  // --- Month grid (2D), wired to the Day view ---
+
+  _renderMonth() {
+    if (this._scroll) this._scroll.style.overflow = "auto";
+    const [y, m] = this.iso.split("-").map(Number);
+    this._title.textContent = `${MONTHS[m - 1]} ${y}`;
+    this._grid.style.height = "auto";
+    this._grid.textContent = "";
+
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "padding:12px 14px 28px";
+
+    // Color legend up top.
+    const legend = document.createElement("div");
+    legend.style.cssText =
+      "display:flex;flex-wrap:wrap;gap:9px 16px;margin-bottom:14px;padding:10px 12px;" +
+      "background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px";
+    for (const [val, label] of CATEGORIES) {
+      const item = document.createElement("span");
+      item.style.cssText = "display:inline-flex;align-items:center;gap:6px;font:600 12px system-ui;color:#475569";
+      item.innerHTML =
+        `<span style="width:12px;height:12px;border-radius:50%;background:${getCategoryColor(val)};box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>${label}`;
+      legend.appendChild(item);
+    }
+    wrap.appendChild(legend);
+
+    // Weekday header.
+    const dow = document.createElement("div");
+    dow.style.cssText = "display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px";
+    for (const w of ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) {
+      const c = document.createElement("div");
+      c.textContent = w;
+      c.style.cssText = `text-align:center;font:700 12px system-ui;color:#475569;text-shadow:${TIME_LABEL_3D}`;
+      dow.appendChild(c);
+    }
+    wrap.appendChild(dow);
+
+    // Day cells (6 weeks, with leading/trailing days from adjacent months).
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(7,1fr);gap:6px";
+    const first = new Date(y, m - 1, 1).getDay();
+    const dim = new Date(y, m, 0).getDate();
+    const prevDim = new Date(y, m - 1, 0).getDate();
+    const todayIso = todayIsoDate();
+
+    const byDate = {};
+    try {
+      for (const r of getEventsForMonth(y, m)) {
+        (byDate[r.date] ||= []).push(getCategoryColor(r.category));
+      }
+    } catch { /* ignore */ }
+
+    for (let i = 0; i < 42; i++) {
+      let dayNum, monthDelta, inMonth;
+      if (i < first) { dayNum = prevDim - first + 1 + i; monthDelta = -1; inMonth = false; }
+      else if (i < first + dim) { dayNum = i - first + 1; monthDelta = 0; inMonth = true; }
+      else { dayNum = i - first - dim + 1; monthDelta = 1; inMonth = false; }
+      const dObj = new Date(y, m - 1 + monthDelta, dayNum);
+      const iso = `${dObj.getFullYear()}-${pad(dObj.getMonth() + 1)}-${pad(dObj.getDate())}`;
+      const isToday = iso === todayIso;
+
+      const cell = document.createElement("div");
+      cell.style.cssText =
+        "min-height:74px;border:1px solid #e2e8f0;border-radius:10px;padding:6px;cursor:pointer;" +
+        `background:${inMonth ? "#fff" : "#f8fafc"};` +
+        (isToday ? "outline:2px solid #2563eb;outline-offset:-2px;" : "");
+      const num = document.createElement("div");
+      num.textContent = String(dayNum);
+      num.style.cssText =
+        `font:800 14px system-ui;color:${inMonth ? "#0f172a" : "#94a3b8"};text-shadow:${TIME_LABEL_3D}`;
+      cell.appendChild(num);
+
+      const colors = inMonth ? (byDate[iso] || []) : [];
+      const bars = document.createElement("div");
+      bars.style.cssText = "display:flex;flex-direction:column;gap:3px;margin-top:5px";
+      for (const col of colors.slice(0, 3)) {
+        const bar = document.createElement("div");
+        bar.style.cssText = `height:5px;border-radius:3px;background:${col};box-shadow:0 1px 2px ${col}66`;
+        bars.appendChild(bar);
+      }
+      if (colors.length > 3) {
+        const more = document.createElement("div");
+        more.textContent = `+${colors.length - 3} more`;
+        more.style.cssText = "font:600 10px system-ui;color:#94a3b8;margin-top:1px";
+        bars.appendChild(more);
+      }
+      cell.appendChild(bars);
+      cell.addEventListener("click", () => { this.iso = iso; this.setView("day"); });
+      grid.appendChild(cell);
+    }
+    wrap.appendChild(grid);
+    this._grid.appendChild(wrap);
+    if (this._scroll) this._scroll.scrollTop = 0;
+  }
+
   // --- render the grid + events ---
 
   render() {
     if (!this.root) return;
+    if (this.view === "month") { this._renderMonth(); return; }
+    this._renderDay();
+  }
+
+  _renderDay() {
+    if (this._scroll) this._scroll.style.overflow = "auto";
     const [y, m, d] = this.iso.split("-").map(Number);
     const dt = new Date(y, m - 1, d);
     this._title.textContent = `${WEEKDAYS[dt.getDay()]}, ${MONTHS[m - 1]} ${d}, ${y}`;
