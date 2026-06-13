@@ -24,7 +24,7 @@ import {
   todayIsoDate
 } from "../../wordweaver/timelineModel.js";
 
-const SLOT_PX = { 15: 20, 30: 34, 60: 58 }; // row height per slot size
+const SLOT_PX = { 15: 30, 30: 42, 60: 66 }; // row height per slot size (taller so 15-min rows don't cram)
 const DAY_MIN = 24 * 60;
 const GUTTER = 64; // left time-label column width (px)
 
@@ -106,6 +106,10 @@ function blockFill(hex) {
 const HEADER_3D =
   "0 1px 0 #cbd5e1,0 2px 0 #bcc6d6,0 3px 0 #aab6c8,0 4px 8px rgba(15,23,42,0.28)";
 const BLOCK_TITLE_3D = "0 1px 0 rgba(0,0,0,0.45),0 2px 4px rgba(0,0,0,0.35)";
+// Crisp dark outline (a 1px "stroke" around white text) — sharp/high-contrast,
+// reads cleanly even when blocks sit close at 15-min granularity.
+const BLOCK_TITLE_OUTLINE =
+  "-1px -1px 0 rgba(0,0,0,0.92),1px -1px 0 rgba(0,0,0,0.92),-1px 1px 0 rgba(0,0,0,0.92),1px 1px 0 rgba(0,0,0,0.92)";
 // Lighter 2.5D for the time-of-day labels (same family as the header, toned down).
 const TIME_LABEL_3D = "0 1px 0 #e6eaf1,0 2px 2px rgba(15,23,42,0.14)";
 
@@ -226,8 +230,19 @@ export class Calendar2DDay {
     this._dayBtn = dayBtn;
     this._monthBtn = monthBtn;
 
+    // Jot-a-note button (the "paint/✎" affordance) — opens the editor for a new
+    // entry, defaulting to now (today) or 9:00.
+    const noteBtn = this._navBtn("✎", () => {
+      const now = new Date();
+      const startMin = this.iso === todayIsoDate()
+        ? Math.floor((now.getHours() * 60 + now.getMinutes()) / this.slot) * this.slot
+        : 9 * 60;
+      this._openEditor(null, startMin);
+    });
+    noteBtn.title = "Jot a note";
+    noteBtn.style.fontSize = "17px";
     const close = this._navBtn("✕", () => this.close());
-    head.append(prev, next, today, dayBtn, monthBtn, title, zoomLabel, slotSel, close);
+    head.append(prev, next, today, dayBtn, monthBtn, title, zoomLabel, slotSel, noteBtn, close);
 
     // Scrollable grid
     const scroll = document.createElement("div");
@@ -407,13 +422,13 @@ export class Calendar2DDay {
       const color = getCategoryColor(rec.category);
       const block = document.createElement("div");
       block.style.cssText =
-        `position:absolute;left:${GUTTER + 6}px;right:10px;top:${top}px;height:${height}px;` +
-        `background:${blockFill(color)};border-left:5px solid ${darken(color, 0.45)};border-radius:8px;padding:4px 10px;` +
-        "overflow:hidden;cursor:pointer;box-sizing:border-box;color:#fff;" +
-        `box-shadow:0 3px 10px ${color}55,0 1px 2px rgba(0,0,0,0.25);transition:transform .12s ease`;
+        `position:absolute;left:${GUTTER + 6}px;right:10px;top:${top + 1}px;height:${Math.max(18, height - 2)}px;` +
+        `background:${blockFill(color)};border:1px solid rgba(255,255,255,0.85);border-left:5px solid ${darken(color, 0.5)};` +
+        "border-radius:8px;padding:3px 10px;overflow:hidden;cursor:pointer;box-sizing:border-box;color:#fff;" +
+        `box-shadow:0 2px 8px ${color}55,0 0 0 1px rgba(0,0,0,0.15);transition:transform .12s ease`;
       block.innerHTML =
-        `<div style="font-weight:800;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:${BLOCK_TITLE_3D}">${escapeHtml(rec.title || rec.text || "Untitled")}</div>` +
-        `<div style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.92);text-shadow:0 1px 1px rgba(0,0,0,0.35)">${clockLabel(startMin)}</div>`;
+        `<div style="font-weight:800;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:${BLOCK_TITLE_OUTLINE}">${escapeHtml(rec.title || rec.text || "Untitled")}</div>` +
+        `<div style="font-size:11px;font-weight:700;color:#fff;text-shadow:${BLOCK_TITLE_OUTLINE}">${clockLabel(startMin)}</div>`;
       const ev = full ?? rec;
       block.addEventListener("mouseenter", () => { if (!block.style.animation) block.style.transform = "translateY(-1px) scale(1.006)"; });
       block.addEventListener("mouseleave", () => { block.style.transform = "none"; });
