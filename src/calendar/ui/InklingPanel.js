@@ -599,6 +599,12 @@ export class InklingPanel {
         text: String(p.text ?? text),
         category: String(p.category ?? "reminder")
       });
+      // Prompt for notification permission so the alert can fire on time.
+      try {
+        if ("Notification" in window && Notification.permission === "default") {
+          this.app?.notificationService?.requestPermission?.();
+        }
+      } catch { /* ignore */ }
       this._appendBubble("inkling", escapeHtml(brain.aiResponse ?? "Okay, I'll alert you."));
       return true;
     }

@@ -316,6 +316,16 @@ export class Calendar2DDay {
     }
   }
 
+  /** Prompt for browser notification permission so timed alerts can fire. */
+  _maybeAskNotify() {
+    try {
+      if ("Notification" in window && Notification.permission === "default") {
+        const r = Notification.requestPermission();
+        if (r && typeof r.catch === "function") r.catch(() => {});
+      }
+    } catch { /* ignore */ }
+  }
+
   _navBtn(label, onClick) {
     const P = this._pal();
     const b = document.createElement("button");
@@ -713,18 +723,22 @@ export class Calendar2DDay {
     save.addEventListener("click", () => {
       const title = titleInput.value.trim() || "Untitled";
       const dateIso = dateInput.value || this.iso;
+      const startISO = buildStartTimeIso(dateIso, startInput.value || hhmm(startMinutes));
       const payload = {
         type: "appointment",
         title,
         body: descInput.value.trim(),
-        startTime: buildStartTimeIso(dateIso, startInput.value || hhmm(startMinutes)),
+        startTime: startISO,
         endTime: buildStartTimeIso(dateIso, endInput.value || hhmm(endMinutes)),
         category: catSel.value,
+        // Remind at the event's time so timed alerts can fire.
+        alerts: [{ time: startISO, kind: "popup" }],
         _wwRender: { date: dateIso }
       };
       try {
         if (isEdit) updateEvent(ev.id, payload);
         else createEvent(payload);
+        this._maybeAskNotify();
         close();
         // Jump to the chosen date so the new/edited event is visible.
         if (dateIso !== this.iso) { this.iso = dateIso; this.setView("day"); }

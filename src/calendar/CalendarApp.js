@@ -1163,6 +1163,13 @@ export class CalendarApp {
       this._cal2dDay = new Calendar2DDay();
     }
     this._cal2dDay.open(date ?? this._getTodayDate?.() ?? new Date().toISOString().slice(0, 10));
+    // Prompt for notification permission (on this tab-open gesture) so timed
+    // reminders can actually fire.
+    try {
+      if ("Notification" in window && Notification.permission === "default") {
+        this.notificationService?.requestPermission?.();
+      }
+    } catch { /* ignore */ }
   }
 
   _showWordWeaverPreview(dateStr, time) {
