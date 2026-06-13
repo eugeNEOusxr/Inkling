@@ -820,10 +820,10 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
     fontSize: 1.5,
     depth: 0.42,
     color: 0xf8fafc,
-    glowColor: 0x9bc2ff,
-    metalness: 0.78,
-    roughness: 0.16,
-    emissiveIntensity: 0.85
+    glowColor: 0xf8fafc,
+    metalness: 0.35,
+    roughness: 0.3,
+    emissiveIntensity: 0.35
   });
   const headingGroup = heading3d.getGroup();
   headingGroup.position.set(0, DAY_VIEW_HEIGHT / 2 + 2.1, 0);
@@ -870,10 +870,10 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
         fontSize: 0.82,
         depth: 0.34,
         color,
-        glowColor: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.5).getHex(),
-        metalness: 0.78,
-        roughness: 0.18,
-        emissiveIntensity: 1.05
+        glowColor: color, // keep the hue vivid — no white wash
+        metalness: 0.25,
+        roughness: 0.4,
+        emissiveIntensity: 0.32
       });
       const tg = t3d.getGroup();
       tg.position.set(2.6 + noteText.length * 0.17, y, 0.08);

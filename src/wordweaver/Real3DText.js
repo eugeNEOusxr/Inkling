@@ -137,9 +137,9 @@ export function buildTextGeometry(text, font, opts = {}) {
     depth,
     curveSegments: opts.curveSegments ?? 8,
     bevelEnabled: opts.bevelEnabled !== false,
-    bevelThickness: depth * 0.22,
-    bevelSize: depth * 0.12,
-    bevelSegments: 3
+    bevelThickness: depth * 0.3,
+    bevelSize: depth * 0.18,
+    bevelSegments: 1
   });
   geometry.computeBoundingBox();
   const box = geometry.boundingBox;
@@ -303,6 +303,20 @@ export class Real3DText {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.userData.type = "weave-styled-text";
+
+    // Crisp black contour outline (inverted-hull): a slightly larger black
+    // back-face shell sits behind the glyphs, drawing a clean dark edge so the
+    // color reads vividly instead of washing into the background/glow.
+    if (this.options.outline !== false) {
+      const outlineMat = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide });
+      const outline = new THREE.Mesh(geometry, outlineMat);
+      outline.scale.multiplyScalar(this.options.outlineScale ?? 1.08);
+      outline.userData.type = "weave-text-outline";
+      this.meshes.push(outline);
+      this._materials.push(outlineMat);
+      this.group.add(outline);
+    }
+
     this.meshes.push(mesh);
     this._geometries.push(geometry);
     this._materials.push(material);
