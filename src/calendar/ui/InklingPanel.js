@@ -9,6 +9,7 @@ import { getDisplayName } from "./userProfile.js";
 import { submitFeedback } from "../../auth/userAccount.js";
 import { registerInklingApp, installWriterNavigation } from "./Writer.js";
 import { openPanel } from "./AppLauncher.js";
+import { InklingAlerts } from "./InklingAlertsPanel.js";
 const INKLING_CRON_KEY = "calendar3d-inkling-cron-v1";
 
 /**
@@ -66,6 +67,9 @@ export class InklingPanel {
     document.getElementById("inkling-confirm-no")?.addEventListener("click", () => this._confirmSchedule(false));
 
     this._initOrb();
+    // Inkling's dedicated alerts surface: a count badge on the orb + a colour-
+    // coded panel, kept out of the chat so conversation isn't buried.
+    this.alerts = new InklingAlerts(this._orb ?? document.getElementById("inkling-fab"));
 
     // Seed the welcome message first so it can never be buried by a proactive
     // digest or alert bubble that fires before the user opens the panel.
@@ -282,6 +286,7 @@ export class InklingPanel {
     };
     menu.append(
       mk("💬  Chat with Inkling", () => this.openWithContext()),
+      mk("🔔  Alerts", () => this.alerts?.show()),
       mk("＋  New event", () => this._orbNewEvent()),
       mk("🎨  Text style", () => openTextStylePicker()),
       mk("📅  Go to today", () => this._orbToday())
