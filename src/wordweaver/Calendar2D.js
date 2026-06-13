@@ -15,7 +15,9 @@ function injectCalendar2DStyles() {
 .ww-calendar-2d {
   position: absolute;
   inset: 0;
-  z-index: 5;
+  /* Above the floating paint/3D-mode chrome (~10250) so the back/nav header is
+     clickable — it used to sit buried at z:5. Below the bottom nav (10300). */
+  z-index: 10260;
   display: flex;
   flex-direction: column;
   background: rgba(6, 10, 20, 0.97);
@@ -480,6 +482,8 @@ export class Calendar2D {
     if (!this.bodyEl || !this.titleEl || !this.backBtn) return;
 
     this.backBtn.hidden = this.view === "year";
+    // Label the back button with where it goes (Year ← Month ← Day).
+    this.backBtn.textContent = this.view === "day" ? "← Month" : "← Year";
 
     if (this.view === "year") {
       this.titleEl.textContent = String(this.year);

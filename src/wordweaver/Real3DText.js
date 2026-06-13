@@ -304,10 +304,9 @@ export class Real3DText {
     mesh.receiveShadow = true;
     mesh.userData.type = "weave-styled-text";
 
-    // Crisp black contour outline (inverted-hull): a slightly larger black
-    // back-face shell sits behind the glyphs, drawing a clean dark edge so the
-    // color reads vividly instead of washing into the background/glow.
-    if (this.options.outline !== false) {
+    // Optional black contour outline (inverted-hull). Off by default — it muddied
+    // the glyphs; opt in with `outline: true`.
+    if (this.options.outline === true) {
       const outlineMat = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide });
       const outline = new THREE.Mesh(geometry, outlineMat);
       outline.scale.multiplyScalar(this.options.outlineScale ?? 1.08);

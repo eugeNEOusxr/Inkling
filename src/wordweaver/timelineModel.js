@@ -30,6 +30,11 @@ export const HAS_USER_NOTES_KEY = "inkling-has-user-notes";
 export const LEGACY_HAS_USER_NOTES_KEY = "hasUserNotes";
 const STARTER_ID_PREFIX = "starter-";
 
+/** Master switch for the demo/sample data. Off → the app always starts blank
+ *  (no seeded events) for every new browser/device. The generator below is kept
+ *  intact so it can be re-enabled for demos. */
+const SEED_STARTER_DATA = false;
+
 /**
  * §9 Starter data & first-run flag (Milestone 1.3)
  * -----------------------------------------------
@@ -1198,7 +1203,7 @@ export function initTimelineModel() {
     _events = loadFromStorage();
     selfHealUserNotesFlag();
 
-    if (storageAbsent && !hasUserNotesLatch()) {
+    if (SEED_STARTER_DATA && storageAbsent && !hasUserNotesLatch()) {
       _seeding = true;
       try {
         seedStarterEventsInternal(buildStarterEventPartials());
