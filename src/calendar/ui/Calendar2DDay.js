@@ -23,6 +23,7 @@ import {
   getEventsForMonth,
   todayIsoDate
 } from "../../wordweaver/timelineModel.js";
+import { openTextStylePicker } from "./TextStylePicker.js";
 
 const SLOT_PX = { 15: 30, 30: 42, 60: 66 }; // row height per slot size (taller so 15-min rows don't cram)
 const DAY_MIN = 24 * 60;
@@ -241,8 +242,12 @@ export class Calendar2DDay {
     });
     noteBtn.title = "Jot a note";
     noteBtn.style.fontSize = "17px";
+    // Paint-canvas button — pick the text style yourself.
+    const paintBtn = this._navBtn("🎨", () => openTextStylePicker());
+    paintBtn.title = "Text style";
+    paintBtn.style.fontSize = "16px";
     const close = this._navBtn("✕", () => this.close());
-    head.append(prev, next, today, dayBtn, monthBtn, title, zoomLabel, slotSel, noteBtn, close);
+    head.append(prev, next, today, dayBtn, monthBtn, title, zoomLabel, slotSel, noteBtn, paintBtn, close);
 
     // Scrollable grid
     const scroll = document.createElement("div");

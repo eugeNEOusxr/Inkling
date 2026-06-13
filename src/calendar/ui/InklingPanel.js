@@ -1,6 +1,7 @@
 import { processUserInput } from "../ai/AIBrain.js";
 import { parseInklingMessage } from "../ai/inklingParser.js";
 import { fetchInklingChat } from "../ai/fetchInklingChat.js";
+import { openTextStylePicker } from "./TextStylePicker.js";
 import { getInklingWelcomeMessage } from "../ai/inklingWelcome.js";
 import { buildNotebookReaderItems } from "../notebookReaderFeed.js";
 import { applyScheduleIntentAndRefresh } from "../ai/scheduleIntent.js";
@@ -282,6 +283,7 @@ export class InklingPanel {
     menu.append(
       mk("💬  Chat with Inkling", () => this.openWithContext()),
       mk("＋  New event", () => this._orbNewEvent()),
+      mk("🎨  Text style", () => openTextStylePicker()),
       mk("📅  Go to today", () => this._orbToday())
     );
     document.body.appendChild(menu);
