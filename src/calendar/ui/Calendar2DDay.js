@@ -426,9 +426,14 @@ export class Calendar2DDay {
         `background:${blockFill(color)};border:1px solid rgba(255,255,255,0.85);border-left:5px solid ${darken(color, 0.5)};` +
         "border-radius:8px;padding:3px 10px;overflow:hidden;cursor:pointer;box-sizing:border-box;color:#fff;" +
         `box-shadow:0 2px 8px ${color}55,0 0 0 1px rgba(0,0,0,0.15);transition:transform .12s ease`;
+      const titleTxt = escapeHtml(rec.title || rec.text || "Untitled");
+      const descTxt = rec.text && rec.text !== rec.title ? escapeHtml(rec.text) : "";
+      const scrollLine = "overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:none;-ms-overflow-style:none";
       block.innerHTML =
-        `<div style="font-weight:800;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:${BLOCK_TITLE_OUTLINE}">${escapeHtml(rec.title || rec.text || "Untitled")}</div>` +
-        `<div style="font-size:11px;font-weight:700;color:#fff;text-shadow:${BLOCK_TITLE_OUTLINE}">${clockLabel(startMin)}</div>`;
+        `<div style="${scrollLine};font-weight:800;font-size:12.5px;text-shadow:${BLOCK_TITLE_OUTLINE}"><span style="opacity:0.92">${clockLabel(startMin)}</span> · ${titleTxt}</div>` +
+        (descTxt
+          ? `<div style="${scrollLine};font-size:11px;font-weight:600;opacity:0.96;margin-top:1px;text-shadow:${BLOCK_TITLE_OUTLINE}">${descTxt}</div>`
+          : "");
       const ev = full ?? rec;
       block.addEventListener("mouseenter", () => { if (!block.style.animation) block.style.transform = "translateY(-1px) scale(1.006)"; });
       block.addEventListener("mouseleave", () => { block.style.transform = "none"; });
@@ -562,6 +567,11 @@ export class Calendar2DDay {
     const descInput = document.createElement("textarea");
     descInput.rows = 2; descInput.placeholder = "Description";
     descInput.value = ev?.body ?? "";
+    const dateInput = document.createElement("input");
+    dateInput.type = "date";
+    dateInput.value = ev?.startTime
+      ? (() => { const d = new Date(ev.startTime); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; })()
+      : this.iso;
     const startInput = document.createElement("input");
     startInput.type = "time"; startInput.value = hhmm(startMinutes);
     const endInput = document.createElement("input");
@@ -614,8 +624,8 @@ export class Calendar2DDay {
     heading.style.cssText = "font-weight:700;font-size:17px;color:#0f172a;margin-bottom:14px";
 
     const times = document.createElement("div");
-    times.style.cssText = "display:flex;gap:10px";
-    times.append(field("Start", startInput), field("End", endInput));
+    times.style.cssText = "display:flex;gap:10px;flex-wrap:wrap";
+    times.append(field("Date", dateInput), field("Start", startInput), field("End", endInput));
 
     const actions = document.createElement("div");
     actions.style.cssText = "display:flex;gap:8px;margin-top:6px";
@@ -632,20 +642,23 @@ export class Calendar2DDay {
     overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
     save.addEventListener("click", () => {
       const title = titleInput.value.trim() || "Untitled";
+      const dateIso = dateInput.value || this.iso;
       const payload = {
         type: "appointment",
         title,
         body: descInput.value.trim(),
-        startTime: buildStartTimeIso(this.iso, startInput.value || hhmm(startMinutes)),
-        endTime: buildStartTimeIso(this.iso, endInput.value || hhmm(endMinutes)),
+        startTime: buildStartTimeIso(dateIso, startInput.value || hhmm(startMinutes)),
+        endTime: buildStartTimeIso(dateIso, endInput.value || hhmm(endMinutes)),
         category: catSel.value,
-        _wwRender: { date: this.iso }
+        _wwRender: { date: dateIso }
       };
       try {
         if (isEdit) updateEvent(ev.id, payload);
         else createEvent(payload);
         close();
-        this.render();
+        // Jump to the chosen date so the new/edited event is visible.
+        if (dateIso !== this.iso) { this.iso = dateIso; this.setView("day"); }
+        else this.render();
       } catch (err) {
         console.warn("[Calendar2DDay] save failed", err);
         heading.textContent = "Couldn't save — check the times.";
