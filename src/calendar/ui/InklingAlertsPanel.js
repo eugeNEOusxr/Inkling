@@ -32,6 +32,47 @@ function escapeHtml(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+// --- opt-in "colour word system": tint category keywords in alert summaries ---
+
+const COLOR_WORDS_KEY = "inkling-color-alert-words";
+/** keyword → category (for getCategoryColor). */
+const WORD_CAT = {
+  health: "health", gym: "health", workout: "health", doctor: "health", dentist: "health", yoga: "health", run: "health", appointment: "health",
+  work: "work", meeting: "work", standup: "work", client: "work", deadline: "work", project: "work", office: "work", call: "work",
+  study: "study", exam: "study", class: "study", homework: "study", lecture: "study", course: "study", reading: "study",
+  personal: "personal", family: "personal", birthday: "personal",
+  creative: "creative", sketch: "creative", design: "creative", paint: "creative", music: "creative",
+  errand: "errands", errands: "errands", grocery: "errands", groceries: "errands", shopping: "errands", bank: "errands"
+};
+let _colorRe = null;
+function colorRe() {
+  if (!_colorRe) _colorRe = new RegExp(`\\b(${Object.keys(WORD_CAT).join("|")})\\b`, "gi");
+  return _colorRe;
+}
+
+/** @returns {boolean} */
+export function isAlertWordColorOn() {
+  try { return localStorage.getItem(COLOR_WORDS_KEY) === "1"; } catch { return false; }
+}
+/** @param {boolean} on */
+export function setAlertWordColor(on) {
+  try { localStorage.setItem(COLOR_WORDS_KEY, on ? "1" : "0"); } catch { /* ignore */ }
+}
+
+/**
+ * Wrap category keywords in colour spans. Input MUST already be HTML-escaped
+ * plain text (no tags) so we don't corrupt markup.
+ * @param {string} escaped
+ * @returns {string}
+ */
+export function colorizeAlertWords(escaped) {
+  if (!isAlertWordColorOn()) return escaped;
+  return String(escaped).replace(colorRe(), (m) => {
+    const color = getCategoryColor(WORD_CAT[m.toLowerCase()]) || "#a5b4fc";
+    return `<span style="color:${color};font-weight:800">${m}</span>`;
+  });
+}
+
 function relLabel(triggerAt, now = Date.now()) {
   if (triggerAt <= now) return "now";
   const raw = getTimeUntil(triggerAt, now);
@@ -63,17 +104,27 @@ export class InklingAlerts {
 
   _buildBadge() {
     if (!this.orb || this._badge) return;
+    // Oval count pill that sits JUST OUTSIDE the orb's top-right circumference
+    // (orb is overflow:visible) so it's never clipped. A short grey leader dash
+    // ties it to the orb. Tap the pill to open Alerts directly; tapping the orb
+    // opens the menu (which also has Alerts).
     const b = document.createElement("span");
     b.id = "inkling-alert-badge";
     b.style.cssText =
-      "position:absolute;top:-5px;right:-5px;min-width:20px;height:20px;padding:0 5px;border-radius:11px;" +
-      "background:linear-gradient(180deg,#f87171,#dc2626);color:#fff;font:800 11px system-ui;" +
-      "display:none;align-items:center;justify-content:center;box-shadow:0 2px 7px rgba(0,0,0,.45);" +
-      "border:1.5px solid rgba(255,255,255,.85);z-index:3;cursor:pointer;pointer-events:auto";
+      "position:absolute;top:-9px;right:-16px;min-width:22px;height:21px;padding:0 8px;border-radius:11px;" +
+      "background:linear-gradient(180deg,#f87171,#dc2626);color:#fff;font:800 12px system-ui;" +
+      "display:none;align-items:center;justify-content:center;box-shadow:0 3px 9px rgba(0,0,0,.5);" +
+      "border:1.5px solid rgba(255,255,255,.9);z-index:4;cursor:pointer;pointer-events:auto;white-space:nowrap";
+    // grey leader dash between orb edge and the pill
+    const dash = document.createElement("span");
+    dash.style.cssText =
+      "position:absolute;top:6px;right:-7px;width:8px;height:2px;border-radius:1px;background:rgba(148,163,184,.85);z-index:3;pointer-events:none";
     // Don't let a badge tap start an orb drag / open the orb menu.
     b.addEventListener("pointerdown", (e) => { e.stopPropagation(); e.preventDefault(); this.toggle(); });
+    this.orb.appendChild(dash);
     this.orb.appendChild(b);
     this._badge = b;
+    this._badgeDash = dash;
   }
 
   _refresh() {
@@ -85,6 +136,7 @@ export class InklingAlerts {
     if (this._badge) {
       this._badge.textContent = soon > 9 ? "9+" : String(soon);
       this._badge.style.display = soon > 0 ? "flex" : "none";
+      if (this._badgeDash) this._badgeDash.style.display = soon > 0 ? "block" : "none";
     }
     if (this._panel && this._panel.style.display !== "none") this._render();
   }
@@ -107,13 +159,30 @@ export class InklingAlerts {
     const title = document.createElement("div");
     title.textContent = "🔔 Inkling Alerts";
     title.style.cssText = "font:800 17px system-ui;letter-spacing:.3px;color:#fbcfe8";
+    // Opt-in: colour category keywords in alert text.
+    const colorBtn = document.createElement("button");
+    const syncColorBtn = () => {
+      const on = isAlertWordColorOn();
+      colorBtn.textContent = on ? "🎨 On" : "🎨 Off";
+      colorBtn.style.opacity = on ? "1" : "0.6";
+    };
+    colorBtn.title = "Colour the category words in reminders";
+    colorBtn.style.cssText =
+      "background:#1e293b;color:#e2e8f0;border:0;border-radius:8px;height:30px;padding:0 9px;cursor:pointer;font:700 11px system-ui;flex:0 0 auto";
+    colorBtn.addEventListener("click", () => { setAlertWordColor(!isAlertWordColorOn()); syncColorBtn(); this._render(); });
+    syncColorBtn();
+
     const close = document.createElement("button");
     close.textContent = "✕";
     close.title = "Close";
     close.style.cssText =
       "background:#1e293b;color:#e2e8f0;border:0;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:14px;flex:0 0 auto";
     close.addEventListener("click", () => this.hide());
-    head.append(title, close);
+
+    const headRight = document.createElement("div");
+    headRight.style.cssText = "display:flex;align-items:center;gap:6px;flex:0 0 auto";
+    headRight.append(colorBtn, close);
+    head.append(title, headRight);
 
     const body = document.createElement("div");
     body.style.cssText = "flex:1;overflow:auto;padding:12px 14px";
@@ -152,7 +221,7 @@ export class InklingAlerts {
       left.innerHTML =
         `<div style="font:800 13px system-ui;color:${color}">${escapeHtml(formatTimelineDisplayTime(alert.time))}` +
         `<span style="color:#64748b;font-weight:600;font-size:11px;margin-left:8px">${escapeHtml(CAT_LABEL[cat] ?? cat)}</span></div>` +
-        `<div style="font:600 13px system-ui;color:#f1f5f9;margin-top:2px;white-space:normal;word-break:break-word">${escapeHtml(alert.text || "Reminder")}</div>` +
+        `<div style="font:600 13px system-ui;color:#f1f5f9;margin-top:2px;white-space:normal;word-break:break-word">${colorizeAlertWords(escapeHtml(alert.text || "Reminder"))}</div>` +
         `<div style="font-size:11px;color:#94a3b8;margin-top:3px">${escapeHtml(relLabel(triggerAt, now))}</div>`;
 
       const actions = document.createElement("div");

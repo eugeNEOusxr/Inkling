@@ -151,7 +151,9 @@ body.inkling-notebook-layout #inkling-fab.inkling-avatar {
     inset 0 -8px 14px rgba(30, 27, 75, 0.6);
   cursor: grab;
   z-index: 11005;
-  overflow: hidden;
+  /* visible so the alerts badge can sit OUTSIDE the orb's circle without being
+     clipped; the sheen ::before self-clips to a circle below. */
+  overflow: visible;
   animation: inkling-orb-float 4s ease-in-out infinite;
   transition: transform 0.18s ease, box-shadow 0.25s ease;
   touch-action: none;
@@ -162,8 +164,10 @@ body.inkling-notebook-layout #inkling-fab.inkling-avatar {
 body.inkling-notebook-layout #inkling-fab.inkling-avatar::before {
   content: "";
   position: absolute;
-  inset: -30%;
+  inset: 0;
   border-radius: 50%;
+  /* self-clip the sweeping sheen to the orb circle (parent is overflow:visible). */
+  clip-path: circle(50% at 50% 50%);
   background: conic-gradient(from 0deg, rgba(255,255,255,0) 0deg, rgba(255,255,255,0.6) 38deg, rgba(255,255,255,0) 86deg, rgba(255,255,255,0) 360deg);
   mix-blend-mode: screen;
   opacity: 0.5;

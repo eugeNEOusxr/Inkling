@@ -9,7 +9,7 @@ import { getDisplayName } from "./userProfile.js";
 import { submitFeedback } from "../../auth/userAccount.js";
 import { registerInklingApp, installWriterNavigation } from "./Writer.js";
 import { openPanel } from "./AppLauncher.js";
-import { InklingAlerts } from "./InklingAlertsPanel.js";
+import { InklingAlerts, colorizeAlertWords } from "./InklingAlertsPanel.js";
 const INKLING_CRON_KEY = "calendar3d-inkling-cron-v1";
 
 /**
@@ -790,7 +790,7 @@ export class InklingPanel {
     }
     this._appendBubble(
       "inkling",
-      `⏰ <strong>Heads up</strong> — ${n} thing${n > 1 ? "s" : ""} in the next 24h. Next: ${escapeHtml(first.title)} at ${escapeHtml(first.timeLabel)}.`,
+      `⏰ <strong>Heads up</strong> — ${n} thing${n > 1 ? "s" : ""} in the next 24h. Next: ${colorizeAlertWords(escapeHtml(first.title))} at ${escapeHtml(first.timeLabel)}.`,
       "inkling-msg--proactive"
     );
   }
