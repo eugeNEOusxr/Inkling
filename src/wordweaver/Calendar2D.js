@@ -1,7 +1,7 @@
 import { getEventsForMonth, getEventsForDate, CategoryColors } from "./timelineModel.js";
 import { MonthGrid2D } from "./MonthGrid2D.js";
 import { WeekGrid2D, weekStartForDate } from "./WeekGrid2D.js";
-import { getCalendarMode } from "./calendarMode.js";
+import { getCalendarMode, setCalendarMode } from "./calendarMode.js";
 import { onTimelineDataChange, on as onBus } from "../utils/EventBus.js";
 import { parseIsoDate } from "./timelineModel.js";
 
@@ -369,7 +369,16 @@ export class Calendar2D {
     const title = document.createElement("h2");
     title.className = "ww-calendar-2d__title";
 
-    header.append(backBtn, title);
+    // Always-available escape to the 3D map (the external 3D toggle can be
+    // covered by this overlay, so the 2D header carries its own).
+    const to3dBtn = document.createElement("button");
+    to3dBtn.type = "button";
+    to3dBtn.className = "ww-calendar-2d__back";
+    to3dBtn.textContent = "🧊 3D";
+    to3dBtn.title = "Back to the 3D map";
+    to3dBtn.addEventListener("click", () => setCalendarMode("3d"));
+
+    header.append(backBtn, title, to3dBtn);
 
     const body = document.createElement("div");
     body.className = "ww-calendar-2d__body";
