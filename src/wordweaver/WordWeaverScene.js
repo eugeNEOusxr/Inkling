@@ -989,7 +989,12 @@ export class WordWeaverScene {
     this.controls.maxDistance = 120;
     this.camera.far = Math.max(this.camera.far, 200);
     this.camera.updateProjectionMatrix();
-    this._applyDaySelection();
+    // Frame the single focused card (the wheel shows one note at a time).
+    this.controls.target.set(0, 1.0, 0);
+    this.camera.up.set(0, 1, 0);
+    this.camera.position.set(0, 1.0, 12);
+    this.camera.lookAt(this.controls.target);
+    this.controls.update();
     this._ensureBackButton();
     this._updateBackButton();
   }
@@ -1088,10 +1093,8 @@ export class WordWeaverScene {
    * @param {number} dir +1 / -1
    */
   dayViewStep(dir) {
-    const items = this._dayView?.items;
-    if (!items?.length) return;
-    this._daySel = Math.max(0, Math.min(items.length - 1, this._daySel + dir));
-    this._applyDaySelection();
+    // Step the day wheel one note (wraps). The carousel shows one at a time.
+    this._dayView?.step?.(dir);
   }
 
   /** Highlight the selected note + pan the camera to scan to it. */

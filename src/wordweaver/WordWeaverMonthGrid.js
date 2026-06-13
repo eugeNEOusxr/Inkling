@@ -887,40 +887,34 @@ function wrapWords(text, maxChars) {
 }
 
 export function createDayView(scene, dayIso, segment = "afternoon") {
+  void segment;
   const group = new THREE.Group();
   group.name = "ww-day-view";
-  const events = getEventsForDate(dayIso);
+  // Earliest-first so the wheel opens on the first note of the day.
+  const events = [...getEventsForDate(dayIso)].sort((a, b) => parseHHMM(a.time) - parseHHMM(b.time));
   const textStyle = getTextStyle(); // user-chosen 3D look (chrome/neon/gold/…)
   void preloadReal3DFont(); // beveled 3D note text needs the typeface loaded
   /** @type {import("./Real3DText.js").Real3DText[]} */
   const textNodes = [];
-
-  // A clean white "wall" canvas the spheres + 3D text sit against — colored text
-  // pops on white, while the scene's cosmic background shows around/behind it for
-  // an immersive 3D stage. (Replaces the busy daylight photo backdrops.)
-  const bgMat = new THREE.MeshBasicMaterial({ color: 0xf4f6fb, toneMapped: false });
-  const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), bgMat);
-  bgMesh.name = "ww-day-view-bg";
-  bgMesh.scale.set(34, DAY_VIEW_HEIGHT + 9, 1);
-  bgMesh.position.set(8, 0.5, -1.4); // behind the spheres (z=0) and text
-  bgMesh.renderOrder = -5;
-  group.add(bgMesh);
-
   /** @type {Array<{ mesh: THREE.Mesh, mat: THREE.Material, tex?: THREE.Texture }>} */
   const labels = [];
-  /** @type {THREE.Mesh[]} */
+  /** @type {THREE.Mesh[]} disposables (materials) */
   const spheres = [];
-  /** @type {Array<{ mesh: THREE.Mesh, y: number, event: any, baseY: number, phase: number }>} */
+  /** @type {Array<{ group: THREE.Group, box: THREE.Mesh, baseY: number, event: any }>} */
+  const cards = [];
+  /** @type {Array<{ mesh: THREE.Mesh, y: number, event: any }>} kept for scene compat */
   const items = [];
   /** shared box + edge geometry, captured so dispose() can free them. */
   const dayBoxGeos = {};
 
-  // Date heading — beveled 2.5D text (same family as the note text), brighter and
-  // popped out so the day reads like a polished title.
+  // NO white wall any more — the cosmic background shows through; one note's
+  // animated box + centered text floats in the focused spot.
+
+  // Date heading — a polished beveled title above the focused card.
   const hp = text3dParams(textStyle, 0xf8fafc);
   const heading3d = createReal3DText(formatDayHeading(dayIso), {
-    fontSize: 1.5,
-    depth: 0.42,
+    fontSize: 1.2,
+    depth: 0.4,
     color: hp.color,
     glowColor: hp.glowColor,
     metalness: hp.metalness,
@@ -928,11 +922,13 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
     emissiveIntensity: hp.emissiveIntensity
   });
   const headingGroup = heading3d.getGroup();
-  headingGroup.position.set(0, DAY_VIEW_HEIGHT / 2 + 2.1, 0);
+  headingGroup.position.set(0, 4.7, 0);
   headingGroup.layers.set(1);
   headingGroup.traverse((o) => o.layers.set(1));
   group.add(headingGroup);
   textNodes.push(heading3d);
+
+  const BOX_Y = 1.9; // box sits above the centered text block
 
   if (!events.length) {
     const empty = createLabelSprite("No notes this day", {
@@ -943,108 +939,143 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
       planeW: 5,
       planeH: 0.7
     });
+    empty.mesh.position.set(0, 0.5, 0);
     group.add(empty.mesh);
     labels.push(empty);
   } else {
-    // Each note's marker is an ANIMATED 3D box in its category colour, standing
-    // alone next to its text — no connecting line. The cube slowly rotates (so
-    // it reads as 3D from any angle) with a gentle bob; a darker wireframe edge
-    // defines the box. Shared geometry, per-note colour materials.
-    const BOX = 0.82;
+    // One CARD per note (box + glow + centered text). All cards sit in the same
+    // focused spot; only the current one is visible — a wheel you step through.
+    const BOX = 0.9;
     const boxGeo = new THREE.BoxGeometry(BOX, BOX, BOX);
     const edgesGeo = new THREE.EdgesGeometry(boxGeo);
     dayBoxGeos.boxGeo = boxGeo;
     dayBoxGeos.edgesGeo = edgesGeo;
-    for (const ev of events) {
-      const minutes = parseHHMM(ev.time);
-      const y = (minutes / 1439) * DAY_VIEW_HEIGHT - DAY_VIEW_HEIGHT / 2;
+    events.forEach((ev, idx) => {
+      const card = new THREE.Group();
+      card.name = `ww-day-card-${idx}`;
       const color = dayCategoryColor(ev.category, ev.text);
+
       const mat = new THREE.MeshStandardMaterial({
         color,
         emissive: new THREE.Color(color).multiplyScalar(0.5),
-        emissiveIntensity: 0.7,
-        roughness: 0.32,
-        metalness: 0.18
+        emissiveIntensity: 0.75,
+        roughness: 0.3,
+        metalness: 0.2
       });
       const box = new THREE.Mesh(boxGeo, mat);
-      box.position.set(0, y, 0);
+      box.position.set(0, BOX_Y, 0);
       const edges = new THREE.LineSegments(edgesGeo, new THREE.LineBasicMaterial({
         color: new THREE.Color(color).multiplyScalar(0.35), transparent: true, opacity: 0.9
       }));
-      box.add(edges); // rides the box's rotation + selection scale
-      group.add(box);
-      spheres.push(box);   // box material disposed in dispose()
-      spheres.push(edges); // edge material disposed in dispose()
-      items.push({ mesh: box, y, event: ev, baseY: y, phase: Math.random() * Math.PI * 2 });
+      box.add(edges);
+      card.add(box);
+      spheres.push(box, edges);
 
-      // Soft colored aura behind the box — a glow in its own category color.
+      // Glow aura behind the box.
       const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: getDayGlowTexture(),
-        color,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending
+        map: getDayGlowTexture(), color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
       }));
-      glow.scale.set(2.6, 2.6, 1);
-      glow.position.set(0, y, -0.05);
+      glow.scale.set(3.1, 3.1, 1);
+      glow.position.set(0, BOX_Y, -0.1);
       glow.layers.set(1);
-      group.add(glow);
-      spheres.push(glow); // tracked for material disposal
+      card.add(glow);
+      spheres.push(glow);
 
-      // Full note text to the RIGHT of the box, word-wrapped (no truncation),
-      // rendered smaller + thinner so it's legible, not bulky.
+      // Centered note text below the box (Real3DText centers each line at x=0).
       const fullText = `${ev.time}  ${String(ev.text || ev.title || "").trim()}`;
-      const lines = wrapWords(fullText, 22);
+      const lines = wrapWords(fullText, 20);
       const params = text3dParams(textStyle, color);
-      const fontSize = 0.58;
-      const lineH = 0.74;
-      // Standoff distance the text keeps from the box so they're never crowded.
-      const NOTE_TEXT_GAP = BOX / 2 + 2.6;
-      const startY = y + ((lines.length - 1) * lineH) / 2; // center the block on the box
+      const fontSize = 0.62;
+      const lineH = 0.82;
+      const startY = 0.45;
       lines.forEach((line, li) => {
         const t3d = createReal3DText(line, {
-          fontSize,
-          ...params,
-          depth: Math.min(params.depth ?? 0.2, 0.16) // shallower → less bulky
+          fontSize, ...params, depth: Math.min(params.depth ?? 0.2, 0.16)
         });
         const tg = t3d.getGroup();
-        // Left-anchor at the standoff gap (Real3DText centers each line → shift right by half width).
-        tg.position.set(NOTE_TEXT_GAP + line.length * fontSize * 0.29, startY - li * lineH, 0.08);
+        tg.position.set(0, startY - li * lineH, 0.08);
         tg.layers.set(1);
         tg.traverse((o) => o.layers.set(1));
-        group.add(tg);
+        card.add(tg);
         textNodes.push(t3d);
       });
-    }
+
+      card.visible = idx === 0;
+      group.add(card);
+      cards.push({ group: card, box, baseY: BOX_Y, event: ev });
+      items.push({ mesh: box, y: 0, event: ev });
+    });
   }
 
   group.layers.set(1);
   group.traverse((o) => o.layers.set(1));
   scene.add(group);
 
-  // Real3DText rebuilds its meshes when the typeface finishes loading (async);
-  // re-apply the render layer so the new extruded glyphs stay visible.
   const _reLayer = () => group.traverse((o) => o.layers.set(1));
   if (typeof window !== "undefined") {
     window.addEventListener("wordweaver:font-ready", _reLayer);
   }
 
+  // --- 2D carousel arrows (DOM overlay) ---
+  let current = 0;
+  let dom = null;
+  let domLabel = null;
+  function syncLabel() {
+    if (!domLabel || !cards.length) return;
+    const ev = cards[current].event;
+    const title = String(ev.text || ev.title || "Note").trim();
+    domLabel.textContent = `${ev.time} · ${title.length > 26 ? title.slice(0, 25) + "…" : title}  (${current + 1}/${cards.length})`;
+  }
+  function select(i) {
+    if (!cards.length) return;
+    current = ((i % cards.length) + cards.length) % cards.length;
+    cards.forEach((c, idx) => { c.group.visible = idx === current; });
+    syncLabel();
+  }
+  function step(dir) { select(current + (dir < 0 ? -1 : 1)); }
+  if (typeof document !== "undefined" && cards.length) {
+    dom = document.createElement("div");
+    dom.id = "ww-day-carousel";
+    dom.style.cssText =
+      "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:10260;display:flex;align-items:center;gap:14px;" +
+      "background:rgba(8,12,22,0.72);backdrop-filter:blur(8px);border:1px solid rgba(99,102,241,0.45);border-radius:999px;" +
+      "padding:8px 14px;color:#e6ebff;font:700 13px system-ui;box-shadow:0 8px 28px rgba(0,0,0,0.45)";
+    const prev = document.createElement("button"); prev.textContent = "‹"; prev.title = "Earlier note";
+    const next = document.createElement("button"); next.textContent = "›"; next.title = "Later note";
+    for (const b of [prev, next]) {
+      b.style.cssText = "background:#312e81;color:#e0e7ff;border:0;border-radius:50%;width:38px;height:38px;font-size:20px;line-height:1;cursor:pointer;flex:0 0 auto";
+    }
+    domLabel = document.createElement("div");
+    domLabel.style.cssText = "min-width:150px;max-width:300px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+    prev.addEventListener("click", () => step(-1));
+    next.addEventListener("click", () => step(1));
+    dom.append(prev, domLabel, next);
+    document.body.appendChild(dom);
+  }
+  select(0); // open on the earliest note
+
   return {
     group,
     items,
-    /** Per-frame: rotate + gently bob each note box so they feel alive. */
+    select,
+    step,
+    get current() { return current; },
+    get count() { return cards.length; },
+    /** Per-frame: spin + drift the focused box on its plane so it feels alive. */
     update(elapsed) {
-      for (const it of items) {
-        const b = it.mesh;
-        b.rotation.y = elapsed * 0.6 + it.phase;
-        b.rotation.x = Math.sin(elapsed * 0.5 + it.phase) * 0.22;
-        b.position.y = it.baseY + Math.sin(elapsed * 0.9 + it.phase) * 0.07;
-      }
+      if (!cards.length) return;
+      const b = cards[current].box;
+      b.rotation.y = elapsed * 0.5;
+      b.rotation.x = Math.sin(elapsed * 0.4) * 0.2;
+      b.position.x = Math.sin(elapsed * 0.8) * 0.5; // shift on the plane, in its spot
+      b.position.z = Math.cos(elapsed * 0.8) * 0.5;
+      b.position.y = cards[current].baseY + Math.sin(elapsed * 1.2) * 0.08;
     },
     dispose() {
       if (typeof window !== "undefined") {
         window.removeEventListener("wordweaver:font-ready", _reLayer);
       }
+      if (dom) dom.remove();
       for (const t of textNodes) t.dispose();
       scene.remove(group);
       for (const s of spheres) {
@@ -1057,13 +1088,6 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
       }
       dayBoxGeos.boxGeo?.dispose();
       dayBoxGeos.edgesGeo?.dispose();
-      if (bgMesh) {
-        bgMesh.geometry.dispose();
-        if (bgMesh.material instanceof THREE.Material) {
-          bgMesh.material.map?.dispose();
-          bgMesh.material.dispose();
-        }
-      }
     }
   };
 }
