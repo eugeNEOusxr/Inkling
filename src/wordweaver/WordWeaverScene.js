@@ -1139,6 +1139,7 @@ export class WordWeaverScene {
       this._updateCameraFocus(now);
       this._yearLayout?.update(delta, t, this.camera);
       this._monthGrid?.update(delta, t);
+      this._dayView?.update?.(t);
       if (this._monthGridLayoutActive) {
         this._updateGridFlight(delta);
       } else {

@@ -910,8 +910,10 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
   const labels = [];
   /** @type {THREE.Mesh[]} */
   const spheres = [];
-  /** @type {Array<{ mesh: THREE.Mesh, y: number, event: any }>} */
+  /** @type {Array<{ mesh: THREE.Mesh, y: number, event: any, baseY: number, phase: number }>} */
   const items = [];
+  /** shared box + edge geometry, captured so dispose() can free them. */
+  const dayBoxGeos = {};
 
   // Date heading — beveled 2.5D text (same family as the note text), brighter and
   // popped out so the day reads like a polished title.
@@ -944,26 +946,38 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
     group.add(empty.mesh);
     labels.push(empty);
   } else {
-    /** @type {THREE.Vector3[]} */
-    const linePts = [];
+    // Each note's marker is an ANIMATED 3D box in its category colour, standing
+    // alone next to its text — no connecting line. The cube slowly rotates (so
+    // it reads as 3D from any angle) with a gentle bob; a darker wireframe edge
+    // defines the box. Shared geometry, per-note colour materials.
+    const BOX = 0.82;
+    const boxGeo = new THREE.BoxGeometry(BOX, BOX, BOX);
+    const edgesGeo = new THREE.EdgesGeometry(boxGeo);
+    dayBoxGeos.boxGeo = boxGeo;
+    dayBoxGeos.edgesGeo = edgesGeo;
     for (const ev of events) {
       const minutes = parseHHMM(ev.time);
       const y = (minutes / 1439) * DAY_VIEW_HEIGHT - DAY_VIEW_HEIGHT / 2;
       const color = dayCategoryColor(ev.category, ev.text);
       const mat = new THREE.MeshStandardMaterial({
         color,
-        emissive: new THREE.Color(color).multiplyScalar(0.55),
-        emissiveIntensity: 0.85,
-        roughness: 0.35,
-        metalness: 0.12
+        emissive: new THREE.Color(color).multiplyScalar(0.5),
+        emissiveIntensity: 0.7,
+        roughness: 0.32,
+        metalness: 0.18
       });
-      const mesh = new THREE.Mesh(DAY_VIEW_SPHERE_GEO, mat);
-      mesh.position.set(0, y, 0);
-      group.add(mesh);
-      spheres.push(mesh);
-      items.push({ mesh, y, event: ev });
+      const box = new THREE.Mesh(boxGeo, mat);
+      box.position.set(0, y, 0);
+      const edges = new THREE.LineSegments(edgesGeo, new THREE.LineBasicMaterial({
+        color: new THREE.Color(color).multiplyScalar(0.35), transparent: true, opacity: 0.9
+      }));
+      box.add(edges); // rides the box's rotation + selection scale
+      group.add(box);
+      spheres.push(box);   // box material disposed in dispose()
+      spheres.push(edges); // edge material disposed in dispose()
+      items.push({ mesh: box, y, event: ev, baseY: y, phase: Math.random() * Math.PI * 2 });
 
-      // Soft colored aura behind the sphere — a glow in its own category color.
+      // Soft colored aura behind the box — a glow in its own category color.
       const glow = new THREE.Sprite(new THREE.SpriteMaterial({
         map: getDayGlowTexture(),
         color,
@@ -976,18 +990,17 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
       glow.layers.set(1);
       group.add(glow);
       spheres.push(glow); // tracked for material disposal
-      linePts.push(new THREE.Vector3(0, y, 0));
 
-      // Full note text, word-wrapped onto readable lines (no truncation) and
+      // Full note text to the RIGHT of the box, word-wrapped (no truncation),
       // rendered smaller + thinner so it's legible, not bulky.
       const fullText = `${ev.time}  ${String(ev.text || ev.title || "").trim()}`;
       const lines = wrapWords(fullText, 22);
       const params = text3dParams(textStyle, color);
       const fontSize = 0.58;
       const lineH = 0.74;
-      // Standoff distance the text keeps from the sphere so they're never crowded.
-      const NOTE_TEXT_GAP = DAY_VIEW_SPHERE_GEO.parameters.radius + 2.6;
-      const startY = y + ((lines.length - 1) * lineH) / 2; // center the block on the sphere
+      // Standoff distance the text keeps from the box so they're never crowded.
+      const NOTE_TEXT_GAP = BOX / 2 + 2.6;
+      const startY = y + ((lines.length - 1) * lineH) / 2; // center the block on the box
       lines.forEach((line, li) => {
         const t3d = createReal3DText(line, {
           fontSize,
@@ -1003,14 +1016,6 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
         textNodes.push(t3d);
       });
     }
-    linePts.push(new THREE.Vector3(0, DAY_VIEW_HEIGHT / 2 + 1.4, 0));
-    linePts.sort((a, b) => a.y - b.y);
-    const line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(linePts),
-      new THREE.LineBasicMaterial({ color: 0x5fb0ff, transparent: true, opacity: 0.5 })
-    );
-    line.name = "ww-day-view-line";
-    group.add(line);
   }
 
   group.layers.set(1);
@@ -1027,6 +1032,15 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
   return {
     group,
     items,
+    /** Per-frame: rotate + gently bob each note box so they feel alive. */
+    update(elapsed) {
+      for (const it of items) {
+        const b = it.mesh;
+        b.rotation.y = elapsed * 0.6 + it.phase;
+        b.rotation.x = Math.sin(elapsed * 0.5 + it.phase) * 0.22;
+        b.position.y = it.baseY + Math.sin(elapsed * 0.9 + it.phase) * 0.07;
+      }
+    },
     dispose() {
       if (typeof window !== "undefined") {
         window.removeEventListener("wordweaver:font-ready", _reLayer);
@@ -1041,8 +1055,8 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
         l.mat.dispose();
         l.tex?.dispose();
       }
-      const line = group.getObjectByName("ww-day-view-line");
-      if (line instanceof THREE.Line) line.geometry.dispose();
+      dayBoxGeos.boxGeo?.dispose();
+      dayBoxGeos.edgesGeo?.dispose();
       if (bgMesh) {
         bgMesh.geometry.dispose();
         if (bgMesh.material instanceof THREE.Material) {
