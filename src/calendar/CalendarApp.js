@@ -1087,7 +1087,7 @@ export class CalendarApp {
     this.inklingPanel.minimize();
     this.wordWeaverEmbed?.exitImmersive();
     this.wordWeaverEmbed?.hide();
-    this._weaverHelix?.hide();
+    this._weaverJournal?.hide();
     this.layerManager.close("wordweaver");
 
     beginAppTabSurface(tab);
@@ -1139,15 +1139,15 @@ export class CalendarApp {
     }
   }
 
-  /** WordWeaver notes-constellation (helix). Lazy-loaded self-contained view. */
+  /** WordWeaver Journal — 365 day-platforms + walls, calendar teleport. Lazy-loaded. */
   async _openConstellation() {
     this.wordWeaverEmbed?.exitImmersive();
     this.wordWeaverEmbed?.hide();
-    if (!this._weaverHelix) {
-      const { WeaverHelix } = await import("../wordweaver/WeaverHelix.js");
-      this._weaverHelix = new WeaverHelix(this.scene, this.camera, this.controls);
+    if (!this._weaverJournal) {
+      const { WeaverJournal } = await import("../wordweaver/WeaverJournal.js");
+      this._weaverJournal = new WeaverJournal(this.scene, this.camera, this.controls);
     }
-    this._weaverHelix.show();
+    this._weaverJournal.show();
   }
 
   _showWordWeaverPreview(dateStr, time) {
@@ -1703,7 +1703,7 @@ export class CalendarApp {
   }
 
   update() {
-    this._weaverHelix?.update();
+    this._weaverJournal?.update();
   }
 
   _detectNativeRuntime() {

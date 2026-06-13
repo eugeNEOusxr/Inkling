@@ -242,55 +242,176 @@ export function sortTimelineForDisplay(entries) {
  *   alertMinutesFromNow?: number
  * }>}
  */
-// A deliberately busy, color-varied sample month so the 3D calendar feels alive.
-// Bodies contain category keywords (classifyText) → distinct sphere colors:
-// health=red, study=green, work=yellow, personal=blue, creative=purple, errand=orange.
+// A deliberately busy, color-varied sample YEAR so the 3D calendar / WordWeaver
+// layouts feel alive. Bodies contain category keywords (classifyText) → distinct
+// sphere colors: health=red, study=green, work=yellow, personal=blue,
+// creative=purple, errand=orange. ~550 events spread across the whole year are
+// generated deterministically below; a small curated block keeps today/near-term
+// human-readable and seeds the alerts bell.
+//
+// IMPORTANT: every body must contain a keyword for ITS OWN category and none for
+// an earlier-checked one (classifyText order: health→study→work→errand→creative
+// →personal). Audited accordingly — do not add stray "call"/"lunch"/"store" etc.
+
+/** @type {Record<string,{ type: EventType, times: string[], items: { title: string, body: string }[] }>} */
+const STARTER_CONTENT = {
+  health: {
+    type: "health",
+    times: ["06:30", "07:00", "07:30", "08:00", "12:30", "18:00", "20:30"],
+    items: [
+      { title: "Morning workout", body: "Morning gym workout session." },
+      { title: "Doctor checkup", body: "Doctor checkup appointment." },
+      { title: "Healthy breakfast", body: "Healthy breakfast and a stretch." },
+      { title: "Midday walk", body: "Lunch and a long walk outside." },
+      { title: "Meal prep", body: "Dinner meal prep for the week." },
+      { title: "Early night", body: "Wind down for an early sleep." },
+      { title: "Yoga", body: "Yoga workout at the gym." },
+      { title: "Dentist", body: "Doctor and dentist cleaning." },
+      { title: "Evening run", body: "Evening run and a healthy meal." },
+      { title: "Physio", body: "Physical therapy workout." }
+    ]
+  },
+  study: {
+    type: "study",
+    times: ["09:00", "10:00", "11:00", "14:00", "16:00", "19:00", "20:00"],
+    items: [
+      { title: "Exam study", body: "Study for the final exam." },
+      { title: "Reading", body: "Read a chapter for class." },
+      { title: "Course module", body: "Online course module." },
+      { title: "Homework", body: "Homework and review." },
+      { title: "Language", body: "Learn a new language." },
+      { title: "Library", body: "Library study session." },
+      { title: "Exam prep", body: "Exam prep and notes." },
+      { title: "Research", body: "Read research for the course." },
+      { title: "Lecture", body: "Class lecture review." },
+      { title: "Practice", body: "Practice exam questions." }
+    ]
+  },
+  work: {
+    type: "task",
+    times: ["09:00", "09:30", "10:00", "11:00", "13:00", "14:00", "15:00", "16:00"],
+    items: [
+      { title: "Standup", body: "Team standup meeting." },
+      { title: "Deadline", body: "Project deadline review." },
+      { title: "Inbox", body: "Clear the inbox of email." },
+      { title: "Client call", body: "Client call follow-up." },
+      { title: "Planning", body: "Sprint planning meeting." },
+      { title: "Report", body: "Quarterly report deadline." },
+      { title: "1:1", body: "One on one at the office." },
+      { title: "Proposal", body: "Work on the proposal." },
+      { title: "Vendor", body: "Conference call with vendor." },
+      { title: "Sync", body: "Project sync meeting." }
+    ]
+  },
+  errand: {
+    type: "task",
+    times: ["10:00", "11:30", "12:00", "13:30", "15:00", "16:30", "17:30"],
+    items: [
+      { title: "Groceries", body: "Grocery store run." },
+      { title: "Bank", body: "Bank deposit errand." },
+      { title: "Pharmacy", body: "Pharmacy pickup." },
+      { title: "Post", body: "Mail a package." },
+      { title: "Supplies", body: "Shop for supplies." },
+      { title: "Dry cleaning", body: "Dry cleaning pickup." },
+      { title: "Hardware", body: "Hardware store trip." },
+      { title: "Returns", body: "Return an order to the store." },
+      { title: "Refill", body: "Grocery and pharmacy run." },
+      { title: "Errands", body: "Errand around town." }
+    ]
+  },
+  creative: {
+    type: "creative",
+    times: ["10:00", "14:00", "15:30", "18:00", "19:30", "21:00"],
+    items: [
+      { title: "Paint", body: "Paint studio session." },
+      { title: "Write", body: "Write a short story." },
+      { title: "Music", body: "Music practice." },
+      { title: "Artwork", body: "Design new artwork." },
+      { title: "Sketch", body: "Sketch and draw ideas." },
+      { title: "Demo", body: "Record a music demo." },
+      { title: "Journal", body: "Creative journaling." },
+      { title: "Concept", body: "Draw concept art." },
+      { title: "Story", body: "Write in the journal." },
+      { title: "Poster", body: "Design a poster." }
+    ]
+  },
+  personal: {
+    type: "note",
+    times: ["12:00", "17:00", "18:30", "19:00", "20:00", "21:00"],
+    items: [
+      { title: "Family", body: "Family time at home." },
+      { title: "Coffee", body: "Coffee with a friend." },
+      { title: "Birthday", body: "Birthday party." },
+      { title: "Unwind", body: "Relax and unwind." },
+      { title: "Movie", body: "Movie night at home." },
+      { title: "Game night", body: "Game night with friends." },
+      { title: "Admin", body: "Personal admin and budget." },
+      { title: "Trip", body: "Weekend trip with friends." },
+      { title: "Brunch", body: "Brunch with a friend." },
+      { title: "Downtime", body: "Relax at home." }
+    ]
+  }
+};
+
+const STARTER_CAT_ORDER = ["health", "study", "work", "errand", "creative", "personal"];
+
+/** Deterministic PRNG (mulberry32) so the demo year is identical every load. */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Generate a full year (~550) of varied starter events spread across day offsets
+ * from today. Stable across loads (seeded). Skips offsets -1..1 (curated block).
+ * @returns {Array<{ dayOffset:number, time:string, type:EventType, title:string, body:string, category:string, priority?:Priority, alertAtStart?:boolean }>}
+ */
+function buildStarterYearTemplates() {
+  const out = [];
+  const rng = mulberry32(0x1357a);
+  for (let off = -163; off <= 201; off++) {
+    if (off >= -1 && off <= 1) continue; // curated below
+    const r = rng();
+    const count = r < 0.12 ? 0 : r < 0.55 ? 1 : r < 0.85 ? 2 : r < 0.96 ? 3 : 4;
+    for (let k = 0; k < count; k++) {
+      const cat = STARTER_CAT_ORDER[Math.floor(rng() * STARTER_CAT_ORDER.length)];
+      const pool = STARTER_CONTENT[cat];
+      const item = pool.items[Math.floor(rng() * pool.items.length)];
+      const time = pool.times[Math.floor(rng() * pool.times.length)];
+      const isAlarm = rng() < 0.15;
+      out.push({
+        dayOffset: off,
+        time,
+        type: isAlarm ? "alert" : pool.type,
+        title: item.title,
+        body: item.body,
+        category: cat,
+        priority: /** @type {Priority} */ (1 + Math.floor(rng() * 3)),
+        ...(isAlarm ? { alertAtStart: true } : {})
+      });
+    }
+  }
+  return out;
+}
+
 const STARTER_EVENT_TEMPLATES = [
-  // Today — busy (3 differentiated notes → colored spheres + connecting lines)
+  // Today — busy (differentiated notes → colored spheres + connecting lines)
   { dayOffset: 0, time: "07:00", type: "health", title: "Morning workout", body: "Gym session and a healthy breakfast.", category: "health", priority: 1 },
-  { dayOffset: 0, time: "10:00", type: "appointment", title: "Team meeting", body: "Project standup call with the office.", category: "work", priority: 2 },
-  { dayOffset: 0, time: "17:30", type: "task", title: "Grocery run", body: "Grocery store pickup on the way home.", category: "errands", priority: 1 },
+  { dayOffset: 0, time: "10:00", type: "appointment", title: "Team meeting", body: "Project standup meeting at the office.", category: "work", priority: 2 },
+  { dayOffset: 0, time: "17:30", type: "task", title: "Grocery run", body: "Grocery store pickup on the way home.", category: "errand", priority: 1 },
   // Tomorrow — busy
   { dayOffset: 1, time: "08:30", type: "study", title: "Exam prep", body: "Study for the course exam, read chapter 4.", category: "study", priority: 2 },
   { dayOffset: 1, time: "13:00", type: "creative", title: "Design draft", body: "Sketch and design the new layout art.", category: "creative", priority: 1 },
-  { dayOffset: 1, time: "19:00", type: "note", title: "Family dinner", body: "Dinner at home with family.", category: "personal", priority: 1 },
-  // +2 — busy
-  { dayOffset: 2, time: "09:00", type: "appointment", title: "Doctor visit", body: "Doctor checkup — health review.", category: "health", priority: 2 },
-  { dayOffset: 2, time: "15:00", type: "task", title: "Project deadline", body: "Finish the project and send the email.", category: "work", priority: 3 },
-  { dayOffset: 2, time: "20:00", type: "creative", title: "Paint", body: "Evening painting session.", category: "creative", priority: 0 },
-  // +3
-  { dayOffset: 3, time: "06:30", type: "health", title: "Run", body: "Morning workout run.", category: "health", priority: 1 },
-  { dayOffset: 3, time: "11:00", type: "study", title: "Homework", body: "Homework and class notes.", category: "study", priority: 1 },
-  // +5
-  { dayOffset: 5, time: "12:00", type: "task", title: "Bank errand", body: "Bank visit and mail drop.", category: "errands", priority: 1 },
-  { dayOffset: 5, time: "16:00", type: "creative", title: "Write music", body: "Write and record music ideas.", category: "creative", priority: 1 },
-  // +7 — busy
-  { dayOffset: 7, time: "09:00", type: "task", title: "Email + calls", body: "Work emails and client calls.", category: "work", priority: 2 },
-  { dayOffset: 7, time: "12:30", type: "health", title: "Lunch walk", body: "Healthy lunch and a short walk.", category: "health", priority: 0 },
-  { dayOffset: 7, time: "21:00", type: "note", title: "Friends", body: "Party with friends.", category: "personal", priority: 1 },
-  // +10
-  { dayOffset: 10, time: "10:00", type: "study", title: "Course reading", body: "Read course material, learn module 3.", category: "study", priority: 1 },
-  { dayOffset: 10, time: "14:00", type: "task", title: "Shopping", body: "Shop for supplies at the store.", category: "errands", priority: 0 },
-  // +12
-  { dayOffset: 12, time: "11:00", type: "appointment", title: "Office meeting", body: "Project meeting at the office.", category: "work", priority: 2 },
-  // +14
-  { dayOffset: 14, time: "15:30", type: "creative", title: "Draw", body: "Draw and design concept art.", category: "creative", priority: 1 },
-  { dayOffset: 14, time: "18:30", type: "note", title: "Relax at home", body: "Relax at home, personal time.", category: "personal", priority: 0 },
-  // +18
-  { dayOffset: 18, time: "08:00", type: "study", title: "Study block", body: "Exam study and review.", category: "study", priority: 2 },
-  { dayOffset: 18, time: "13:00", type: "appointment", title: "Dentist", body: "Doctor / dentist cleaning.", category: "health", priority: 2 },
-  // +20 — busy
-  { dayOffset: 20, time: "09:30", type: "task", title: "Project work", body: "Deep work on the project, office call.", category: "work", priority: 2 },
-  { dayOffset: 20, time: "12:00", type: "task", title: "Grocery", body: "Grocery and pharmacy pickup.", category: "errands", priority: 1 },
-  { dayOffset: 20, time: "17:00", type: "creative", title: "Design review", body: "Design and art review.", category: "creative", priority: 1 },
-  // Past weeks (so they aren't empty)
-  { dayOffset: -2, time: "07:30", type: "health", title: "Workout", body: "Gym workout and breakfast.", category: "health", priority: 1 },
-  { dayOffset: -5, time: "10:00", type: "study", title: "Class", body: "Class and homework review.", category: "study", priority: 1 },
-  { dayOffset: -8, time: "14:00", type: "task", title: "Meeting", body: "Work meeting and emails.", category: "work", priority: 1 },
-  { dayOffset: -12, time: "19:00", type: "note", title: "Family time", body: "Family dinner at home.", category: "personal", priority: 0 },
-  // Far-future demo
-  { dayOffset: 40, time: "13:00", type: "appointment", title: "Dentist reminder", body: "Routine cleaning — bring insurance card.", category: "health", priority: 2 },
-  // Alert demo (keep)
+  { dayOffset: 1, time: "19:00", type: "note", title: "Family evening", body: "Relax at home with family.", category: "personal", priority: 1 },
+  // Yesterday
+  { dayOffset: -1, time: "07:30", type: "health", title: "Workout", body: "Gym workout and breakfast.", category: "health", priority: 1 },
+  { dayOffset: -1, time: "15:00", type: "task", title: "Project work", body: "Work on the project and email the team.", category: "work", priority: 2 },
+  // Alert demo (keep — seeds the alerts bell)
   {
     dayOffset: 0,
     time: "16:00",
@@ -300,7 +421,9 @@ const STARTER_EVENT_TEMPLATES = [
     category: "reminder",
     priority: 2,
     alertMinutesFromNow: 90
-  }
+  },
+  // The full demo year (~550 events across all 12 months)
+  ...buildStarterYearTemplates()
 ];
 
 /** @deprecated Use buildStarterEventPartials for §3.1 shape; kept for display-only callers. */
@@ -328,6 +451,9 @@ export function buildStarterEventPartials(now = readNowMs()) {
         time: new Date(now + t.alertMinutesFromNow * 60_000).toISOString(),
         kind: "popup"
       });
+    }
+    if (t.alertAtStart) {
+      alerts.push({ time: startTime, kind: "popup" });
     }
     return {
       id: `${STARTER_ID_PREFIX}${i}`,
