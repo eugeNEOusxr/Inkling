@@ -178,7 +178,8 @@ export class Calendar2DDay {
         headBg: "#f8fafc", headBorder: "#e2e8f0",
         title: "#0f172a", titleShadow: HEADER_3D,
         btnBg: "#fff", btnBorder: "#cbd5e1", btnText: "#0f172a",
-        gridHour: "#e2e8f0", gridMinor: "#f1f5f9", hourLabel: "#475569",
+        gridHour: "#e2e8f0", gridMinor: "#f1f5f9", hourLabel: "#334155",
+        hourShadow: "0 1px 0 rgba(255,255,255,0.7)",
         cellIn: "#fff", cellOut: "#f8fafc", num: "#0f172a", numDim: "#94a3b8",
         legendBg: "#f8fafc", legendBorder: "#e2e8f0", legendText: "#475569", weekday: "#475569"
       };
@@ -188,7 +189,8 @@ export class Calendar2DDay {
       headBg: "rgba(10,15,32,0.65)", headBorder: "rgba(255,255,255,0.1)",
       title: "#f1f5ff", titleShadow: "0 1px 2px rgba(0,0,0,0.6),0 0 16px rgba(129,140,248,0.45)",
       btnBg: "rgba(255,255,255,0.07)", btnBorder: "rgba(255,255,255,0.18)", btnText: "#e6ebff",
-      gridHour: "rgba(255,255,255,0.16)", gridMinor: "rgba(255,255,255,0.06)", hourLabel: "#aab4d4",
+      gridHour: "rgba(255,255,255,0.16)", gridMinor: "rgba(255,255,255,0.06)", hourLabel: "#f4f7ff",
+      hourShadow: "1px 1px 0 rgba(0,0,0,0.75),0 0 9px rgba(150,170,255,0.5)",
       cellIn: "rgba(255,255,255,0.05)", cellOut: "rgba(255,255,255,0.015)", num: "#e6ebff", numDim: "#6b7494",
       legendBg: "rgba(255,255,255,0.05)", legendBorder: "rgba(255,255,255,0.1)", legendText: "#c3cae6", weekday: "#a5b4fc"
     };
@@ -454,7 +456,7 @@ export class Calendar2DDay {
         lab.textContent = clockLabel(min);
         lab.style.cssText =
           `position:absolute;left:0;width:${GUTTER - 8}px;top:${min * pxPerMin - 8}px;` +
-          `text-align:right;font:700 11.5px system-ui;color:${P.hourLabel};letter-spacing:0.2px`;
+          `text-align:right;font:800 12px system-ui;color:${P.hourLabel};letter-spacing:0.3px;text-shadow:${P.hourShadow}`;
         this._grid.appendChild(lab);
       }
     }
