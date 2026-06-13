@@ -5,6 +5,7 @@
 
 import * as THREE from "three";
 import { getYearTopology, getEventsForDate, classifyText, CategoryColors } from "./timelineModel.js";
+import { createReal3DText, preloadReal3DFont } from "./Real3DText.js";
 import {
   computeMonthGridLayout,
   computeYearGridLayout,
@@ -707,7 +708,9 @@ function buildDayBackdropTexture(source) {
 
 // ── Rough DAY VIEW (click-to-zoom prototype) ───────────────────────────────
 const DAY_VIEW_SPHERE_GEO = new THREE.SphereGeometry(0.42, 22, 22);
-const DAY_VIEW_HEIGHT = 12;
+// Taller timeline → more vertical space between notes now that the note text is
+// larger beveled 3D text.
+const DAY_VIEW_HEIGHT = 22;
 
 /** Category/keyword → color for day-view time spheres (rough palette). */
 const DAY_CATEGORY_COLORS = [
@@ -777,6 +780,9 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
   const group = new THREE.Group();
   group.name = "ww-day-view";
   const events = getEventsForDate(dayIso);
+  void preloadReal3DFont(); // beveled 3D note text needs the typeface loaded
+  /** @type {import("./Real3DText.js").Real3DText[]} */
+  const textNodes = [];
 
   // Crisp, full month backdrop behind the day timeline (readability test).
   const monthIndex = Number(dayIso.slice(5, 7)) - 1;
@@ -808,17 +814,23 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
   /** @type {Array<{ mesh: THREE.Mesh, y: number, event: any }>} */
   const items = [];
 
-  const heading = createLabelSprite(formatDayHeading(dayIso), {
-    fontSize: "700 60px system-ui, sans-serif",
-    fill: "#f8fafc",
-    width: 768,
-    height: 128,
-    planeW: 6,
-    planeH: 1
+  // Date heading — beveled 2.5D text (same family as the note text), brighter and
+  // popped out so the day reads like a polished title.
+  const heading3d = createReal3DText(formatDayHeading(dayIso), {
+    fontSize: 1.5,
+    depth: 0.42,
+    color: 0xf8fafc,
+    glowColor: 0x9bc2ff,
+    metalness: 0.78,
+    roughness: 0.16,
+    emissiveIntensity: 0.85
   });
-  heading.mesh.position.set(0, DAY_VIEW_HEIGHT / 2 + 1.7, 0);
-  group.add(heading.mesh);
-  labels.push(heading);
+  const headingGroup = heading3d.getGroup();
+  headingGroup.position.set(0, DAY_VIEW_HEIGHT / 2 + 2.1, 0);
+  headingGroup.layers.set(1);
+  headingGroup.traverse((o) => o.layers.set(1));
+  group.add(headingGroup);
+  textNodes.push(heading3d);
 
   if (!events.length) {
     const empty = createLabelSprite("No notes this day", {
@@ -852,17 +864,23 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
       items.push({ mesh, y, event: ev });
       linePts.push(new THREE.Vector3(0, y, 0));
 
-      const lab = createLabelSprite(`${ev.time}   ${String(ev.text || "").slice(0, 40)}`, {
-        fontSize: "600 40px system-ui, sans-serif",
-        fill: "#e2e8f0",
-        width: 1100,
-        height: 88,
-        planeW: 8,
-        planeH: 0.64
+      // Beveled, popped-out 3D note text (≈2× the old flat label) in the note's color.
+      const noteText = `${ev.time}  ${String(ev.text || "").slice(0, 26)}`;
+      const t3d = createReal3DText(noteText, {
+        fontSize: 0.82,
+        depth: 0.34,
+        color,
+        glowColor: new THREE.Color(color).lerp(new THREE.Color(0xffffff), 0.5).getHex(),
+        metalness: 0.78,
+        roughness: 0.18,
+        emissiveIntensity: 1.05
       });
-      lab.mesh.position.set(4.8, y, 0.02);
-      group.add(lab.mesh);
-      labels.push(lab);
+      const tg = t3d.getGroup();
+      tg.position.set(2.6 + noteText.length * 0.17, y, 0.08);
+      tg.layers.set(1);
+      tg.traverse((o) => o.layers.set(1));
+      group.add(tg);
+      textNodes.push(t3d);
     }
     linePts.push(new THREE.Vector3(0, DAY_VIEW_HEIGHT / 2 + 1.4, 0));
     linePts.sort((a, b) => a.y - b.y);
@@ -878,10 +896,21 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
   group.traverse((o) => o.layers.set(1));
   scene.add(group);
 
+  // Real3DText rebuilds its meshes when the typeface finishes loading (async);
+  // re-apply the render layer so the new extruded glyphs stay visible.
+  const _reLayer = () => group.traverse((o) => o.layers.set(1));
+  if (typeof window !== "undefined") {
+    window.addEventListener("wordweaver:font-ready", _reLayer);
+  }
+
   return {
     group,
     items,
     dispose() {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("wordweaver:font-ready", _reLayer);
+      }
+      for (const t of textNodes) t.dispose();
       scene.remove(group);
       for (const s of spheres) {
         if (s.material instanceof THREE.Material) s.material.dispose();
