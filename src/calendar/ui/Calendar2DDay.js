@@ -170,7 +170,8 @@ export class Calendar2DDay {
     const root = document.createElement("div");
     root.id = "cal2d-day";
     root.style.cssText =
-      "position:fixed;inset:0;z-index:11000;display:none;flex-direction:column;" +
+      "position:fixed;top:0;left:0;right:0;bottom:calc(62px + env(safe-area-inset-bottom,0px));" +
+      "z-index:11000;display:none;flex-direction:column;" +
       "background:#ffffff;color:#1e293b;font:500 14px system-ui,-apple-system,sans-serif";
 
     // Header bar

@@ -122,6 +122,43 @@ body.weaver-journal-active #three-canvas {
   pointer-events: auto !important;
 }
 
+/* Inkling floating avatar — replaces the Inkling bottom-nav tab. Always present
+   (above the bottom nav) except while the Inkling panel itself is open. Overrides
+   the older notebook-layout hide of .inkling-fab. */
+body.inkling-notebook-layout #inkling-fab.inkling-avatar {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  right: 16px;
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  font-size: 24px;
+  color: #fff;
+  background: radial-gradient(circle at 35% 30%, #818cf8, #4f46e5 60%, #3730a3);
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  z-index: 11005;
+  animation: inkling-avatar-float 4s ease-in-out infinite;
+}
+
+/* Inkling panel must sit above the Schedule overlay (z 11000) so it's usable
+   from the floating avatar while on Schedule. */
+#inkling-panel.inkling-panel {
+  z-index: 11060 !important;
+}
+body.inkling-notebook-layout.inkling-open #inkling-fab.inkling-avatar {
+  display: none !important;
+}
+@keyframes inkling-avatar-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
 /* Hard gate: when the journal is NOT active, ALL its fixed overlays are gone —
    they must never float on top of the regular calendar / writer / Inkling. */
 body:not(.weaver-journal-active) #weaver-journal-ui,

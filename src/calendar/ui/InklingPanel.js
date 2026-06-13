@@ -64,7 +64,7 @@ export class InklingPanel {
     document.getElementById("inkling-confirm-yes")?.addEventListener("click", () => this._confirmSchedule(true));
     document.getElementById("inkling-confirm-no")?.addEventListener("click", () => this._confirmSchedule(false));
 
-    document.getElementById("inkling-fab")?.addEventListener("click", () => this.expand());
+    document.getElementById("inkling-fab")?.addEventListener("click", () => this.openWithContext());
 
     // Seed the welcome message first so it can never be buried by a proactive
     // digest or alert bubble that fires before the user opens the panel.
@@ -191,6 +191,9 @@ export class InklingPanel {
   expand() {
     this._minimized = false;
     this.el?.classList.remove("hidden", "inkling-panel--minimized");
+    // Sit above the Schedule day overlay (z 11000) so the panel is usable when
+    // opened from the floating avatar while on Schedule.
+    this.el?.style.setProperty("z-index", "11060", "important");
     document.getElementById("inkling-fab")?.classList.add("hidden");
     document.body.classList.add("inkling-open", "inkling-stage-open", "inkling-tab-inkling");
     this.app?._showStageBackdrop?.(true);
@@ -211,6 +214,73 @@ export class InklingPanel {
 
   isOpen() {
     return this.el && !this.el.classList.contains("hidden");
+  }
+
+  /** Avatar tap → open Inkling aware of the page you're on, with title help. */
+  openWithContext() {
+    this.expand();
+    try { this._postContextPrompt(); } catch { /* ignore */ }
+  }
+
+  _scheduleIsOpen() {
+    const cal = this.app?._cal2dDay;
+    return !!(cal?.root && cal.root.style.display !== "none");
+  }
+
+  _postContextPrompt() {
+    const tabKey = document.body.dataset.inklingBottomTab || "";
+    const onSchedule = tabKey === "writer" || this._scheduleIsOpen();
+    const pageName = onSchedule
+      ? "Schedule"
+      : tabKey === "wordweaver"
+        ? "the 3D Calendar"
+        : tabKey === "constellation"
+          ? "WordWeaver"
+          : "Inkling";
+
+    if (onSchedule) {
+      const date = this.app?._cal2dDay?.iso;
+      this._appendBubble(
+        "inkling",
+        escapeHtml(`You're on Schedule${date ? ` · ${date}` : ""}. Want a hand titling something? Tap an idea and I'll start it for you:`),
+        "inkling-msg--proactive"
+      );
+      this._appendTitleIdeas();
+    } else {
+      this._appendBubble(
+        "inkling",
+        escapeHtml(`You're on ${pageName}. I can add an event, set a reminder, jump you to a day, or just talk — what's up?`),
+        "inkling-msg--proactive"
+      );
+    }
+  }
+
+  _appendTitleIdeas() {
+    if (!this.messagesEl) return;
+    const ideas = ["Team meeting", "Lunch", "Workout", "Doctor appointment", "Call", "Reminder"];
+    const wrap = document.createElement("div");
+    wrap.className = "inkling-title-ideas";
+    wrap.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px";
+    for (const t of ideas) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = t;
+      b.style.cssText =
+        "background:#eef2ff;color:#4338ca;border:0;border-radius:999px;padding:6px 12px;font:600 12px system-ui;cursor:pointer";
+      b.addEventListener("click", () => this._startTitledEvent(t));
+      wrap.appendChild(b);
+    }
+    this.messagesEl.appendChild(wrap);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+  }
+
+  async _startTitledEvent(title) {
+    this.minimize();
+    if (!this._scheduleIsOpen()) {
+      await this.app?._handleBottomNavTab?.("writer", { toggle: false });
+    }
+    const cal = this.app?._cal2dDay;
+    cal?._openEditor?.({ title }, 9 * 60);
   }
 
   showWelcomeIfNeeded() {
