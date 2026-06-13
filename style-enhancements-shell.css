@@ -122,6 +122,16 @@ body.weaver-journal-active #three-canvas {
   pointer-events: auto !important;
 }
 
+/* Hard gate: when the journal is NOT active, ALL its fixed overlays are gone —
+   they must never float on top of the regular calendar / writer / Inkling. */
+body:not(.weaver-journal-active) #weaver-journal-ui,
+body:not(.weaver-journal-active) #weaver-journal-move,
+body:not(.weaver-journal-active) #weaver-journal-handle,
+body:not(.weaver-journal-active) #weaver-journal-composer {
+  display: none !important;
+  pointer-events: none !important;
+}
+
 body.inkling-surface-idle #three-canvas {
   visibility: hidden !important;
   pointer-events: none !important;

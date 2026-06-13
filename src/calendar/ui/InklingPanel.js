@@ -1,5 +1,6 @@
 import { processUserInput } from "../ai/AIBrain.js";
 import { parseInklingMessage } from "../ai/inklingParser.js";
+import { fetchInklingChat } from "../ai/fetchInklingChat.js";
 import { getInklingWelcomeMessage } from "../ai/inklingWelcome.js";
 import { buildNotebookReaderItems } from "../notebookReaderFeed.js";
 import { applyScheduleIntentAndRefresh } from "../ai/scheduleIntent.js";
@@ -250,6 +251,46 @@ export class InklingPanel {
     }
     this.messagesEl.appendChild(div);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    return div;
+  }
+
+  /**
+   * Real conversational turn via the server LLM (falls back to local on failure).
+   * @param {string} text
+   */
+  async _respondViaLlm(text) {
+    const typing = this._appendBubble(
+      "inkling",
+      "<em style=\"opacity:.55\">Inkling is thinking…</em>",
+      "inkling-msg--proactive"
+    );
+    try {
+      const res = await fetchInklingChat({
+        message: text,
+        history: this._chatHistory(),
+        referenceDate:
+          this.app?._getTodayDate?.() ?? new Date().toISOString().slice(0, 10),
+        userName: getDisplayName(),
+        awaitingConfirm: Boolean(this._pending)
+      });
+      typing?.remove();
+      const reply = res?.reply || "I’m here — what would you like to do?";
+      this._appendBubble("inkling", this._formatReply(reply));
+    } catch (err) {
+      typing?.remove();
+      console.warn("[Inkling] LLM turn failed", err);
+      this._appendBubble(
+        "inkling",
+        escapeHtml("I couldn’t reach the server just now — try again in a moment.")
+      );
+    }
+  }
+
+  /** Light markdown → HTML for LLM replies (bold + line breaks), safely escaped. */
+  _formatReply(text) {
+    return escapeHtml(String(text))
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\n/g, "<br>");
   }
 
   async _sendFeedback(messageId, rating, containerEl) {
@@ -292,7 +333,7 @@ export class InklingPanel {
     }
 
     const intent = parseInklingMessage(text);
-    await this._handleIntent(intent);
+    await this._handleIntent(intent, text);
     this._sideThreadActive = false;
   }
 
@@ -320,9 +361,8 @@ export class InklingPanel {
    */
   async _handleBrainResult(brain, text) {
     if (brain.action === "sideConversation" || brain.action === "askClarification") {
-      if (brain.aiResponse) {
-        this._appendBubble("inkling", escapeHtml(brain.aiResponse));
-      }
+      // Real conversation → server LLM (the local brain only routed us here).
+      await this._respondViaLlm(text);
       return true;
     }
 
@@ -373,19 +413,21 @@ export class InklingPanel {
       return false;
     }
 
-    if (brain.action === "none" && brain.aiResponse) {
-      this._appendBubble("inkling", escapeHtml(brain.aiResponse));
+    if (brain.action === "none") {
+      // No actionable command detected → treat as conversation via the LLM.
+      await this._respondViaLlm(text);
       return true;
     }
 
     return false;
   }
 
-  async _handleIntent(intent) {
+  async _handleIntent(intent, originalText = "") {
     this._hideConfirm();
 
     if (intent.type === "chat") {
-      this._appendBubble("inkling", escapeHtml(intent.reply));
+      // Defer plain chat to the server LLM instead of the canned reply.
+      await this._respondViaLlm(originalText || intent.reply || "");
       return;
     }
 
