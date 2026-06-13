@@ -50,8 +50,22 @@ const GROUPS = [
 let _panel = null;
 let _onPick = null;
 
+/** value (`dim:id`) → style object, for applying the look elsewhere. */
+const STYLE_INDEX = {};
+for (const g of GROUPS) for (const s of g.styles) STYLE_INDEX[`${g.dim}:${s.id}`] = s;
+
 export function getTextStyle() {
   try { return localStorage.getItem(PREF_KEY) || "2.5D:longshadow"; } catch { return "2.5D:longshadow"; }
+}
+
+/** Raw stored value, or null if the user hasn't chosen one yet. */
+export function getTextStyleRaw() {
+  try { return localStorage.getItem(PREF_KEY); } catch { return null; }
+}
+
+/** Inline CSS for a style value (the same CSS used in the preview tiles). */
+export function textStyleCss(value) {
+  return STYLE_INDEX[value]?.css ?? "";
 }
 
 /**

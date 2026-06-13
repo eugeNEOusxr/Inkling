@@ -23,7 +23,7 @@ import {
   getEventsForMonth,
   todayIsoDate
 } from "../../wordweaver/timelineModel.js";
-import { openTextStylePicker } from "./TextStylePicker.js";
+import { openTextStylePicker, textStyleCss, getTextStyleRaw } from "./TextStylePicker.js";
 
 const SLOT_PX = { 15: 30, 30: 42, 60: 66 }; // row height per slot size (taller so 15-min rows don't cram)
 const DAY_MIN = 24 * 60;
@@ -261,6 +261,11 @@ export class Calendar2DDay {
     root.append(head, scroll);
     document.body.appendChild(root);
     this.root = root;
+
+    // Re-render when the user picks a new text style so notes update live.
+    window.addEventListener("inkling:text-style", () => {
+      if (this.root && this.root.style.display !== "none") this.render();
+    });
   }
 
   _navBtn(label, onClick) {
@@ -434,10 +439,15 @@ export class Calendar2DDay {
       const titleTxt = escapeHtml(rec.title || rec.text || "Untitled");
       const descTxt = rec.text && rec.text !== rec.title ? escapeHtml(rec.text) : "";
       const scrollLine = "overflow-x:auto;overflow-y:hidden;white-space:nowrap;scrollbar-width:none;-ms-overflow-style:none";
+      // Apply the user's chosen text style (font/look) when they've picked one;
+      // otherwise the default crisp white outline.
+      const userStyle = getTextStyleRaw();
+      const styleCss = userStyle ? textStyleCss(userStyle) : "";
+      const titleStyle = styleCss || `text-shadow:${BLOCK_TITLE_OUTLINE}`;
       block.innerHTML =
-        `<div style="${scrollLine};font-weight:800;font-size:12.5px;text-shadow:${BLOCK_TITLE_OUTLINE}"><span style="opacity:0.92">${clockLabel(startMin)}</span> · ${titleTxt}</div>` +
+        `<div style="${scrollLine};font-weight:800;font-size:12.5px;${titleStyle}"><span style="opacity:0.92">${clockLabel(startMin)}</span> · ${titleTxt}</div>` +
         (descTxt
-          ? `<div style="${scrollLine};font-size:11px;font-weight:600;opacity:0.96;margin-top:1px;text-shadow:${BLOCK_TITLE_OUTLINE}">${descTxt}</div>`
+          ? `<div style="${scrollLine};font-size:11px;font-weight:600;opacity:0.96;margin-top:1px;${styleCss || `text-shadow:${BLOCK_TITLE_OUTLINE}`}">${descTxt}</div>`
           : "");
       const ev = full ?? rec;
       block.addEventListener("mouseenter", () => { if (!block.style.animation) block.style.transform = "translateY(-1px) scale(1.006)"; });
