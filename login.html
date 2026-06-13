@@ -138,6 +138,13 @@
           method: "POST",
           body: JSON.stringify(payload)
         });
+        // No token = no real backend (e.g. the static GitHub Pages build).
+        // Don't fake a sign-in and bounce back — say so clearly.
+        if (!result?.token) {
+          throw new Error(
+            "Couldn't reach the account server. Accounts need the local/hosted server — or use “Continue without signing in.”"
+          );
+        }
         setSession({ token: result.token, email: result.email, user: result.user });
         if (mode === "register") {
           saveNotificationSettings({ appearancePalette: registerAppearance });

@@ -64,8 +64,8 @@ function mountViewNavigation() {
     { id: "today", label: "Today", level: "day" },
     { id: "weekView", label: "Week", level: "week", panel: "weekView" },
     { id: "monthView", label: "Month", level: "month", panel: "monthView" },
-    { id: "year", label: "Year", level: "year" },
-    { id: "alerts", label: "Alerts", isAlerts: true, showBadge: true }
+    { id: "year", label: "Year", level: "year" }
+    // Alerts removed here — it's now the top-bar bell (btn-top-alerts).
   ];
 
   for (const v of views) {

@@ -88,9 +88,20 @@ export function runLocalInklingChat(opts) {
     };
   }
 
-  if (brain.action === "none" && !brain.aiResponse) {
-    /* fall through to calendar parser */
-  } else if (brain.aiResponse) {
+  const intent = parseInklingMessage(text, new Date(), {
+    userName,
+    awaitingConfirm: opts.awaitingConfirm ?? false
+  });
+
+  // Prefer an actionable calendar intent over a generic chat reply — otherwise
+  // "lunch today at 1:30 with amanda" gets a conversational answer instead of
+  // being added to the calendar.
+  const actionableIntent =
+    (intent.type === "propose_schedule" && intent.proposal) ||
+    intent.type === "query_schedule" ||
+    intent.type === "query_free_time";
+
+  if (brain.aiResponse && !actionableIntent) {
     return {
       reply: brain.aiResponse,
       action: "none",
@@ -99,11 +110,6 @@ export function runLocalInklingChat(opts) {
       brain
     };
   }
-
-  const intent = parseInklingMessage(text, new Date(), {
-    userName,
-    awaitingConfirm: opts.awaitingConfirm ?? false
-  });
 
   if (intent.type === "query_schedule") {
     return {

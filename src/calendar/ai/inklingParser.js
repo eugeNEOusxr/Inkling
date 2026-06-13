@@ -135,10 +135,14 @@ function tryProposeSchedule(raw, cleaned, lower, ref) {
   if (!hasVerb && !time) return null;
 
   const isAppt =
-    /\b(appointment|meeting|dentist|doctor|interview|call)\b/.test(lower) && !/\bnote\b/.test(lower);
+    /\b(appointment|meeting|dentist|doctor|interview|call|lunch|dinner|coffee|breakfast)\b/.test(lower) &&
+    !/\bnote\b/.test(lower);
 
-  const text = cleaned;
-  const label = cleaned;
+  // Strip the command verb + date/time tokens so "put lunch with amanda at 130
+  // today" stores just "lunch with amanda" — not "put …".
+  const title = extractTitle(cleaned) || cleaned;
+  const text = title;
+  const label = title;
 
   if (!date) return null;
 
@@ -159,7 +163,7 @@ function extractTitle(raw) {
     .replace(/\b(add|put|make|create|save|store|schedule|set|book|jot|write|remind|me to|please)\b/gi, "")
     .replace(/\b(today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/gi, "")
     .replace(/\b(at|on|for|by)\b/gi, " ")
-    .replace(/\b\d{1,2}(:\d{2})?\s*(am|pm)?\b/gi, "")
+    .replace(/\b\d{1,4}(:\d{2})?\s*(am|pm)?\b/gi, "")
     .replace(/\s+/g, " ")
     .trim();
   if (cleaned.length < 2) return "";
@@ -171,12 +175,11 @@ function extractTitle(raw) {
  * @param {Date} ref
  */
 function parseTime(lower, ref) {
-  const m24 = lower.match(/\b(\d{1,2}):(\d{2})\b/);
-  if (m24) {
-    const h = Math.min(23, Number(m24[1]));
-    const min = Math.min(59, Number(m24[2]));
-    return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
-  }
+  const fmt = (h, min) => `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+  // No am/pm but clearly an afternoon/evening context → treat 1–7 as PM
+  // ("lunch ... at 1:30" / "dinner at 6" → PM, not AM).
+  const mealPm = /\b(lunch|dinner|afternoon|evening|tonight|noon|pm)\b/.test(lower);
+  const adj = (h, hadMeridiem) => (!hadMeridiem && mealPm && h >= 1 && h <= 7 ? h + 12 : h);
 
   const m12 = lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
   if (m12) {
@@ -185,18 +188,28 @@ function parseTime(lower, ref) {
     if (m12[3] === "pm") h += 12;
     if (m12[3] === "am" && Number(m12[1]) === 12) h = 0;
     if (m12[3] === "pm" && Number(m12[1]) === 12) h = 12;
-    return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+    return fmt(h, min);
   }
 
-  const noon = lower.match(/\b(noon|midday)\b/);
-  if (noon) return "12:00";
-  const mid = lower.match(/\b(midnight)\b/);
-  if (mid) return "00:00";
+  const m24 = lower.match(/\b(\d{1,2}):(\d{2})\b/);
+  if (m24) {
+    const h = adj(Math.min(23, Number(m24[1])), false);
+    return fmt(h, Math.min(59, Number(m24[2])));
+  }
+
+  if (/\b(noon|midday)\b/.test(lower)) return "12:00";
+  if (/\b(midnight)\b/.test(lower)) return "00:00";
+
+  // Compact "at 130" / "at 1230" (no colon).
+  const compact = lower.match(/\b(?:at|@)\s*(\d{1,2})(\d{2})\b/);
+  if (compact) {
+    const h = adj(Math.min(23, Number(compact[1])), false);
+    return fmt(h, Math.min(59, Number(compact[2])));
+  }
 
   const atHour = lower.match(/\b(?:at|@)\s*(\d{1,2})\b/);
   if (atHour) {
-    const h = Math.min(23, Number(atHour[1]));
-    return `${String(h).padStart(2, "0")}:00`;
+    return fmt(adj(Math.min(23, Number(atHour[1])), false), 0);
   }
 
   return null;

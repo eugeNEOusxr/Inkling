@@ -4159,7 +4159,7 @@ body.inkling-notebook-layout .notebook-writer-schedules {
   body.inkling-notebook-layout .notebook-writer-time-picker-row {
     flex-wrap: nowrap !important;
     align-items: center !important;
-    max-height: 30dvh !important;
+    max-height: 20dvh !important;
   }
   body.inkling-notebook-layout #notebook-writer-clock.hidden,
   body.inkling-notebook-layout #notebook-writer-wheel-mount.hidden {
@@ -4172,8 +4172,22 @@ body.inkling-notebook-layout .notebook-writer-schedules {
   #notebook-writer-clock .circular-clock,
   #notebook-writer-clock .circular-clock svg,
   #notebook-writer-clock .circular-clock__bezel {
-    width: 128px !important;
-    height: 128px !important;
+    width: 116px !important;
+    height: 116px !important;
+  }
+  /* Reminders panel removed from the schedule — it freed the bottom so the note
+     timeline extends all the way down (and it was the buggy "no alarms" strip). */
+  body.inkling-notebook-layout .notebook-writer-schedules {
+    display: none !important;
+  }
+  /* Header capped; the timeline body (flex:1) fills the rest to the bottom. */
+  body.inkling-notebook-layout .notebook-writer-panel-inner .thread-header {
+    flex: 0 0 auto !important;
+    max-height: 32dvh !important;
+    overflow: hidden !important;
+  }
+  body.inkling-notebook-layout .notebook-writer-body.panel-card {
+    flex: 1 1 auto !important;
   }
   #notebook-writer-clock .circular-clock {
     height: auto !important;
@@ -4185,7 +4199,7 @@ body.inkling-notebook-layout .notebook-writer-schedules {
 
   /* Guarantee the timeline keeps real, scrollable height on mobile. */
   body.inkling-notebook-layout .notebook-writer-body.panel-card {
-    min-height: 40dvh !important;
+    min-height: 58dvh !important;
     margin: 0 8px !important;
     padding: 6px !important;
     overflow: hidden !important;

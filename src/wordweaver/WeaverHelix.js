@@ -106,15 +106,19 @@ export class WeaverHelix {
     const pos = new THREE.Vector3();
     const quat = new THREE.Quaternion();
     const scl = new THREE.Vector3();
-    const litColor = new THREE.Color("#7dd3fc");
-    const dimColor = new THREE.Color("#243049");
+    const litColor = new THREE.Color("#8be9ff");
+    const dimColor = new THREE.Color("#46597e");
+    const pathPts = new Float32Array(daysInYear * 3);
 
     for (let i = 0; i < daysInYear; i++) {
       const angle = i * (TWO_PI / DAYS_PER_TURN);
       const y = -HEIGHT / 2 + i * yStep;
       pos.set(Math.cos(angle) * RADIUS, y, Math.sin(angle) * RADIUS);
+      pathPts[i * 3] = pos.x;
+      pathPts[i * 3 + 1] = pos.y;
+      pathPts[i * 3 + 2] = pos.z;
       const count = dayCounts[isoFor(this.year, i)] ?? 0;
-      const r = count > 0 ? 0.38 + Math.min(count, 5) * 0.13 : 0.13;
+      const r = count > 0 ? 0.6 + Math.min(count, 5) * 0.22 : 0.26;
       scl.set(r, r, r);
       m.compose(pos, quat, scl);
       beads.setMatrixAt(i, m);
@@ -124,6 +128,18 @@ export class WeaverHelix {
     if (beads.instanceColor) beads.instanceColor.needsUpdate = true;
     this.root.add(beads);
     this._beads = beads;
+
+    // Continuous coil line through every day so the helix shape reads clearly.
+    const pathGeom = new THREE.BufferGeometry();
+    pathGeom.setAttribute("position", new THREE.BufferAttribute(pathPts, 3));
+    const pathMat = new THREE.LineBasicMaterial({
+      color: 0x5b7bb4,
+      transparent: true,
+      opacity: 0.55,
+      toneMapped: false
+    });
+    this._spiral = new THREE.Line(pathGeom, pathMat);
+    this.root.add(this._spiral);
 
     // Month labels at the start of each month's coil turn.
     for (let mo = 0; mo < 12; mo++) {
@@ -198,6 +214,11 @@ export class WeaverHelix {
   }
 
   dispose() {
+    if (this._spiral) {
+      this._spiral.geometry.dispose();
+      this._spiral.material.dispose();
+      this._spiral = null;
+    }
     if (this._beads) {
       this._beads.geometry.dispose();
       this._beads.material.dispose();

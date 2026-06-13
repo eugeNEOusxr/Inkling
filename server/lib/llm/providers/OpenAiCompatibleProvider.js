@@ -25,8 +25,10 @@ export class OpenAiCompatibleProvider {
         model: model || this.model,
         messages,
         max_tokens: maxTokens,
-        temperature: 0.65,
-        response_format: { type: "json_object" }
+        temperature: 0.65
+        // NOTE: no response_format json_object — the Inkling prompt wants a
+        // conversational reply followed by a trailing JSON footer, which JSON
+        // mode would strip (leaving an empty reply).
       })
     });
 

@@ -25,6 +25,7 @@ import {
   getCachedRemarks,
   setCachedRemarks
 } from "../lib/wordweaver/generateRemarks.js";
+import { generateInklingChat } from "../lib/inkling/generateInklingChat.js";
 import crypto from "node:crypto";
 
 function json(res, status, body) {
@@ -216,6 +217,28 @@ export async function handleApi(req, res, url) {
     const user = await readUser(email);
     if (!user) return json(res, 404, { error: "User not found." });
     return json(res, 200, { user: publicUser(user) });
+  }
+
+  // Inkling chat — public so guests get the real LLM too (no login required).
+  // Uses the LLM when OPENAI_API_KEY / LLM_API_KEY is set, else a mock provider.
+  if (req.method === "POST" && url.pathname === "/api/inkling/chat") {
+    const limited = rateLimit(rlKey, { limit: 40, windowMs: 60_000 });
+    if (!limited.ok) return json(res, 429, { error: "Too many requests. Slow down a moment." });
+    const body = await readBody(req);
+    if (!body) return json(res, 400, { error: "Invalid JSON" });
+    try {
+      const result = await generateInklingChat({
+        message: String(body.message || ""),
+        history: Array.isArray(body.history) ? body.history : [],
+        referenceDate: body.referenceDate,
+        scheduleSummary: body.scheduleSummary,
+        userName: body.userName
+      });
+      return json(res, 200, result);
+    } catch (err) {
+      console.warn("[inkling/chat] route error:", err?.message || err);
+      return json(res, 200, { reply: "Inkling's AI is unavailable right now.", action: "none", source: "error" });
+    }
   }
 
   const email = verifyToken(getBearer(req));

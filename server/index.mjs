@@ -2,6 +2,7 @@
  * Inkling dev server: static app + account / notification / feedback API.
  * Run: npm run dev
  */
+import "./lib/loadEnv.js"; // must be first: populates process.env from .env
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";

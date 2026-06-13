@@ -12,6 +12,8 @@ export class VerticalTimeWheel {
     this.hour24 = 12;
     this._slots = [];
     this._scrollRaf = 0;
+    this._suppress = false;
+    this._currentTime = null;
 
     this.root.innerHTML = "";
     // Add, don't overwrite: the mount carries `notebook-writer-wheel-mount hidden`
@@ -43,8 +45,17 @@ export class VerticalTimeWheel {
         btn.setAttribute("role", "option");
         btn.textContent = this._formatLabel(h, m);
         btn.addEventListener("click", () => {
-          this.setHour(h);
+          // Pick this exact slot (incl :30) → notify so the timeline navigates
+          // and focuses the note field, just like the clock.
+          this.hour24 = h;
+          this._currentTime = time;
+          this._suppress = true;
+          this._slots.forEach((s) => s.el.classList.toggle("is-centered", s.time === time));
           btn.scrollIntoView({ block: "center", behavior: "smooth" });
+          window.setTimeout(() => {
+            this._suppress = false;
+          }, 350);
+          this.onChange(h, time);
         });
         this.list.appendChild(btn);
         this._slots.push({ el: btn, hour: h, time });
@@ -97,7 +108,11 @@ export class VerticalTimeWheel {
     this._slots.forEach((s) => {
       s.el.classList.toggle("is-centered", s === best);
     });
-    if (this.hour24 !== best.hour) {
+    if (this._suppress) return;
+    // Track by exact time so scrolling within an hour (e.g. 14:00 → 14:30)
+    // still navigates the timeline.
+    if (this._currentTime !== best.time) {
+      this._currentTime = best.time;
       this.hour24 = best.hour;
       this.onChange(best.hour, best.time);
     }
@@ -108,12 +123,19 @@ export class VerticalTimeWheel {
    */
   setHour(hour24) {
     this.hour24 = ((Math.round(hour24) % 24) + 24) % 24;
+    this._currentTime = `${String(this.hour24).padStart(2, "0")}:00`;
     const target = this._slots.find((s) => s.hour === this.hour24);
     if (target) {
+      // Programmatic sync (from selectHour) — suppress the scroll-driven
+      // onChange so it doesn't loop back into selectHour.
+      this._suppress = true;
       target.el.scrollIntoView({ block: "center", behavior: "auto" });
       this._slots.forEach((s) => {
         s.el.classList.toggle("is-centered", s.hour === this.hour24);
       });
+      window.setTimeout(() => {
+        this._suppress = false;
+      }, 60);
     }
   }
 

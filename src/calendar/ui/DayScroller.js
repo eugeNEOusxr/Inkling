@@ -123,7 +123,7 @@ export default class DayScroller {
     // with inline !important so no stylesheet edit can remove the scroll again.
     if (this.inlineNotes && this.orientation === "vertical") {
       track.style.setProperty("overflow-y", "auto", "important");
-      track.style.setProperty("max-height", "min(52dvh, 520px)", "important");
+      track.style.setProperty("max-height", "min(62dvh, 700px)", "important");
       track.style.setProperty("-webkit-overflow-scrolling", "touch");
       track.style.setProperty("touch-action", "pan-y");
     }
@@ -216,7 +216,7 @@ export default class DayScroller {
       wrap.style.setProperty("padding", "0", "important");
       track.style.setProperty("overflow-y", "auto", "important");
       track.style.setProperty("overflow-x", "hidden", "important");
-      track.style.setProperty("max-height", "min(52dvh, 520px)", "important");
+      track.style.setProperty("max-height", "min(62dvh, 700px)", "important");
     } else {
       track.style.overflowY = "scroll";
       track.style.maxHeight = track.style.maxHeight || "min(58vh, 480px)";
@@ -302,9 +302,9 @@ export default class DayScroller {
    * @param {string} time
    */
   _appendAppointmentTimelineRow(i, time) {
-    const hour = Number(time.split(":")[0]);
-    const hourKey = `${pad2(hour)}:00`;
-    const appts = this.slotAppointments[hourKey] ?? this.slotAppointments[time] ?? [];
+    // Exact 30-min slot only. Using the whole hour made an appointment show in
+    // BOTH the :00 and :30 rows (the "11:15 overlaps itself" bug).
+    const appts = this.slotAppointments[time] ?? [];
 
     const row = document.createElement("div");
     row.className = "day-scroller__row day-scroller__row--appointment";

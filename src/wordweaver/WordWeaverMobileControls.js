@@ -94,6 +94,10 @@ export class WordWeaverMobileControls {
 
     this._media = window.matchMedia?.(ENABLE_QUERY);
     this._media?.addEventListener?.("change", this._onMediaChange);
+    // Kill the long-press "Copy / Share / Select All / Web Search" callout that
+    // popped up while holding the flight pads. preventDefault on contextmenu +
+    // touch-callout:none in the styles below.
+    this.root.addEventListener("contextmenu", (e) => e.preventDefault());
     this._injectStyles();
   }
 
@@ -102,6 +106,12 @@ export class WordWeaverMobileControls {
     const style = document.createElement("style");
     style.id = "ww-mobile-nav-style";
     style.textContent = `
+      .ww-mobile-nav, .ww-mobile-nav * {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+        touch-action: none;
+      }
       .ww-mobile-nav {
         position: absolute;
         inset: auto 8px 12px 8px;

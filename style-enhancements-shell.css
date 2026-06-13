@@ -89,6 +89,13 @@ body.inkling-tab-constellation.inkling-surface-idle #three-canvas {
   display: none !important;
 }
 
+/* Small-calendar sidebar removed entirely — its "enlarge" opened the old 3D
+   calendar system we no longer use, and it was covering the new 3D views. */
+.calendar-sidebar,
+#calendar-sidebar-panel {
+  display: none !important;
+}
+
 /* …and reclaim the sidebar's reserved left padding (~228px) so the top bar
    spans full width — otherwise "June 2026" overlaps the Login/bell/settings. */
 body.inkling-tab-wordweaver #top-chrome.top-chrome,

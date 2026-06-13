@@ -22,7 +22,10 @@ const MONTH_NAMES = [
 function buildAppointmentSlotMap(day) {
   const map = {};
   for (const appt of day.appointments) {
-    const key = `${String(appt.hour).padStart(2, "0")}:00`;
+    // Snap to one 30-min slot (so :15/:45 land in a single row, not two).
+    const minute = Number(appt.minute ?? 0);
+    const slotMin = minute >= 30 ? "30" : "00";
+    const key = `${String(appt.hour).padStart(2, "0")}:${slotMin}`;
     if (!map[key]) map[key] = [];
     map[key].push({ id: appt.id, title: appt.title });
   }
@@ -218,8 +221,15 @@ export class NotebookWriterPanel {
   _mountWheel() {
     if (!this.wheelMount || this._wheel) return;
     this._wheel = new VerticalTimeWheel(this.wheelMount, {
-      onChange: (hour24) => {
-        this.selectHour(String(hour24), true);
+      onChange: (hour24, timeLabel) => {
+        // Navigate to the exact slot the wheel landed on (incl :30) and focus
+        // its note field — same behavior as picking a time on the clock.
+        const time = timeLabel || `${String(hour24).padStart(2, "0")}:00`;
+        this._selectedHour = String(hour24);
+        this._clock?.setHour(Number(hour24));
+        this._dayScroller?.selectTime(time, true);
+        this._dayScroller?.focusSlotAtTime(time);
+        this._highlightHourChip(hour24);
         this.onHourSelect(String(hour24));
       }
     });
