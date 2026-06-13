@@ -538,7 +538,7 @@ export function createAlertFromTimelineEntry(entry) {
 }
 
 /**
- * @param {{ time?: string, text?: string, category?: string }} payload
+ * @param {{ time?: string, text?: string, category?: string, date?: string, priority?: number }} payload
  * @returns {AlertRecord}
  */
 export function registerAlertFromPayload(payload) {
@@ -547,7 +547,11 @@ export function registerAlertFromPayload(payload) {
     createAlert({
       time: payload?.time ?? "09:00",
       text: payload?.text ?? "Reminder",
-      category
+      category,
+      date: payload?.date,
+      // User-asked reminders fire once at the set time (no pre-alerts) unless a
+      // priority is explicitly requested.
+      priority: payload?.priority ?? AlertPriority.LOW
     })
   );
 }

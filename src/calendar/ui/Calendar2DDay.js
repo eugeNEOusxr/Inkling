@@ -24,7 +24,7 @@ import {
   todayIsoDate
 } from "../../wordweaver/timelineModel.js";
 import { openTextStylePicker, textStyleCss, getTextStyleRaw, getTextAnim, textAnimCss } from "./TextStylePicker.js";
-import { createAlert, addAlert, removeAlertsForEntry } from "../alerts/alertsModel.js";
+import { createAlert, addAlert, removeAlertsForEntry, AlertPriority } from "../alerts/alertsModel.js";
 import { recomputeSchedule } from "../alerts/alertsScheduler.js";
 
 const SLOT_PX = { 15: 30, 30: 42, 60: 66 }; // row height per slot size (taller so 15-min rows don't cram)
@@ -751,6 +751,9 @@ export class Calendar2DDay {
             text: title,
             category: catSel.value,
             kind: "popup",
+            // Fire ONCE at the set time — no 60/30/10-min pre-alerts (those made
+            // a single reminder "go off twice").
+            priority: AlertPriority.LOW,
             timelineEntryId: saved.id
           }));
           recomputeSchedule();
