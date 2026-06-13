@@ -36,6 +36,9 @@ function colorInt(cat) {
   const c = cat === "errand" ? "errands" : cat;
   return parseInt(String(getCategoryColor(c)).replace("#", ""), 16) || 0x94a3b8;
 }
+function pad(n) { return String(n).padStart(2, "0"); }
+function isoToday() { const n = new Date(); return `${n.getFullYear()}-${pad(n.getMonth() + 1)}-${pad(n.getDate())}`; }
+function dayDiff(a, b) { return Math.round((Date.parse(a + "T12:00:00") - Date.parse(b + "T12:00:00")) / 86400000); }
 
 /** Shared radial glow texture for sphere auras. */
 let _glowTex = null;
@@ -160,6 +163,19 @@ export class WeaverGalaxy {
     this.controls.update();
     this.controls.domElement?.addEventListener("pointerdown", this._onPointerDown);
     this.controls.domElement?.addEventListener("pointerup", this._onPointerUp ??= (e) => this._handlePointerUp(e));
+
+    // Open the WordWeaver reader straight away, on the nearest day that has
+    // notes (so you land on something readable instead of an empty panel).
+    if (this._nodes.length) {
+      const today = isoToday();
+      let openIso = today, bestD = Infinity;
+      for (const nd of this._nodes) {
+        const dd = Math.abs(dayDiff(nd.iso, today));
+        if (dd < bestD) { bestD = dd; openIso = nd.iso; }
+      }
+      this._highlightDate(openIso);
+      this._openSidebar(openIso);
+    }
   }
 
   hide() {
@@ -232,6 +248,24 @@ export class WeaverGalaxy {
    */
   focusDate(iso) {
     this._build();
+    const target = this._highlightDate(iso);
+    if (target) {
+      this.camera.position.set(target.x, target.y, target.z + 16);
+      this.controls.target.copy(target);
+      this.camera.lookAt(target);
+      this.camera.updateProjectionMatrix();
+      this.controls.update();
+    }
+    this._openSidebar(iso);
+  }
+
+  /**
+   * Enlarge + brighten the node(s) for a date; return their average position
+   * (or null if none). Camera is NOT moved here.
+   * @param {string} iso
+   * @returns {THREE.Vector3 | null}
+   */
+  _highlightDate(iso) {
     const target = new THREE.Vector3();
     let count = 0;
     for (const nd of this._nodes) {
@@ -240,14 +274,16 @@ export class WeaverGalaxy {
       nd.glow.scale.set(on ? 5 : 2.4, on ? 5 : 2.4, 1);
       if (on) { target.add(nd.mesh.position); count++; }
     }
-    if (count) {
-      target.multiplyScalar(1 / count);
-      this.camera.position.set(target.x, target.y, target.z + 16);
-      this.controls.target.copy(target);
-      this.camera.lookAt(target);
-      this.camera.updateProjectionMatrix();
-      this.controls.update();
-    }
+    return count ? target.multiplyScalar(1 / count) : null;
+  }
+
+  /** Page the WordWeaver reader to the prev/next calendar day (no camera move). */
+  _shiftReader(delta) {
+    const base = this._readerIso || isoToday();
+    const [y, m, d] = base.split("-").map(Number);
+    const dt = new Date(y, m - 1, d + delta);
+    const iso = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+    this._highlightDate(iso);
     this._openSidebar(iso);
   }
 
@@ -258,22 +294,48 @@ export class WeaverGalaxy {
     const panel = document.createElement("div");
     panel.id = "weaver-galaxy-sidebar";
     panel.style.cssText =
-      "position:fixed;top:0;right:0;bottom:0;width:min(340px,86vw);z-index:10280;display:none;" +
+      "position:fixed;top:0;right:0;bottom:0;width:min(360px,88vw);z-index:10280;display:none;" +
       "flex-direction:column;background:rgba(8,12,22,0.94);backdrop-filter:blur(10px);" +
       "border-left:1px solid rgba(99,102,241,0.4);color:#e2e8f0;font:600 12px system-ui;" +
       "box-shadow:-12px 0 40px rgba(0,0,0,0.5)";
-    const head = document.createElement("div");
-    head.style.cssText = "display:flex;align-items:center;gap:8px;padding:12px;border-bottom:1px solid rgba(255,255,255,0.1)";
-    const back = document.createElement("button");
-    back.textContent = "← Back to galaxy";
-    back.style.cssText = "background:#312e81;color:#e0e7ff;border:0;border-radius:8px;padding:8px 12px;font:700 12px system-ui;cursor:pointer";
-    back.addEventListener("click", () => { panel.style.display = "none"; });
-    head.appendChild(back);
+
+    // Brand header — this reader IS WordWeaver.
+    const brand = document.createElement("div");
+    brand.style.cssText =
+      "display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 14px 10px;border-bottom:1px solid rgba(255,255,255,0.1)";
+    const brandTitle = document.createElement("div");
+    brandTitle.textContent = "✦ WordWeaver";
+    brandTitle.style.cssText =
+      "font:800 17px system-ui;letter-spacing:.3px;" +
+      "background:linear-gradient(90deg,#c7d2fe,#a5b4fc,#f0abfc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent";
+    const collapse = document.createElement("button");
+    collapse.textContent = "✕";
+    collapse.title = "Back to the galaxy";
+    collapse.style.cssText =
+      "background:#1e293b;color:#e2e8f0;border:0;border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:14px;flex:0 0 auto";
+    collapse.addEventListener("click", () => { panel.style.display = "none"; });
+    brand.append(brandTitle, collapse);
+
+    // Day-nav row: ‹ [date] › — page through any day's notes.
+    const nav = document.createElement("div");
+    nav.style.cssText =
+      "display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.08)";
+    const prev = document.createElement("button"); prev.textContent = "‹"; prev.title = "Previous day";
+    const next = document.createElement("button"); next.textContent = "›"; next.title = "Next day";
+    for (const b of [prev, next]) {
+      b.style.cssText =
+        "background:#312e81;color:#e0e7ff;border:0;border-radius:9px;width:34px;height:34px;cursor:pointer;font-size:18px;line-height:1;flex:0 0 auto";
+    }
+    prev.addEventListener("click", () => this._shiftReader(-1));
+    next.addEventListener("click", () => this._shiftReader(1));
     const title = document.createElement("div");
-    title.style.cssText = "font:800 14px system-ui";
+    title.style.cssText = "flex:1;text-align:center;font:800 14px system-ui;color:#e6ebff";
+    nav.append(prev, title, next);
+
     const body = document.createElement("div");
-    body.style.cssText = "flex:1;overflow:auto;padding:12px";
-    panel.append(head, title, body);
+    body.style.cssText = "flex:1;overflow:auto;padding:12px 14px";
+
+    panel.append(brand, nav, body);
     document.body.appendChild(panel);
     this._sidebar = panel;
     this._sidebarTitle = title;
@@ -283,12 +345,12 @@ export class WeaverGalaxy {
   _openSidebar(iso) {
     if (!iso) return;
     this._buildSidebar();
+    this._readerIso = iso;
     const [y, m, d] = iso.split("-").map(Number);
     const dt = new Date(y, m - 1, d);
     const wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dt.getDay()];
     const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     this._sidebarTitle.textContent = `${wd} ${MON[m - 1]} ${d}, ${y}`;
-    this._sidebarTitle.style.padding = "10px 12px 4px";
 
     let events = [];
     try { events = getEventsForDate(iso) ?? []; } catch { /* ignore */ }
