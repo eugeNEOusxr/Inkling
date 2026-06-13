@@ -327,6 +327,33 @@ export class WordWeaverMonthGrid {
       this._labels.push(label);
     }
 
+    // Weekday headers (Sun–Sat) slanted at 45° (the hypotenuse) above each column.
+    const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const colX = {};
+    let topY = -Infinity;
+    for (const cell of this._layout.cells) {
+      const [yy, mm, dd] = cell.iso.split("-").map(Number);
+      const wd = new Date(yy, mm - 1, dd).getDay();
+      if (colX[wd] === undefined) colX[wd] = cell.x;
+      if (cell.y > topY) topY = cell.y;
+    }
+    const headerY = topY + RADIUS.day + 0.9;
+    for (const key of Object.keys(colX)) {
+      const wd = Number(key);
+      const lab = createLabelSprite(WD[wd], {
+        fontSize: "700 60px system-ui, sans-serif",
+        fill: "#a5b4fc",
+        width: 200,
+        height: 96,
+        planeW: 0.95,
+        planeH: 0.46
+      });
+      lab.mesh.position.set(colX[wd], headerY, RADIUS.day + 0.22);
+      lab.mesh.rotation.z = -Math.PI / 4; // 45° hypotenuse slant
+      this.root.add(lab.mesh);
+      this._labels.push(lab);
+    }
+
     if (connectorSegs.length) {
       const positions = new Float32Array(connectorSegs.length * 6);
       const colors = new Float32Array(connectorSegs.length * 6);
