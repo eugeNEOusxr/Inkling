@@ -1,7 +1,7 @@
 import "./wordweaver/calendarMode.js";
 import { createScene } from "./scene.js";
 import { CalendarApp } from "./calendar/CalendarApp.js";
-import { requireAuthForApp, signOut } from "./auth/requireAuth.js";
+import { requireAuthForApp, signOut, clearLoginSkip } from "./auth/requireAuth.js";
 import { getSession } from "./auth/session.js";
 import { clearAuthSkip } from "./auth/authSkip.js";
 import { scheduleCloudSync } from "./auth/cloudSync.js";
@@ -34,8 +34,12 @@ if (loginBtn) {
   if (!session?.token) {
     loginBtn.classList.remove("hidden");
     loginBtn.addEventListener("click", () => {
+      // Clear BOTH skip flags — the app gates on inklingSkipLogin (requireAuth),
+      // while clearAuthSkip only clears inkling:auth-skip. Clearing one left the
+      // guest bypass active, so the button appeared to do nothing.
       clearAuthSkip();
-      window.location.reload();
+      clearLoginSkip();
+      window.location.href = "/login.html";
     });
   } else {
     loginBtn.classList.add("hidden");

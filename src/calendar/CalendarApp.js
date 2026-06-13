@@ -1321,20 +1321,20 @@ export class CalendarApp {
 
   _overviewCameraOffset() {
     const bounds = this._getActiveWall().getGridBounds();
-    const span = Math.max(bounds.width, bounds.height);
     const mobile = window.innerWidth <= 768;
     const aspect = window.innerWidth / Math.max(window.innerHeight, 1);
     const calendarMax = this.layerManager.isOpen("calendar-max");
 
-    const distanceMultiplier = calendarMax
-      ? mobile || aspect < 1
-        ? 1.45
-        : 1.15
-      : mobile || aspect < 1
-        ? 1.7
-        : 1.35;
-    const distanceMin = calendarMax ? (mobile ? 12 : 9) : mobile || aspect < 1 ? 15 : 12;
-    const distance = Math.max(distanceMin, span * distanceMultiplier);
+    // Pull back far enough that the WHOLE month grid fits in the frustum (with a
+    // little padding) — the old span×multiplier heuristic bottomed out too close,
+    // so you couldn't see every month at startup. Fit both width and height.
+    const vfov = ((this.camera.fov ?? 52) * Math.PI) / 180;
+    const tanV = Math.tan(vfov / 2);
+    const margin = mobile || aspect < 1 ? 1.32 : 1.16;
+    const fitH = bounds.height / 2 / tanV;
+    const fitW = bounds.width / 2 / (tanV * aspect);
+    const distanceMin = calendarMax ? (mobile ? 13 : 11) : mobile || aspect < 1 ? 16 : 13;
+    const distance = Math.max(distanceMin, Math.max(fitH, fitW) * margin);
     const y = mobile || aspect < 1 ? 1.6 : calendarMax ? 0.95 : 1.2;
     return new THREE.Vector3(0, y, distance);
   }

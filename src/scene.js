@@ -71,7 +71,7 @@ export function createScene(canvas) {
   controls.enablePan = true;
   controls.panSpeed = 0.6;
   controls.minDistance = 4;
-  controls.maxDistance = 40;
+  controls.maxDistance = 60;
   controls.maxPolarAngle = Math.PI * 0.85;
 
   const hemi = new THREE.HemisphereLight(0xc8d4f8, 0x0a0e1a, 0.55);

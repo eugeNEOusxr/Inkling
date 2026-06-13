@@ -13,6 +13,15 @@ function isLoginSkipped() {
   }
 }
 
+/** Clear the "skip login" flag so the next load runs the real auth flow. */
+export function clearLoginSkip() {
+  try {
+    localStorage.removeItem(SKIP_LOGIN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Sync guard for standalone auth pages (account-settings, etc.).
  * @returns {boolean}
