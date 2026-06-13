@@ -16,8 +16,9 @@ body.inkling-notebook-layout {
   bottom: 0;
   z-index: 10300;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 2px;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
   padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
   background: linear-gradient(180deg, rgba(26, 31, 40, 0.92), rgba(12, 16, 24, 0.98));
   border-top: 1px solid rgba(78, 230, 230, 0.22);
@@ -56,6 +57,14 @@ body.inkling-notebook-layout {
 .inkling-bottom-nav__icon {
   font-size: 18px;
   line-height: 1;
+}
+
+/* Labels must never overflow their column on small phones. */
+.inkling-bottom-nav__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Stage backdrop */
@@ -317,7 +326,7 @@ body.inkling-tab-wordweaver #top-chrome .top-chrome__bar {
   pointer-events: auto !important;
 }
 
-/* Inkling tab — centered chat */
+/* Inkling tab — centered chat (tablet / desktop) */
 body.inkling-tab-inkling #inkling-panel,
 body.inkling-tab-inkling .inkling-panel:not(.inkling-panel--minimized) {
   position: fixed !important;
@@ -329,6 +338,34 @@ body.inkling-tab-inkling .inkling-panel:not(.inkling-panel--minimized) {
   width: min(420px, calc(100vw - 24px)) !important;
   max-height: min(70vh, 560px) !important;
   z-index: 10350 !important;
+}
+
+/* Inkling tab — full-height sheet on phones, so messages + the composer are
+   never cut off. Sits between the top chrome and the bottom nav. */
+@media (max-width: 768px) {
+  body.inkling-tab-inkling #inkling-panel,
+  body.inkling-tab-inkling .inkling-panel:not(.inkling-panel--minimized) {
+    left: 8px !important;
+    right: 8px !important;
+    top: calc(var(--inkling-chrome-h, 56px) + env(safe-area-inset-top, 0px) + 8px) !important;
+    bottom: calc(var(--inkling-bottom-nav-h, 62px) + env(safe-area-inset-bottom, 0px) + 8px) !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* Let the message list flex and scroll, keeping the input pinned + visible. */
+  body.inkling-tab-inkling .inkling-panel:not(.inkling-panel--minimized) .inkling-panel__body,
+  body.inkling-tab-inkling .inkling-panel:not(.inkling-panel--minimized) .inkling-panel__messages,
+  body.inkling-tab-inkling .inkling-panel:not(.inkling-panel--minimized) .inkling-messages {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+  }
 }
 
 body.inkling-notebook-layout .inkling-fab {
