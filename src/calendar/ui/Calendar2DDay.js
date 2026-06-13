@@ -119,6 +119,7 @@ export class Calendar2DDay {
     this.iso = todayIsoDate();
     this.slot = 30;
     this.view = "day"; // "day" | "month"
+    this.theme = (() => { try { return localStorage.getItem("cal2d-theme") || "dark"; } catch { return "dark"; } })();
     this.root = null;
     this._grid = null;
     this._editing = null; // event id being edited, or null for new
@@ -169,8 +170,46 @@ export class Calendar2DDay {
 
   // --- build shell ---
 
+  /** Theme palette (light = white "other apps" look, dark = cosmic). */
+  _pal() {
+    if (this.theme === "light") {
+      return {
+        bg: "#ffffff", text: "#1e293b",
+        headBg: "#f8fafc", headBorder: "#e2e8f0",
+        title: "#0f172a", titleShadow: HEADER_3D,
+        btnBg: "#fff", btnBorder: "#cbd5e1", btnText: "#0f172a",
+        gridHour: "#e2e8f0", gridMinor: "#f1f5f9", hourLabel: "#475569",
+        cellIn: "#fff", cellOut: "#f8fafc", num: "#0f172a", numDim: "#94a3b8",
+        legendBg: "#f8fafc", legendBorder: "#e2e8f0", legendText: "#475569", weekday: "#475569"
+      };
+    }
+    return {
+      bg: "radial-gradient(ellipse at 50% -10%, #1c2550 0%, #0c1226 52%, #05070f 100%)", text: "#e6ebff",
+      headBg: "rgba(10,15,32,0.65)", headBorder: "rgba(255,255,255,0.1)",
+      title: "#f1f5ff", titleShadow: "0 1px 2px rgba(0,0,0,0.6),0 0 16px rgba(129,140,248,0.45)",
+      btnBg: "rgba(255,255,255,0.07)", btnBorder: "rgba(255,255,255,0.18)", btnText: "#e6ebff",
+      gridHour: "rgba(255,255,255,0.16)", gridMinor: "rgba(255,255,255,0.06)", hourLabel: "#aab4d4",
+      cellIn: "rgba(255,255,255,0.05)", cellOut: "rgba(255,255,255,0.015)", num: "#e6ebff", numDim: "#6b7494",
+      legendBg: "rgba(255,255,255,0.05)", legendBorder: "rgba(255,255,255,0.1)", legendText: "#c3cae6", weekday: "#a5b4fc"
+    };
+  }
+
+  _toggleTheme() {
+    this.theme = this.theme === "dark" ? "light" : "dark";
+    try { localStorage.setItem("cal2d-theme", this.theme); } catch { /* ignore */ }
+    // Rebuild the shell with the new palette, preserving open state + view.
+    const wasOpen = this.root && this.root.style.display !== "none";
+    this.root?.remove();
+    this.root = null;
+    this._scrolled = false;
+    this._build();
+    if (wasOpen) this.root.style.display = "flex";
+    this.setView(this.view);
+  }
+
   _build() {
     if (this.root) return;
+    const P = this._pal();
     if (!document.getElementById("cal2d-style")) {
       const st = document.createElement("style");
       st.id = "cal2d-style";
@@ -191,28 +230,28 @@ export class Calendar2DDay {
     root.style.cssText =
       "position:fixed;top:0;left:0;right:0;bottom:calc(62px + env(safe-area-inset-bottom,0px));" +
       "z-index:11000;display:none;flex-direction:column;" +
-      "background:radial-gradient(ellipse at 50% -10%, #1c2550 0%, #0c1226 52%, #05070f 100%);" +
-      "color:#e6ebff;font:500 14px system-ui,-apple-system,sans-serif";
+      `background:${P.bg};color:${P.text};font:500 14px system-ui,-apple-system,sans-serif`;
 
     // Header bar
     const head = document.createElement("div");
     head.style.cssText =
       "flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:12px 14px;" +
-      "border-bottom:1px solid rgba(255,255,255,0.1);background:rgba(10,15,32,0.65)";
+      `border-bottom:1px solid ${P.headBorder};background:${P.headBg}`;
     const prev = this._navBtn("‹", () => this.shiftDay(-1));
     const next = this._navBtn("›", () => this.shiftDay(1));
-    const today = this._navBtn("Today", () => this.setDate(todayIsoDate()));
-    today.style.width = "auto";
-    today.style.padding = "0 12px";
+    // Theme toggle sits where Today was; label shows the active theme.
+    const themeBtn = this._navBtn(this.theme === "dark" ? "🌙 Dark theme" : "☀️ Light theme", () => this._toggleTheme());
+    themeBtn.style.width = "auto";
+    themeBtn.style.padding = "0 12px";
+    themeBtn.style.fontSize = "13px";
     const title = document.createElement("div");
     title.style.cssText =
-      "flex:1;font-weight:800;font-size:18px;color:#f1f5ff;letter-spacing:0.2px;" +
-      "text-shadow:0 1px 2px rgba(0,0,0,0.6),0 0 16px rgba(129,140,248,0.45)";
+      `flex:1;font-weight:800;font-size:18px;color:${P.title};letter-spacing:0.2px;text-shadow:${P.titleShadow}`;
     this._title = title;
 
     const slotSel = document.createElement("select");
     slotSel.style.cssText =
-      "border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 8px;background:rgba(255,255,255,0.08);color:#e6ebff;font:600 13px system-ui";
+      `border:1px solid ${P.btnBorder};border-radius:8px;padding:6px 8px;background:${P.btnBg};color:${P.btnText};font:600 13px system-ui`;
     for (const s of [15, 30, 60]) {
       const o = document.createElement("option");
       o.value = String(s); o.textContent = `${s} min`;
@@ -223,11 +262,12 @@ export class Calendar2DDay {
     this._slotSel = slotSel;
     const zoomLabel = document.createElement("span");
     zoomLabel.textContent = "Zoom";
-    zoomLabel.style.cssText = "font-size:12px;color:#a5b4fc";
+    zoomLabel.style.cssText = `font-size:12px;color:${P.weekday}`;
     this._zoomEls = [zoomLabel, slotSel];
 
-    // Day / Month view toggle.
-    const dayBtn = this._navBtn("Day", () => this.setView("day"));
+    // Today / Month view toggle ("Today" replaces the old Day button → jumps to
+    // today + day view).
+    const dayBtn = this._navBtn("Today", () => { this.iso = todayIsoDate(); this.setView("day"); });
     const monthBtn = this._navBtn("Month", () => this.setView("month"));
     for (const b of [dayBtn, monthBtn]) { b.style.width = "auto"; b.style.padding = "0 12px"; b.style.fontSize = "13px"; }
     this._dayBtn = dayBtn;
@@ -249,7 +289,7 @@ export class Calendar2DDay {
     paintBtn.title = "Text style";
     paintBtn.style.fontSize = "16px";
     const close = this._navBtn("✕", () => this.close());
-    head.append(prev, next, today, dayBtn, monthBtn, title, zoomLabel, slotSel, noteBtn, paintBtn, close);
+    head.append(prev, next, themeBtn, dayBtn, monthBtn, title, zoomLabel, slotSel, noteBtn, paintBtn, close);
 
     // Scrollable grid
     const scroll = document.createElement("div");
@@ -265,17 +305,22 @@ export class Calendar2DDay {
     this.root = root;
 
     // Re-render when the user picks a new text style or animation (live update).
-    const reRender = () => { if (this.root && this.root.style.display !== "none") this.render(); };
-    window.addEventListener("inkling:text-style", reRender);
-    window.addEventListener("inkling:text-anim", reRender);
+    // Bind once — _build can re-run on theme toggle.
+    if (!this._evtBound) {
+      const reRender = () => { if (this.root && this.root.style.display !== "none") this.render(); };
+      window.addEventListener("inkling:text-style", reRender);
+      window.addEventListener("inkling:text-anim", reRender);
+      this._evtBound = true;
+    }
   }
 
   _navBtn(label, onClick) {
+    const P = this._pal();
     const b = document.createElement("button");
     b.textContent = label;
     b.style.cssText =
-      "height:34px;min-width:34px;border:1px solid rgba(255,255,255,0.18);border-radius:8px;background:rgba(255,255,255,0.07);" +
-      "color:#e6ebff;font:700 15px system-ui;cursor:pointer;flex:0 0 auto";
+      `height:34px;min-width:34px;border:1px solid ${P.btnBorder};border-radius:8px;background:${P.btnBg};` +
+      `color:${P.btnText};font:700 15px system-ui;cursor:pointer;flex:0 0 auto`;
     b.addEventListener("click", onClick);
     return b;
   }
@@ -284,6 +329,7 @@ export class Calendar2DDay {
 
   _renderMonth() {
     if (this._scroll) this._scroll.style.overflow = "auto";
+    const P = this._pal();
     const [y, m] = this.iso.split("-").map(Number);
     this._title.textContent = `${MONTHS[m - 1]} ${y}`;
     this._grid.style.height = "auto";
@@ -296,10 +342,10 @@ export class Calendar2DDay {
     const legend = document.createElement("div");
     legend.style.cssText =
       "display:flex;flex-wrap:wrap;gap:9px 16px;margin-bottom:14px;padding:10px 12px;" +
-      "background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:10px";
+      `background:${P.legendBg};border:1px solid ${P.legendBorder};border-radius:10px`;
     for (const [val, label] of CATEGORIES) {
       const item = document.createElement("span");
-      item.style.cssText = "display:inline-flex;align-items:center;gap:6px;font:600 12px system-ui;color:#c3cae6";
+      item.style.cssText = `display:inline-flex;align-items:center;gap:6px;font:600 12px system-ui;color:${P.legendText}`;
       item.innerHTML =
         `<span style="width:12px;height:12px;border-radius:50%;background:${getCategoryColor(val)};box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>${label}`;
       legend.appendChild(item);
@@ -312,7 +358,7 @@ export class Calendar2DDay {
     for (const w of ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) {
       const c = document.createElement("div");
       c.textContent = w;
-      c.style.cssText = "text-align:center;font:700 12px system-ui;color:#a5b4fc;text-shadow:0 1px 2px rgba(0,0,0,0.5)";
+      c.style.cssText = `text-align:center;font:700 12px system-ui;color:${P.weekday}`;
       dow.appendChild(c);
     }
     wrap.appendChild(dow);
@@ -343,13 +389,13 @@ export class Calendar2DDay {
 
       const cell = document.createElement("div");
       cell.style.cssText =
-        "min-height:74px;border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:6px;cursor:pointer;" +
-        `background:${inMonth ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.015)"};` +
+        `min-height:74px;border:1px solid ${P.legendBorder};border-radius:10px;padding:6px;cursor:pointer;` +
+        `background:${inMonth ? P.cellIn : P.cellOut};` +
         (isToday ? "outline:2px solid #818cf8;outline-offset:-2px;" : "");
       const num = document.createElement("div");
       num.textContent = String(dayNum);
       num.style.cssText =
-        `font:800 14px system-ui;color:${inMonth ? "#e6ebff" : "#6b7494"};text-shadow:0 1px 2px rgba(0,0,0,0.5)`;
+        `font:800 14px system-ui;color:${inMonth ? P.num : P.numDim}`;
       cell.appendChild(num);
 
       const colors = inMonth ? (byDate[iso] || []) : [];
@@ -385,6 +431,7 @@ export class Calendar2DDay {
 
   _renderDay() {
     if (this._scroll) this._scroll.style.overflow = "auto";
+    const P = this._pal();
     const [y, m, d] = this.iso.split("-").map(Number);
     const dt = new Date(y, m - 1, d);
     this._title.textContent = `${WEEKDAYS[dt.getDay()]}, ${MONTHS[m - 1]} ${d}, ${y}`;
@@ -400,14 +447,14 @@ export class Calendar2DDay {
       const line = document.createElement("div");
       line.style.cssText =
         `position:absolute;left:${GUTTER}px;right:0;top:${min * pxPerMin}px;height:0;` +
-        `border-top:1px solid ${isHour ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.06)"}`;
+        `border-top:1px solid ${isHour ? P.gridHour : P.gridMinor}`;
       this._grid.appendChild(line);
       if (isHour && min < DAY_MIN) {
         const lab = document.createElement("div");
         lab.textContent = clockLabel(min);
         lab.style.cssText =
           `position:absolute;left:0;width:${GUTTER - 8}px;top:${min * pxPerMin - 8}px;` +
-          `text-align:right;font:700 11.5px system-ui;color:#aab4d4;letter-spacing:0.2px;text-shadow:0 1px 2px rgba(0,0,0,0.5)`;
+          `text-align:right;font:700 11.5px system-ui;color:${P.hourLabel};letter-spacing:0.2px`;
         this._grid.appendChild(lab);
       }
     }
