@@ -327,6 +327,37 @@ export class WordWeaverMonthGrid {
       this._labels.push(label);
     }
 
+    // Day CELLS as light 3D boxes with darker edge lines: gives the flat grid
+    // real depth (reads as 3D from far away) while the number spheres + labels
+    // stay on top so the date always shows. Walls are light/translucent, edges
+    // darker than the walls. Gently animated in update().
+    {
+      const xs = this._layout.cells.map((c) => c.x).sort((a, b) => a - b);
+      let pitch = Infinity;
+      for (let i = 1; i < xs.length; i++) { const dx = xs[i] - xs[i - 1]; if (dx > 0.01) pitch = Math.min(pitch, dx); }
+      if (!Number.isFinite(pitch)) pitch = RADIUS.day * 2.4;
+      const s = pitch * 0.84;
+      const depth = Math.max(0.5, RADIUS.day * 1.5);
+      const backZ = -depth * 0.5 + 0.05;
+      this._dayBoxGeo = new THREE.BoxGeometry(s, s, depth);
+      this._dayBoxEdgesGeo = new THREE.EdgesGeometry(this._dayBoxGeo);
+      this._dayBoxWallMat = new THREE.MeshBasicMaterial({ color: 0xe2e8ff, transparent: true, opacity: 0.18, depthWrite: false });
+      this._dayBoxEdgeMat = new THREE.LineBasicMaterial({ color: 0x334155, transparent: true, opacity: 0.85 });
+      this._dayBoxes = [];
+      for (const cell of this._layout.cells) {
+        const box = new THREE.Mesh(this._dayBoxGeo, this._dayBoxWallMat);
+        box.position.set(cell.x, cell.y, backZ);
+        box.raycast = () => {}; // don't intercept day-cell clicks
+        const edges = new THREE.LineSegments(this._dayBoxEdgesGeo, this._dayBoxEdgeMat);
+        edges.position.copy(box.position);
+        edges.raycast = () => {};
+        edges.renderOrder = 2;
+        this.root.add(box);
+        this.root.add(edges);
+        this._dayBoxes.push({ box, edges, baseZ: backZ, phase: Math.random() * Math.PI * 2 });
+      }
+    }
+
     // Weekday headers (Sun–Sat) slanted at 45° (the hypotenuse) above each column.
     const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const colX = {};
@@ -426,6 +457,15 @@ export class WordWeaverMonthGrid {
       this._monthLabel.mesh.position.y =
         (this._layout?.monthCenter.y ?? 0) + RADIUS.month + 1.9 + Math.sin(elapsed * 1.1) * 0.06;
     }
+    // Day boxes: a gentle per-cell depth bob + a shared edge-line shimmer.
+    if (this._dayBoxes) {
+      if (this._dayBoxEdgeMat) this._dayBoxEdgeMat.opacity = 0.62 + 0.2 * Math.sin(elapsed * 1.6);
+      for (const d of this._dayBoxes) {
+        const z = d.baseZ + Math.sin(elapsed * 0.9 + d.phase) * 0.06;
+        d.box.position.z = z;
+        d.edges.position.z = z;
+      }
+    }
     pulseSpheres(elapsed);
   }
 
@@ -442,6 +482,15 @@ export class WordWeaverMonthGrid {
       this._connectors.material.dispose();
       this._connectors = null;
     }
+
+    if (this._dayBoxes) {
+      for (const d of this._dayBoxes) { this.root.remove(d.box); this.root.remove(d.edges); }
+      this._dayBoxes = null;
+    }
+    this._dayBoxGeo?.dispose(); this._dayBoxGeo = null;
+    this._dayBoxEdgesGeo?.dispose(); this._dayBoxEdgesGeo = null;
+    this._dayBoxWallMat?.dispose(); this._dayBoxWallMat = null;
+    this._dayBoxEdgeMat?.dispose(); this._dayBoxEdgeMat = null;
 
     for (const label of this._labels) {
       this.root.remove(label.mesh);
