@@ -89,10 +89,12 @@ function blockFill(hex) {
   return `linear-gradient(135deg, ${base}, ${darken(base, 0.28)})`;
 }
 
-// Layered text-shadow "extrusions" → CSS 3D text inside the 2D grid.
+// Layered text-shadow "extrusions" → clean CSS 2.5D text inside the 2D grid.
 const HEADER_3D =
   "0 1px 0 #cbd5e1,0 2px 0 #bcc6d6,0 3px 0 #aab6c8,0 4px 8px rgba(15,23,42,0.28)";
 const BLOCK_TITLE_3D = "0 1px 0 rgba(0,0,0,0.45),0 2px 4px rgba(0,0,0,0.35)";
+// Lighter 2.5D for the time-of-day labels (same family as the header, toned down).
+const TIME_LABEL_3D = "0 1px 0 #e6eaf1,0 2px 2px rgba(15,23,42,0.14)";
 
 export class Calendar2DDay {
   constructor() {
@@ -138,6 +140,21 @@ export class Calendar2DDay {
 
   _build() {
     if (this.root) return;
+    if (!document.getElementById("cal2d-style")) {
+      const st = document.createElement("style");
+      st.id = "cal2d-style";
+      st.textContent =
+        "@keyframes cal2d-shake{" +
+        "0%{transform:translateX(0)}" +
+        "12%{transform:translateX(-6px) rotate(-1.2deg)}" +
+        "26%{transform:translateX(6px) rotate(1.2deg)}" +
+        "40%{transform:translateX(-5px) rotate(-0.8deg)}" +
+        "54%{transform:translateX(5px) rotate(0.8deg)}" +
+        "68%{transform:translateX(-3px)}" +
+        "82%{transform:translateX(3px)}" +
+        "100%{transform:translateX(0)}}";
+      document.head.appendChild(st);
+    }
     const root = document.createElement("div");
     root.id = "cal2d-day";
     root.style.cssText =
@@ -226,8 +243,8 @@ export class Calendar2DDay {
         const lab = document.createElement("div");
         lab.textContent = clockLabel(min);
         lab.style.cssText =
-          `position:absolute;left:0;width:${GUTTER - 8}px;top:${min * pxPerMin - 7}px;` +
-          "text-align:right;font-size:11px;color:#94a3b8";
+          `position:absolute;left:0;width:${GUTTER - 8}px;top:${min * pxPerMin - 8}px;` +
+          `text-align:right;font:700 11.5px system-ui;color:#475569;text-shadow:${TIME_LABEL_3D};letter-spacing:0.2px`;
         this._grid.appendChild(lab);
       }
     }
@@ -261,9 +278,16 @@ export class Calendar2DDay {
       block.innerHTML =
         `<div style="font-weight:800;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:${BLOCK_TITLE_3D}">${escapeHtml(rec.title || rec.text || "Untitled")}</div>` +
         `<div style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.92);text-shadow:0 1px 1px rgba(0,0,0,0.35)">${clockLabel(startMin)}</div>`;
-      block.addEventListener("mouseenter", () => { block.style.transform = "translateY(-1px) scale(1.006)"; });
+      const ev = full ?? rec;
+      block.addEventListener("mouseenter", () => { if (!block.style.animation) block.style.transform = "translateY(-1px) scale(1.006)"; });
       block.addEventListener("mouseleave", () => { block.style.transform = "none"; });
-      block.addEventListener("click", (e) => { e.stopPropagation(); this._openEditor(full ?? rec, startMin); });
+      block.addEventListener("click", (e) => {
+        e.stopPropagation();
+        // Playful shake feedback on tap, then open the editor.
+        block.style.transform = "none";
+        block.style.animation = "cal2d-shake 0.42s cubic-bezier(.36,.07,.19,.97)";
+        setTimeout(() => { block.style.animation = ""; this._openEditor(ev, startMin); }, 380);
+      });
       this._grid.appendChild(block);
     }
 
