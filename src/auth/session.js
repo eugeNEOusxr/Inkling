@@ -8,8 +8,11 @@ export function getSession() {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (!data?.token || !data?.email) return null;
-    return data;
+    // Email may live at the top level or inside `user` (login stores {token, user}).
+    // Accept either, and backfill the top level so callers can rely on `.email`.
+    const email = data?.email ?? data?.user?.email;
+    if (!data?.token || !email) return null;
+    return { ...data, email };
   } catch {
     return null;
   }
