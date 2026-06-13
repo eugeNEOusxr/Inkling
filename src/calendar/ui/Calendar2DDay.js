@@ -180,7 +180,7 @@ export class Calendar2DDay {
         headBg: "#f8fafc", headBorder: "#e2e8f0",
         title: "#0f172a", titleShadow: HEADER_3D,
         btnBg: "#fff", btnBorder: "#cbd5e1", btnText: "#0f172a",
-        gridHour: "#e2e8f0", gridMinor: "#f1f5f9", hourLabel: "#334155",
+        gridHour: "#e2e8f0", gridMinor: "#eef2f7", hourLabel: "#334155", minorLabel: "#aab4c4",
         hourShadow: "0 1px 0 rgba(255,255,255,0.7)",
         cellIn: "#fff", cellOut: "#f8fafc", num: "#0f172a", numDim: "#94a3b8",
         legendBg: "#f8fafc", legendBorder: "#e2e8f0", legendText: "#475569", weekday: "#475569"
@@ -191,7 +191,7 @@ export class Calendar2DDay {
       headBg: "rgba(10,15,32,0.65)", headBorder: "rgba(255,255,255,0.1)",
       title: "#f1f5ff", titleShadow: "0 1px 2px rgba(0,0,0,0.6),0 0 16px rgba(129,140,248,0.45)",
       btnBg: "rgba(255,255,255,0.07)", btnBorder: "rgba(255,255,255,0.18)", btnText: "#e6ebff",
-      gridHour: "rgba(255,255,255,0.16)", gridMinor: "rgba(255,255,255,0.06)", hourLabel: "#f4f7ff",
+      gridHour: "rgba(255,255,255,0.16)", gridMinor: "rgba(255,255,255,0.05)", hourLabel: "#f4f7ff", minorLabel: "rgba(226,232,255,0.5)",
       hourShadow: "1px 1px 0 rgba(0,0,0,0.75),0 0 9px rgba(150,170,255,0.5)",
       cellIn: "rgba(255,255,255,0.05)", cellOut: "rgba(255,255,255,0.015)", num: "#e6ebff", numDim: "#6b7494",
       legendBg: "rgba(255,255,255,0.05)", legendBorder: "rgba(255,255,255,0.1)", legendText: "#c3cae6", weekday: "#a5b4fc"
@@ -455,21 +455,39 @@ export class Calendar2DDay {
     this._grid.style.height = `${gridH}px`;
     this._grid.textContent = "";
 
-    // Hour lines + labels (+ minor slot lines).
+    // Time rail. Hours get a full-width subtle line + bold label. Minor slots
+    // (:15/:30/:45) get only a short tick + a faint time label in the gutter —
+    // NOT a full-width line — so the canvas stays clean (empty space where
+    // nothing's scheduled) and the lines don't box in / clash with event blocks.
     for (let min = 0; min <= DAY_MIN; min += this.slot) {
       const isHour = min % 60 === 0;
-      const line = document.createElement("div");
-      line.style.cssText =
-        `position:absolute;left:${GUTTER}px;right:0;top:${min * pxPerMin}px;height:0;` +
-        `border-top:1px solid ${isHour ? P.gridHour : P.gridMinor}`;
-      this._grid.appendChild(line);
-      if (isHour && min < DAY_MIN) {
-        const lab = document.createElement("div");
-        lab.textContent = clockLabel(min);
-        lab.style.cssText =
-          `position:absolute;left:0;width:${GUTTER - 8}px;top:${min * pxPerMin - 8}px;` +
-          `text-align:right;font:800 12px system-ui;color:${P.hourLabel};letter-spacing:0.3px;text-shadow:${P.hourShadow}`;
-        this._grid.appendChild(lab);
+      const yTop = min * pxPerMin;
+      if (isHour) {
+        const line = document.createElement("div");
+        line.style.cssText =
+          `position:absolute;left:${GUTTER}px;right:0;top:${yTop}px;height:0;border-top:1px solid ${P.gridHour}`;
+        this._grid.appendChild(line);
+        if (min < DAY_MIN) {
+          const lab = document.createElement("div");
+          lab.textContent = clockLabel(min);
+          lab.style.cssText =
+            `position:absolute;left:0;width:${GUTTER - 8}px;top:${yTop - 8}px;` +
+            `text-align:right;font:800 12px system-ui;color:${P.hourLabel};letter-spacing:0.3px;text-shadow:${P.hourShadow}`;
+          this._grid.appendChild(lab);
+        }
+      } else if (min < DAY_MIN) {
+        // short gutter tick
+        const tick = document.createElement("div");
+        tick.style.cssText =
+          `position:absolute;left:${GUTTER - 9}px;width:9px;top:${yTop}px;height:0;border-top:1px solid ${P.gridMinor}`;
+        this._grid.appendChild(tick);
+        // faint per-slot time label so each timeframe shows its time for context
+        const mlab = document.createElement("div");
+        mlab.textContent = clockLabel(min);
+        mlab.style.cssText =
+          `position:absolute;left:0;width:${GUTTER - 12}px;top:${yTop - 6}px;` +
+          `text-align:right;font:700 9.5px system-ui;color:${P.minorLabel};letter-spacing:0.2px`;
+        this._grid.appendChild(mlab);
       }
     }
 
