@@ -736,6 +736,24 @@ function buildDayBackdropTexture(source) {
 
 // ── Rough DAY VIEW (click-to-zoom prototype) ───────────────────────────────
 const DAY_VIEW_SPHERE_GEO = new THREE.SphereGeometry(0.42, 22, 22);
+
+/** Shared radial-gradient texture for the sphere glow aura (tinted per sprite). */
+let _dayGlowTex = null;
+function getDayGlowTexture() {
+  if (_dayGlowTex) return _dayGlowTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.4, "rgba(255,255,255,0.45)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  _dayGlowTex = new THREE.CanvasTexture(c);
+  _dayGlowTex.needsUpdate = true;
+  return _dayGlowTex;
+}
 // Taller timeline → more vertical space between notes now that the note text is
 // larger beveled 3D text.
 const DAY_VIEW_HEIGHT = 22;
@@ -828,28 +846,16 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
   /** @type {import("./Real3DText.js").Real3DText[]} */
   const textNodes = [];
 
-  // Crisp, full month backdrop behind the day timeline (readability test).
-  const monthIndex = Number(dayIso.slice(5, 7)) - 1;
-  const sceneUrls = MONTH_SCENES[monthIndex];
-  let bgMesh = null;
-  if (sceneUrls) {
-    const url = segment === "night" ? sceneUrls.night : sceneUrls.day;
-    const bgMat = new THREE.MeshBasicMaterial({ color: 0x111418, toneMapped: false, depthWrite: false });
-    bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), bgMat);
-    bgMesh.name = "ww-day-view-bg";
-    bgMesh.scale.set(96, 60, 1);
-    bgMesh.position.set(2.4, 1, -30);
-    bgMesh.renderOrder = -10;
-    group.add(bgMesh);
-    const bgImg = new Image();
-    bgImg.crossOrigin = "anonymous";
-    bgImg.onload = () => {
-      bgMat.map = buildDayBackdropTexture(bgImg);
-      bgMat.color.set(0xffffff);
-      bgMat.needsUpdate = true;
-    };
-    bgImg.src = url;
-  }
+  // A clean white "wall" canvas the spheres + 3D text sit against — colored text
+  // pops on white, while the scene's cosmic background shows around/behind it for
+  // an immersive 3D stage. (Replaces the busy daylight photo backdrops.)
+  const bgMat = new THREE.MeshBasicMaterial({ color: 0xf4f6fb, toneMapped: false });
+  const bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), bgMat);
+  bgMesh.name = "ww-day-view-bg";
+  bgMesh.scale.set(34, DAY_VIEW_HEIGHT + 9, 1);
+  bgMesh.position.set(8, 0.5, -1.4); // behind the spheres (z=0) and text
+  bgMesh.renderOrder = -5;
+  group.add(bgMesh);
 
   /** @type {Array<{ mesh: THREE.Mesh, mat: THREE.Material, tex?: THREE.Texture }>} */
   const labels = [];
@@ -897,16 +903,30 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
       const color = dayCategoryColor(ev.category, ev.text);
       const mat = new THREE.MeshStandardMaterial({
         color,
-        emissive: new THREE.Color(color).multiplyScalar(0.3),
-        emissiveIntensity: 0.6,
-        roughness: 0.4,
-        metalness: 0.1
+        emissive: new THREE.Color(color).multiplyScalar(0.55),
+        emissiveIntensity: 0.85,
+        roughness: 0.35,
+        metalness: 0.12
       });
       const mesh = new THREE.Mesh(DAY_VIEW_SPHERE_GEO, mat);
       mesh.position.set(0, y, 0);
       group.add(mesh);
       spheres.push(mesh);
       items.push({ mesh, y, event: ev });
+
+      // Soft colored aura behind the sphere — a glow in its own category color.
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: getDayGlowTexture(),
+        color,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      }));
+      glow.scale.set(2.6, 2.6, 1);
+      glow.position.set(0, y, -0.05);
+      glow.layers.set(1);
+      group.add(glow);
+      spheres.push(glow); // tracked for material disposal
       linePts.push(new THREE.Vector3(0, y, 0));
 
       // Full note text, word-wrapped onto readable lines (no truncation) and
