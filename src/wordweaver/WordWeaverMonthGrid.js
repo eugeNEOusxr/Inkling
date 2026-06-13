@@ -804,6 +804,21 @@ export function representativeDayIso(year, monthIndex) {
  * @param {THREE.Scene} scene
  * @param {string} dayIso
  */
+/** Word-wrap a string into lines of at most `maxChars` (hard-breaks long words). */
+function wrapWords(text, maxChars) {
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    if (!cur) cur = w;
+    else if ((cur + " " + w).length <= maxChars) cur += " " + w;
+    else { lines.push(cur); cur = w; }
+    while (cur.length > maxChars) { lines.push(cur.slice(0, maxChars)); cur = cur.slice(maxChars); }
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [""];
+}
+
 export function createDayView(scene, dayIso, segment = "afternoon") {
   const group = new THREE.Group();
   group.name = "ww-day-view";
@@ -894,18 +909,28 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
       items.push({ mesh, y, event: ev });
       linePts.push(new THREE.Vector3(0, y, 0));
 
-      // Beveled, popped-out 3D note text (≈2× the old flat label) in the note's color.
-      const noteText = `${ev.time}  ${String(ev.text || "").slice(0, 26)}`;
-      const t3d = createReal3DText(noteText, {
-        fontSize: 0.82,
-        ...text3dParams(textStyle, color)
+      // Full note text, word-wrapped onto readable lines (no truncation) and
+      // rendered smaller + thinner so it's legible, not bulky.
+      const fullText = `${ev.time}  ${String(ev.text || ev.title || "").trim()}`;
+      const lines = wrapWords(fullText, 22);
+      const params = text3dParams(textStyle, color);
+      const fontSize = 0.58;
+      const lineH = 0.74;
+      const startY = y + ((lines.length - 1) * lineH) / 2; // center the block on the sphere
+      lines.forEach((line, li) => {
+        const t3d = createReal3DText(line, {
+          fontSize,
+          ...params,
+          depth: Math.min(params.depth ?? 0.2, 0.16) // shallower → less bulky
+        });
+        const tg = t3d.getGroup();
+        // Rough left-anchor (Real3DText centers each line): shift right by ~half width.
+        tg.position.set(3.0 + line.length * fontSize * 0.29, startY - li * lineH, 0.08);
+        tg.layers.set(1);
+        tg.traverse((o) => o.layers.set(1));
+        group.add(tg);
+        textNodes.push(t3d);
       });
-      const tg = t3d.getGroup();
-      tg.position.set(2.6 + noteText.length * 0.17, y, 0.08);
-      tg.layers.set(1);
-      tg.traverse((o) => o.layers.set(1));
-      group.add(tg);
-      textNodes.push(t3d);
     }
     linePts.push(new THREE.Vector3(0, DAY_VIEW_HEIGHT / 2 + 1.4, 0));
     linePts.sort((a, b) => a.y - b.y);

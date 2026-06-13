@@ -137,9 +137,9 @@ export function buildTextGeometry(text, font, opts = {}) {
     depth,
     curveSegments: opts.curveSegments ?? 8,
     bevelEnabled: opts.bevelEnabled !== false,
-    bevelThickness: depth * 0.3,
-    bevelSize: depth * 0.18,
-    bevelSegments: 1
+    bevelThickness: depth * 0.16,
+    bevelSize: depth * 0.09,
+    bevelSegments: 2
   });
   geometry.computeBoundingBox();
   const box = geometry.boundingBox;
