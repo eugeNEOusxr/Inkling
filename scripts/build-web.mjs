@@ -78,7 +78,26 @@ try {
   // no public/ dir — fine
 }
 
-// 4) GitHub Pages: serve every path verbatim (don't run Jekyll over the bundle).
+// 4) Stamp a UNIQUE service-worker cache version per build. The SW is cache-first
+//    with skipWaiting + clients.claim, so a changed file auto-updates clients —
+//    but only if the bytes change. Without this, CACHE_VERSION stays static and
+//    users keep the old cached app after every deploy.
+const swPath = path.join(dist, "service-worker.js");
+try {
+  let sw = await fs.readFile(swPath, "utf8");
+  const stamp = `eugeneousxr-${Date.now()}`;
+  const next = sw.replace(/const CACHE_VERSION = "[^"]*";/, `const CACHE_VERSION = "${stamp}";`);
+  if (next !== sw) {
+    await fs.writeFile(swPath, next, "utf8");
+    console.log(`Stamped service-worker CACHE_VERSION = ${stamp}`);
+  } else {
+    console.warn("⚠ service-worker.js CACHE_VERSION not found — cache may not bust");
+  }
+} catch {
+  /* no service-worker.js — fine */
+}
+
+// 5) GitHub Pages: serve every path verbatim (don't run Jekyll over the bundle).
 await fs.writeFile(path.join(dist, ".nojekyll"), "");
 
 console.log("Built static web assets to ./dist");
