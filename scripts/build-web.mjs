@@ -24,9 +24,10 @@ const explicitRootFiles = ["manifest.json", "service-worker.js", "inkling-config
 // NOTE: the root data/ dir is the backend's USER-ACCOUNT store (emails, password
 // hashes, IPs) — it must never ship to a static/public host. The only client-facing
 // data file (word-neighborhood.json) is sourced from public/data/ via the flatten below.
-// `.github` carries the keep-warm Actions cron that ships to the Pages repo so it
-// runs on `main` and keeps the free-tier backend awake (instant login).
-const dirsToCopy = ["src", "public", "assets", "icons", "fonts", "vendor", ".github"];
+const dirsToCopy = ["src", "public", "assets", "icons", "fonts", "vendor"];
+// NOTE: do NOT ship .github/ here — the Pages deploy credential lacks GitHub's
+// `workflow` scope, so pushing a workflow file rejects the whole deploy. Keep-warm
+// is set up via an external pinger (UptimeRobot) instead. See keep-warm.yml.
 
 async function rmrf(target) {
   await fs.rm(target, { recursive: true, force: true });
