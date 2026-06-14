@@ -22,6 +22,7 @@ import * as bus from "../utils/EventBus.js";
 import { getCalendarMode } from "./calendarMode.js";
 import { getCalendar2D } from "./Calendar2D.js";
 import { createMonthGrid, createYearGrid, createDayView, representativeDayIso, WordWeaverMonthGrid } from "./WordWeaverMonthGrid.js";
+import { createConnectionsView } from "./WordWeaverConnections.js";
 import { isWordWeaverTabActive } from "../calendar/ui/shellSurfaces.js";
 
 /** Served from public/environments/ (copied from Meshy export). */
@@ -121,7 +122,8 @@ export class WordWeaverScene {
     this._hovered = null;
     /** @type {import("./WordWeaverMonthGrid.js").WordWeaverYearGrid | WordWeaverMonthGrid | null} */
     this._monthGrid = null;
-    this._navLevel = "year"; // "year" | "month" | "day"
+    this._navLevel = "year"; // "year" | "month" | "day" | "connections"
+    this._connView = null;
     this._navMonthGrid = null;
     this._navMonthIndex = 0;
     this._daySel = 0;
@@ -974,6 +976,7 @@ export class WordWeaverScene {
    */
   enterMonthView(monthIndex) {
     const year = this._monthGrid?.year ?? new Date().getFullYear();
+    this._connView?.dispose(); this._connView = null;
     this._dayView?.dispose();
     this._dayView = null;
     this._navMonthGrid?.dispose();
@@ -997,6 +1000,7 @@ export class WordWeaverScene {
    */
   enterDayViewIso(dayIso) {
     this._dayIso = dayIso; // remember the focused day for ‹ › day stepping
+    this._connView?.dispose(); this._connView = null;
     this._dayView?.dispose();
     this.controls.minDistance = 4;
     this.controls.maxDistance = 300;
@@ -1048,6 +1052,15 @@ export class WordWeaverScene {
 
   /** Go up one level: day → month → year. */
   navBack() {
+    if (this._navLevel === "connections") {
+      this._connView?.dispose(); this._connView = null;
+      if (this._monthGrid?.root) this._monthGrid.root.visible = true;
+      this._monthGrid?.frameCamera(this.camera, this.controls);
+      this._navLevel = "year";
+      this._updateBackButton();
+      this._updateViewButtons();
+      return;
+    }
     if (this._navLevel === "day") {
       this._dayView?.dispose();
       this._dayView = null;
@@ -1065,8 +1078,33 @@ export class WordWeaverScene {
     this._updateViewButtons();
   }
 
+  /**
+   * The 3D "connections" world for a day — category-grouped notes wired by the
+   * red bracket style, with filter buttons.
+   * @param {string} dayIso
+   */
+  enterConnectionsView(dayIso) {
+    this._dayIso = dayIso;
+    this._dayView?.dispose(); this._dayView = null;
+    this._connView?.dispose();
+    if (this._navMonthGrid?.root) this._navMonthGrid.root.visible = false;
+    if (this._monthGrid?.root) this._monthGrid.root.visible = false;
+    this.controls.minDistance = 4;
+    this.controls.maxDistance = 400;
+    this.camera.far = Math.max(this.camera.far, 500);
+    this.camera.updateProjectionMatrix();
+    this._connView = createConnectionsView(this.scene, {
+      iso: dayIso, camera: this.camera, controls: this.controls
+    });
+    this._navLevel = "connections";
+    this._ensureBackButton();
+    this._updateBackButton();
+    this._updateViewButtons();
+  }
+
   /** Jump straight back to the YEAR overview from any level. */
   enterYearView() {
+    this._connView?.dispose(); this._connView = null;
     this._dayView?.dispose();
     this._dayView = null;
     this._navMonthGrid?.dispose();
@@ -1182,6 +1220,7 @@ export class WordWeaverScene {
       this.enterMonthView(Number(iso.split("-")[1]) - 1); // month underneath so Back works
       this.enterDayViewIso(iso);
     });
+    mk("🔗 Links", "connections", () => this.enterConnectionsView(this._dayIso ?? todayIso()));
     (this.container || document.body).appendChild(wrap);
     this._viewBtns = wrap;
     return wrap;
@@ -1254,6 +1293,7 @@ export class WordWeaverScene {
       this._yearLayout?.update(delta, t, this.camera);
       this._monthGrid?.update(delta, t);
       this._dayView?.update?.(t);
+      this._connView?.update?.(t);
       if (this._monthGridLayoutActive) {
         this._updateGridFlight(delta);
       } else {
@@ -1299,6 +1339,10 @@ export class WordWeaverScene {
     this._resizeObserver?.disconnect();
     this._atomOrbits?.dispose();
     this._atomOrbits = null;
+    this._connView?.dispose();
+    this._connView = null;
+    this._dayView?.dispose();
+    this._dayView = null;
     this._monthGrid?.dispose();
     this._monthGrid = null;
     this._yearLayout?.dispose();
