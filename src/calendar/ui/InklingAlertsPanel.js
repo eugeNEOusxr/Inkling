@@ -279,16 +279,31 @@ export class InklingAlerts {
     // Remark box — annotate fired/reviewed alerts ("no show" etc.); persists for
     // later review in WordWeaver.
     if (mode === "awaiting" || resolved) {
+      const rrow = document.createElement("div");
+      rrow.style.cssText = "display:flex;gap:6px;align-items:center";
       const remark = document.createElement("input");
       remark.type = "text";
       remark.value = alert.remark || "";
       remark.placeholder = "📝 remark (e.g. no show)…";
       remark.style.cssText =
-        "width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);" +
+        "flex:1;min-width:0;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);" +
         "border-radius:7px;padding:6px 9px;color:#e2e8f0;font:600 12px system-ui;outline:none";
+      const saveBtn = document.createElement("button");
+      saveBtn.textContent = "Save";
+      saveBtn.title = "Save remark";
+      saveBtn.style.cssText =
+        "flex:0 0 auto;background:#1e293b;color:#cbd5e1;border:0;border-radius:7px;padding:6px 10px;font:700 11px system-ui;cursor:pointer";
+      const doSave = () => {
+        try { setAlertRemark(alert.id, remark.value); } catch { /* ignore */ }
+        saveBtn.textContent = "Saved ✓"; saveBtn.style.color = "#a7f3d0";
+        setTimeout(() => { saveBtn.textContent = "Save"; saveBtn.style.color = "#cbd5e1"; }, 1300);
+      };
+      saveBtn.addEventListener("click", doSave);
+      // Also persist on blur so an un-clicked edit isn't lost; Enter = save.
       remark.addEventListener("change", () => { try { setAlertRemark(alert.id, remark.value); } catch { /* ignore */ } });
-      remark.addEventListener("keydown", (e) => e.stopPropagation());
-      row.appendChild(remark);
+      remark.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") doSave(); });
+      rrow.append(remark, saveBtn);
+      row.appendChild(rrow);
     }
     return row;
   }

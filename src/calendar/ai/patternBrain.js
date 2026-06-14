@@ -8,7 +8,7 @@
  * calendar yields "jot more" — that's honest, not a failure.
  */
 import { getEventsForYear, classifyText } from "../../wordweaver/timelineModel.js";
-import { getResolvedAlerts } from "../alerts/alertsModel.js";
+import { getResolvedAlerts, getAlertsAwaitingReview, loadAlerts } from "../alerts/alertsModel.js";
 
 const WD = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const SLEEP_RE = /\b(sleep|bed|bedtime|asleep|nap|lights?\s*out|turn in|wind ?down)\b/i;
@@ -152,4 +152,87 @@ export function reportSuggestions() {
     { id: "adherence", label: "✅ Follow-through report", need: "check reminders off ✓/✗ as you go" },
     { id: "balance", label: "⚖️ Work–life balance", need: "log both work and personal/social time" }
   ];
+}
+
+// ── People-aware connections ───────────────────────────────────────────────
+// Names that follow a relational cue ("lunch with Tom", "call Sarah", "meet …").
+const PEOPLE_RE = /\b(?:with|w\/|meet(?:ing)?(?:\s+with)?|call|see|saw|visit|lunch with|dinner with|coffee with|catch up with)\s+([A-Z][a-z]+)\b/g;
+const ACTION_RE = /\b(lunch|dinner|coffee|breakfast|brunch|drinks|meeting|call|chat|catch ?up|date|appointment)\b/i;
+const NOT_NAMES = new Set([
+  "the", "me", "my", "myself", "team", "him", "her", "them", "you", "i",
+  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+  "today", "tomorrow", "everyone", "someone", "work", "lunch", "dinner"
+]);
+
+/**
+ * People the user logs time with, most-frequent first.
+ * @returns {{ name: string, count: number, lastIso: string, lastText: string }[]}
+ */
+export function extractPeople({ year = new Date().getFullYear() } = {}) {
+  let events = [];
+  try { events = getEventsForYear(year); } catch { /* ignore */ }
+  /** @type {Map<string, { name: string, count: number, lastIso: string, lastText: string }>} */
+  const map = new Map();
+  for (const e of events) {
+    const text = `${e.text || ""} ${e.title || ""}`;
+    PEOPLE_RE.lastIndex = 0;
+    let m;
+    while ((m = PEOPLE_RE.exec(text))) {
+      const name = m[1].trim();
+      if (NOT_NAMES.has(name.toLowerCase())) continue;
+      const cur = map.get(name) || { name, count: 0, lastIso: "", lastText: "" };
+      cur.count++;
+      if (!cur.lastIso || (e.date && e.date >= cur.lastIso)) {
+        cur.lastIso = e.date || cur.lastIso;
+        cur.lastText = (e.text || e.title || "").trim();
+      }
+      map.set(name, cur);
+    }
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Casual check-in questions about recent past hangouts ("How did lunch with Tom go?").
+ * @returns {string[]}
+ */
+export function checkInQuestions({ now = Date.now(), max = 3 } = {}) {
+  const today = new Date(now).toISOString().slice(0, 10);
+  const out = [];
+  for (const p of extractPeople()) {
+    if (!p.lastIso || p.lastIso > today) continue; // only past events
+    const act = (ACTION_RE.exec(p.lastText)?.[1] || "time").toLowerCase();
+    out.push(`How did ${act === "time" ? "your time" : act} with ${p.name} go?`);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/**
+ * "Follow up with X" nudges for people you haven't logged recently.
+ * @returns {{ name: string, label: string, dueIso: string }[]}
+ */
+export function followUpSuggestions({ now = Date.now(), max = 4 } = {}) {
+  const due = new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return extractPeople().slice(0, max).map((p) => ({
+    name: p.name,
+    label: `Follow up with ${p.name}`,
+    dueIso: due
+  }));
+}
+
+/**
+ * Recently-saved alert remarks ("Appointment with Tom — no show"), newest first.
+ * @returns {{ text: string, remark: string, status: string }[]}
+ */
+export function recentRemarks({ max = 6 } = {}) {
+  let all = [];
+  try { all = loadAlerts(); } catch { /* ignore */ }
+  // Touch the alert-read helpers so a stale import is obvious if the API changes.
+  void getAlertsAwaitingReview;
+  return all
+    .filter((a) => a.remark && a.remark.trim() && !a.dismissed)
+    .sort((a, b) => (b.resolvedAt ?? b.createdAt ?? 0) - (a.resolvedAt ?? a.createdAt ?? 0))
+    .slice(0, max)
+    .map((a) => ({ text: a.text || "Reminder", remark: a.remark, status: a.status || "pending" }));
 }

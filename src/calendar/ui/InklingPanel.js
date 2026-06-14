@@ -10,7 +10,9 @@ import { submitFeedback } from "../../auth/userAccount.js";
 import { registerInklingApp, installWriterNavigation } from "./Writer.js";
 import { openPanel } from "./AppLauncher.js";
 import { InklingAlerts, colorizeAlertWords } from "./InklingAlertsPanel.js";
-import { analyzePatterns, patternInsights, dataNudge, reportSuggestions, CONNECTIONS_PROMPT } from "../ai/patternBrain.js";
+import { analyzePatterns, patternInsights, dataNudge, reportSuggestions, CONNECTIONS_PROMPT, checkInQuestions, followUpSuggestions, recentRemarks } from "../ai/patternBrain.js";
+import { createAlert, addAlert, AlertPriority } from "../alerts/alertsModel.js";
+import { recomputeSchedule } from "../alerts/alertsScheduler.js";
 const INKLING_CRON_KEY = "calendar3d-inkling-cron-v1";
 
 /**
@@ -395,7 +397,48 @@ export class InklingPanel {
     if (nudge) {
       this._appendBubble("inkling", `<span style="opacity:.85">${nudge}</span>`, "inkling-msg--proactive");
     }
-    // 4) reports it could build — tappable; each explains what to log
+    // 4) PEOPLE — casual check-ins about recent hangouts + follow-up nudges.
+    const checkins = checkInQuestions();
+    if (checkins.length) {
+      this._appendBubble("inkling", checkins.map((q) => `💬 ${escapeHtml(q)}`).join("<br>"), "inkling-msg--proactive");
+    }
+    const follows = followUpSuggestions();
+    if (follows.length) {
+      this._appendBubble("inkling", "Want me to remind you to circle back with anyone?", "inkling-msg--proactive");
+      const pwrap = document.createElement("div");
+      pwrap.className = "inkling-title-ideas";
+      pwrap.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px";
+      for (const f of follows) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = `➕ ${f.label}`;
+        b.style.cssText =
+          "background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc;border-radius:999px;padding:6px 12px;font:600 12px system-ui;cursor:pointer";
+        b.addEventListener("click", () => {
+          try {
+            addAlert(createAlert({ time: "10:00", text: f.label, category: "personal", date: f.dueIso, priority: AlertPriority.LOW }));
+            recomputeSchedule();
+            this.alerts?._refresh?.();
+            b.textContent = `✓ ${f.name} · ${f.dueIso}`;
+            b.disabled = true;
+            b.style.opacity = "0.7";
+          } catch { /* ignore */ }
+        });
+        pwrap.appendChild(b);
+      }
+      this.messagesEl.appendChild(pwrap);
+    }
+
+    // 5) Saved remarks (the "no show" notes) — surfaced back so they're visible.
+    const remarks = recentRemarks();
+    if (remarks.length) {
+      const icon = (s) => (s === "done" ? "✓" : s === "missed" ? "✗" : "•");
+      this._appendBubble("inkling",
+        "📝 <b>Your remarks</b><br>" + remarks.map((r) => `${icon(r.status)} ${escapeHtml(r.text)} — <i>${escapeHtml(r.remark)}</i>`).join("<br>"),
+        "inkling-msg--proactive");
+    }
+
+    // 6) reports it could build — tappable; each explains what to log
     const wrap = document.createElement("div");
     wrap.className = "inkling-title-ideas";
     wrap.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px";
