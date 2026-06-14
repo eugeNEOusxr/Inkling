@@ -506,17 +506,58 @@ export class Calendar2DDay {
     });
     this._grid.appendChild(hit);
 
-    // Events.
-    for (const rec of getEventsForDate(this.iso)) {
-      const full = getEventById(rec.id);
-      const startMin = full ? minutesOf(full.startTime) : 0;
-      const endMin = full?.endTime ? minutesOf(full.endTime) : startMin + this.slot;
+    // Events — lay overlapping ones side-by-side in columns so they never mesh.
+    const evs = getEventsForDate(this.iso)
+      .map((rec) => {
+        const full = getEventById(rec.id);
+        const startMin = full ? minutesOf(full.startTime) : 0;
+        let endMin = full?.endTime ? minutesOf(full.endTime) : startMin + this.slot;
+        if (endMin <= startMin) endMin = startMin + Math.max(15, this.slot);
+        return { rec, full, startMin, endMin };
+      })
+      .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+
+    // Cluster transitively-overlapping events, then greedily assign columns.
+    const colOf = new Map();
+    {
+      let cluster = [];
+      let clusterEnd = -1;
+      const flush = () => {
+        if (!cluster.length) return;
+        const colsEnd = []; // last endMin per column
+        for (const e of cluster) {
+          let placed = colsEnd.findIndex((end) => e.startMin >= end);
+          if (placed === -1) { placed = colsEnd.length; colsEnd.push(e.endMin); }
+          else colsEnd[placed] = e.endMin;
+          colOf.set(e, { col: placed });
+        }
+        for (const e of cluster) colOf.get(e).cols = colsEnd.length;
+        cluster = [];
+        clusterEnd = -1;
+      };
+      for (const e of evs) {
+        if (cluster.length && e.startMin >= clusterEnd) flush();
+        cluster.push(e);
+        clusterEnd = Math.max(clusterEnd, e.endMin);
+      }
+      flush();
+    }
+
+    const leftBase = GUTTER + 6;
+    const avail = Math.max(80, (this._grid.clientWidth || this._scroll?.clientWidth || 640) - leftBase - 10);
+
+    for (const e of evs) {
+      const { rec, full, startMin, endMin } = e;
+      const { col, cols } = colOf.get(e) ?? { col: 0, cols: 1 };
+      const colW = avail / cols;
+      const left = leftBase + col * colW;
+      const width = colW - (cols > 1 ? 5 : 0);
       const top = startMin * pxPerMin;
       const height = Math.max(20, (Math.max(endMin, startMin + 10) - startMin) * pxPerMin - 2);
       const color = getCategoryColor(rec.category);
       const block = document.createElement("div");
       block.style.cssText =
-        `position:absolute;left:${GUTTER + 6}px;right:10px;top:${top + 1}px;height:${Math.max(18, height - 2)}px;` +
+        `position:absolute;left:${left}px;width:${width}px;top:${top + 1}px;height:${Math.max(18, height - 2)}px;` +
         `background:${blockFill(color)};border:1px solid rgba(255,255,255,0.85);border-left:5px solid ${darken(color, 0.5)};` +
         "border-radius:8px;padding:3px 10px;overflow:hidden;cursor:pointer;box-sizing:border-box;color:#fff;" +
         `box-shadow:0 2px 8px ${color}55,0 0 0 1px rgba(0,0,0,0.15);transition:transform .12s ease`;
