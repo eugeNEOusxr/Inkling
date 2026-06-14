@@ -128,10 +128,17 @@ body.inkling-tab-constellation.inkling-surface-idle #three-canvas {
 }
 
 /* …and reclaim the sidebar's reserved left padding (~228px) so the top bar
-   spans full width — otherwise "June 2026" overlaps the Login/bell/settings. */
+   spans full width — otherwise "June 2026" overlaps the Login/bell/settings.
+   Includes the IDLE cosmos surface so the month/date sits flush at the LEFT
+   edge (was shoved to ~x228 by the reserved sidebar gutter). */
 body.inkling-tab-wordweaver #top-chrome.top-chrome,
-body.inkling-tab-constellation #top-chrome.top-chrome {
+body.inkling-tab-constellation #top-chrome.top-chrome,
+body.inkling-surface-idle #top-chrome.top-chrome {
   padding-left: 12px !important;
+}
+/* On the cosmos surface, pin the month hard-left so it reads as the page title. */
+body.inkling-surface-idle .top-chrome__month-block {
+  margin-left: 0 !important;
 }
 
 /* WordWeaver Journal — keep the wall clean. The journal owns the body class

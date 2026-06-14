@@ -339,14 +339,17 @@ export function loadAlerts() {
  * @param {AlertRecord[] | null} [rollbackSnapshot]
  * @returns {boolean}
  */
-export function saveAlerts(alerts, rollbackSnapshot = null) {
+export function saveAlerts(alerts, rollbackSnapshot = null, opts = {}) {
   const normalized = alerts.map((a) => normalizeAlert(a));
   if (!writeAlertsStore(normalized)) {
     if (rollbackSnapshot) restoreAlertsSnapshot(rollbackSnapshot);
     devLogAlerts("rollback saveAlerts");
     return false;
   }
-  notifyAlertsUpdated();
+  // `silent` lets metadata-only writes (e.g. a remark) persist WITHOUT triggering
+  // a UI refresh — otherwise the alerts panel rebuilds and kills the Save-button
+  // "✓ Saved" flash mid-click.
+  if (!opts.silent) notifyAlertsUpdated();
   return true;
 }
 
@@ -425,7 +428,7 @@ export function setAlertRemark(id, text) {
   const idx = alerts.findIndex((a) => a.id === id);
   if (idx < 0) return null;
   alerts[idx] = { ...alerts[idx], remark: String(text ?? "").slice(0, 500) };
-  if (!saveAlerts(alerts, snapshot)) return null;
+  if (!saveAlerts(alerts, snapshot, { silent: true })) return null;
   return alerts[idx];
 }
 
