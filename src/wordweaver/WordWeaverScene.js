@@ -125,6 +125,14 @@ export class WordWeaverScene {
     this._navMonthGrid = null;
     this._navMonthIndex = 0;
     this._daySel = 0;
+    // Rebuild the day view live when the paint-icon text prefs change
+    // (style / colour / size), so the 3D note text updates immediately.
+    if (typeof window !== "undefined") {
+      const onTextPref = () => { if (this._navLevel === "day" && this._dayIso) this.enterDayViewIso(this._dayIso); };
+      for (const ev of ["inkling:text-style", "inkling:text-color", "inkling:text-size"]) {
+        window.addEventListener(ev, onTextPref);
+      }
+    }
     /** @type {{ group: import("three").Group, items: Array<{ mesh: import("three").Mesh, y: number, event: any }>, dispose: () => void } | null} */
     this._dayView = null;
     /** M5 M1: month wall-grid is the active 3D layout; legacy timeline/weave stay mounted but hidden. */

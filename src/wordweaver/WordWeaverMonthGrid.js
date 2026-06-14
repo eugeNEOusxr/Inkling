@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { getYearTopology, getEventsForDate, classifyText, CategoryColors } from "./timelineModel.js";
 import { createReal3DText, preloadReal3DFont } from "./Real3DText.js";
-import { getTextStyle, text3dParams, getTextColor } from "../calendar/ui/TextStylePicker.js";
+import { getTextStyle, text3dParams, getTextColor, getTextScale } from "../calendar/ui/TextStylePicker.js";
 import {
   computeMonthGridLayout,
   computeYearGridLayout,
@@ -1083,8 +1083,9 @@ export function createDayView(scene, dayIso, opts = {}) {
       const params = text3dParams(textStyle, finalTextColor);
       params.color = finalTextColor;
       params.glowColor = finalTextColor;
-      const fontSize = 0.62;
-      const lineH = 0.82;
+      const sizeScale = getTextScale(); // paint-icon Size control
+      const fontSize = 0.62 * sizeScale;
+      const lineH = 0.82 * sizeScale;
       const startY = 0.45;
       lines.forEach((line, li) => {
         const t3d = createReal3DText(line, {
@@ -1277,7 +1278,7 @@ export function createDayView(scene, dayIso, opts = {}) {
 
     modeBar.append(optionsWrap, handle); // options left, handle right → retracts rightward
     document.body.appendChild(modeBar);
-    setBarOpen(false); // start retracted on the right
+    setBarOpen(true); // start OPEN so users see the options; » retracts it
 
     // Wheel arrows (shown only in scroll mode).
     arrowBar = document.createElement("div");

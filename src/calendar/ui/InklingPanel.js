@@ -235,7 +235,9 @@ export class InklingPanel {
     let startX = 0, startY = 0, originLeft = 0, originTop = 0, moved = false;
     const onMove = (e) => {
       const dx = e.clientX - startX, dy = e.clientY - startY;
-      if (!moved && Math.hypot(dx, dy) > 6) { moved = true; orb.classList.add("inkling-orb--dragging"); }
+      // Higher threshold so a jittery finger TAP on mobile still opens the menu
+      // (a real drag moves much further than this).
+      if (!moved && Math.hypot(dx, dy) > 12) { moved = true; orb.classList.add("inkling-orb--dragging"); }
       if (moved) {
         const left = Math.max(6, Math.min(window.innerWidth - orb.offsetWidth - 6, originLeft + dx));
         const top = Math.max(6, Math.min(window.innerHeight - orb.offsetHeight - 6, originTop + dy));
@@ -245,6 +247,7 @@ export class InklingPanel {
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
       orb.classList.remove("inkling-orb--dragging");
       if (moved) {
         const r = orb.getBoundingClientRect();
@@ -259,6 +262,7 @@ export class InklingPanel {
       startX = e.clientX; startY = e.clientY; originLeft = r.left; originTop = r.top; moved = false;
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp); // some mobile browsers fire this
     });
   }
 

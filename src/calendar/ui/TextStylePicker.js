@@ -10,7 +10,11 @@
 const PREF_KEY = "inkling-text-style";
 const ANIM_KEY = "inkling-text-anim";
 const COLOR_KEY = "inkling-text-color";
+const SIZE_KEY = "inkling-text-size";
 const SAMPLE = "Today";
+
+/** Size presets → world-scale multiplier for the 3D day-view text. */
+const SIZES = [["S", 0.8], ["M", 1.0], ["L", 1.3], ["XL", 1.7]];
 
 /** Preset text colours offered in the picker (plus a custom swatch + Auto). */
 const COLORS = ["#ffffff", "#ef4444", "#f59e0b", "#fde047", "#22c55e", "#22d3ee", "#3b82f6", "#a855f7", "#ec4899"];
@@ -116,6 +120,11 @@ export function getTextColor() {
   return css ? parseInt(css.slice(1), 16) : null;
 }
 
+/** Chosen text size multiplier (default 1.0). Scales the 3D day-view note text. */
+export function getTextScale() {
+  try { const v = parseFloat(localStorage.getItem(SIZE_KEY)); return Number.isFinite(v) && v > 0 ? v : 1.0; } catch { return 1.0; }
+}
+
 /**
  * Map a style value → Real3DText material params for extruded 3D text.
  * The 3D-group looks change material/finish; 2D/2.5D picks fall back to a clean
@@ -198,6 +207,21 @@ function _selectColor(hex) {
   try { window.dispatchEvent(new CustomEvent("inkling:text-color", { detail: { value: hex || null } })); } catch { /* ignore */ }
 }
 
+function _markSize(mult) {
+  if (!_panel) return;
+  _panel.querySelectorAll("[data-size]").forEach((b) => {
+    const on = Math.abs(parseFloat(b.dataset.size) - mult) < 0.001;
+    b.style.background = on ? "#6366f1" : "#1e293b";
+    b.style.color = on ? "#fff" : "#cbd5e1";
+  });
+}
+
+function _selectSize(mult) {
+  try { localStorage.setItem(SIZE_KEY, String(mult)); } catch { /* ignore */ }
+  _markSize(mult);
+  try { window.dispatchEvent(new CustomEvent("inkling:text-size", { detail: { value: mult } })); } catch { /* ignore */ }
+}
+
 function _build() {
   if (_panel) return;
   const overlay = document.createElement("div");
@@ -277,6 +301,28 @@ function _build() {
   custom.addEventListener("input", () => _selectColor(custom.value));
   colorRow.appendChild(custom);
   overlay.appendChild(colorRow);
+
+  // Size selector — scales the 3D day-view note text.
+  const sizeRow = document.createElement("div");
+  sizeRow.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px";
+  const sizeLabel = document.createElement("span");
+  sizeLabel.textContent = "Size:";
+  sizeLabel.style.cssText = "font:700 13px system-ui;color:#a5b4fc";
+  sizeRow.appendChild(sizeLabel);
+  const curSize = getTextScale();
+  for (const [name, mult] of SIZES) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.size = String(mult);
+    b.textContent = name;
+    const on = Math.abs(mult - curSize) < 0.001;
+    b.style.cssText =
+      "border:0;border-radius:999px;padding:7px 14px;font:700 12px system-ui;cursor:pointer;" +
+      `background:${on ? "#6366f1" : "#1e293b"};color:${on ? "#fff" : "#cbd5e1"}`;
+    b.addEventListener("click", () => _selectSize(mult));
+    sizeRow.appendChild(b);
+  }
+  overlay.appendChild(sizeRow);
 
   for (const group of GROUPS) {
     const section = document.createElement("div");

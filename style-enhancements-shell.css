@@ -8,6 +8,15 @@
    own Day/Night/B&W theme toggle replaces them. */
 .wordweaver-embed__segments { display: none !important; }
 
+/* Hide the leftover layout chrome (3D-layout dropdown "street signs" + Customize
+   + its editor) on the calendar/day view — not needed for now. */
+.wordweaver-embed__layout-label,
+.wordweaver-embed__layout-select,
+#wordweaver-layout-mode,
+.wordweaver-embed__layout-edit-btn,
+#wordweaver-layout-edit-btn,
+#wordweaver-layout-editor { display: none !important; }
+
 @media (min-width: 640px) {
   :root {
     --inkling-top-bar-h: 56px;
