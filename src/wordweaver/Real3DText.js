@@ -3,37 +3,44 @@ import { FontLoader } from "three/examples/jsm/loaders/FontLoader.js";
 import { TextGeometry } from "three/examples/jsm/geometries/TextGeometry.js";
 import { isMobileWordWeaver } from "./mobileWordWeaverEnv.js";
 
-/** @type {import("three/examples/jsm/loaders/FontLoader.js").Font | null} */
-let cachedFont = null;
-/** @type {Promise<import("three/examples/jsm/loaders/FontLoader.js").Font | null> | null} */
-let fontLoadPromise = null;
-/** @type {boolean} */
+/** Selectable 3D typefaces (key → JSON file under /fonts). */
+export const FONT_FILES = {
+  helvetiker: "helvetiker_regular.typeface.json",
+  "helvetiker-bold": "helvetiker_bold.typeface.json",
+  optimer: "optimer_regular.typeface.json",
+  gentilis: "gentilis_bold.typeface.json",
+  "droid-serif": "droid_serif_regular.typeface.json"
+};
+export const DEFAULT_FONT = "helvetiker";
+export const AVAILABLE_FONTS = Object.keys(FONT_FILES);
+
+/** @type {Map<string, import("three/examples/jsm/loaders/FontLoader.js").Font>} */
+const fontCache = new Map();
+/** @type {Map<string, Promise<import("three/examples/jsm/loaders/FontLoader.js").Font | null>>} */
+const fontPromises = new Map();
 let fontLoadFailed = false;
 
-function fontCandidateUrls() {
+function normFontKey(key) {
+  return FONT_FILES[key] ? key : DEFAULT_FONT;
+}
+
+function fontCandidateUrls(file) {
   const urls = [];
   if (typeof window !== "undefined" && window.location?.href) {
-    try {
-      urls.push(new URL("fonts/helvetiker_regular.typeface.json", window.location.href).href);
-    } catch {
-      /* ignore */
-    }
+    try { urls.push(new URL(`fonts/${file}`, window.location.href).href); } catch { /* ignore */ }
     const origin = window.location.origin;
-    if (origin && origin !== "null") {
-      urls.push(`${origin}/fonts/helvetiker_regular.typeface.json`);
-    }
+    if (origin && origin !== "null") urls.push(`${origin}/fonts/${file}`);
   }
-  urls.push("/fonts/helvetiker_regular.typeface.json", "./fonts/helvetiker_regular.typeface.json");
+  urls.push(`/fonts/${file}`, `./fonts/${file}`);
   return [...new Set(urls)];
 }
 
-async function loadFontFromCandidates() {
+async function loadFontFile(file) {
   const loader = new FontLoader();
   let lastError = null;
-  for (const url of fontCandidateUrls()) {
+  for (const url of fontCandidateUrls(file)) {
     try {
-      const font = await loader.loadAsync(url);
-      return font;
+      return await loader.loadAsync(url);
     } catch (err) {
       lastError = err;
       console.warn("[Real3DText] font load failed:", url, err);
@@ -42,36 +49,41 @@ async function loadFontFromCandidates() {
   throw lastError ?? new Error("No font URLs available");
 }
 
-/**
- * Load Three.js typeface JSON once (required before extruded TextGeometry).
- */
-export function preloadReal3DFont() {
-  if (cachedFont) return Promise.resolve(cachedFont);
-  if (fontLoadPromise) return fontLoadPromise;
-
-  fontLoadPromise = loadFontFromCandidates()
+/** Load (and cache) a typeface by key. @param {string} [key] */
+export function loadFont(key = DEFAULT_FONT) {
+  const k = normFontKey(key);
+  if (fontCache.has(k)) return Promise.resolve(fontCache.get(k));
+  if (fontPromises.has(k)) return fontPromises.get(k);
+  const p = loadFontFile(FONT_FILES[k])
     .then((font) => {
-      cachedFont = font;
-      fontLoadFailed = false;
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("wordweaver:font-ready"));
-      }
+      fontCache.set(k, font);
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("wordweaver:font-ready"));
       return font;
     })
     .catch((err) => {
-      fontLoadFailed = true;
-      console.error("[Real3DText] all font paths failed — using canvas fallback letters", err);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("wordweaver:font-failed"));
+      console.error("[Real3DText] font path failed:", k, err);
+      if (k === DEFAULT_FONT) {
+        fontLoadFailed = true;
+        if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("wordweaver:font-failed"));
       }
       return null;
     });
+  fontPromises.set(k, p);
+  return p;
+}
 
-  return fontLoadPromise;
+/** Already-loaded Font for a key, or null. @param {string} [key] */
+export function getLoadedFont(key = DEFAULT_FONT) {
+  return fontCache.get(normFontKey(key)) ?? null;
+}
+
+/** Back-compat: preload (default) typeface. @param {string} [key] */
+export function preloadReal3DFont(key = DEFAULT_FONT) {
+  return loadFont(key);
 }
 
 export function isReal3DFontReady() {
-  return cachedFont != null;
+  return fontCache.has(DEFAULT_FONT);
 }
 
 export function didReal3DFontFail() {
@@ -243,25 +255,16 @@ export class Real3DText {
 
   _mountText() {
     if (this._disposed) return;
-    const mobile = isMobileWordWeaver();
-    if (mobile) {
-      this._clearMeshes();
-      this._buildCanvasFallback();
-      void preloadReal3DFont().then((font) => {
-        if (this._disposed || !font || fontLoadFailed) return;
-        this._clearMeshes();
-        this._buildExtrudedMesh();
-      });
-      return;
-    }
-    if (cachedFont) {
+    const key = this.options.font || DEFAULT_FONT;
+    if (getLoadedFont(key)) {
       this._clearMeshes();
       this._buildExtrudedMesh();
       return;
     }
+    // Show a readable canvas label until the chosen typeface loads, then upgrade.
     this._clearMeshes();
     this._buildCanvasFallback();
-    void preloadReal3DFont().then((font) => {
+    void loadFont(key).then((font) => {
       if (this._disposed || !font) return;
       this._clearMeshes();
       this._buildExtrudedMesh();
@@ -281,11 +284,12 @@ export class Real3DText {
   }
 
   _buildExtrudedMesh() {
-    if (!cachedFont) return;
+    const font = getLoadedFont(this.options.font || DEFAULT_FONT);
+    if (!font) return;
     this._usingFallback = false;
     const size = Math.max(0.12, this.options.fontSize ?? 0.5);
     const depth = this.options.depth ?? size * 0.12;
-    const geometry = buildTextGeometry(this.text, cachedFont, {
+    const geometry = buildTextGeometry(this.text, font, {
       size,
       depth,
       bevelEnabled: true

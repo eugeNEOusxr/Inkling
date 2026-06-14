@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { getYearTopology, getEventsForDate, classifyText, CategoryColors } from "./timelineModel.js";
 import { createReal3DText, preloadReal3DFont } from "./Real3DText.js";
-import { getTextStyle, text3dParams, getTextColor, getTextScale } from "../calendar/ui/TextStylePicker.js";
+import { getTextStyle, text3dParams, getTextColor, getTextScale, getTextFont } from "../calendar/ui/TextStylePicker.js";
 import {
   computeMonthGridLayout,
   computeYearGridLayout,
@@ -1084,12 +1084,13 @@ export function createDayView(scene, dayIso, opts = {}) {
       params.color = finalTextColor;
       params.glowColor = finalTextColor;
       const sizeScale = getTextScale(); // paint-icon Size control
+      const fontKey = getTextFont();    // paint-icon Font control
       const fontSize = 0.62 * sizeScale;
       const lineH = 0.82 * sizeScale;
       const startY = 0.45;
       lines.forEach((line, li) => {
         const t3d = createReal3DText(line, {
-          fontSize, ...params, depth: Math.min(params.depth ?? 0.2, 0.16)
+          fontSize, ...params, font: fontKey, depth: Math.min(params.depth ?? 0.2, 0.16)
         });
         const tg = t3d.getGroup();
         tg.position.set(0, startY - li * lineH, 0.08);

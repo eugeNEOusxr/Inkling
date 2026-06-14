@@ -11,10 +11,13 @@ const PREF_KEY = "inkling-text-style";
 const ANIM_KEY = "inkling-text-anim";
 const COLOR_KEY = "inkling-text-color";
 const SIZE_KEY = "inkling-text-size";
+const FONT_KEY = "inkling-text-font";
 const SAMPLE = "Today";
 
 /** Size presets → world-scale multiplier for the 3D day-view text. */
 const SIZES = [["S", 0.8], ["M", 1.0], ["L", 1.3], ["XL", 1.7]];
+/** 3D typeface options → Real3DText font key (label, key). */
+const FONTS = [["Sans", "helvetiker"], ["Bold", "helvetiker-bold"], ["Serif", "optimer"], ["Elegant", "gentilis"], ["Droid", "droid-serif"]];
 
 /** Preset text colours offered in the picker (plus a custom swatch + Auto). */
 const COLORS = ["#ffffff", "#ef4444", "#f59e0b", "#fde047", "#22c55e", "#22d3ee", "#3b82f6", "#a855f7", "#ec4899"];
@@ -125,6 +128,14 @@ export function getTextScale() {
   try { const v = parseFloat(localStorage.getItem(SIZE_KEY)); return Number.isFinite(v) && v > 0 ? v : 1.0; } catch { return 1.0; }
 }
 
+/** Chosen 3D typeface key (default "helvetiker"). */
+export function getTextFont() {
+  try {
+    const v = localStorage.getItem(FONT_KEY);
+    return FONTS.some(([, k]) => k === v) ? v : "helvetiker";
+  } catch { return "helvetiker"; }
+}
+
 /**
  * Map a style value → Real3DText material params for extruded 3D text.
  * The 3D-group looks change material/finish; 2D/2.5D picks fall back to a clean
@@ -220,6 +231,21 @@ function _selectSize(mult) {
   try { localStorage.setItem(SIZE_KEY, String(mult)); } catch { /* ignore */ }
   _markSize(mult);
   try { window.dispatchEvent(new CustomEvent("inkling:text-size", { detail: { value: mult } })); } catch { /* ignore */ }
+}
+
+function _markFont(key) {
+  if (!_panel) return;
+  _panel.querySelectorAll("[data-font]").forEach((b) => {
+    const on = b.dataset.font === key;
+    b.style.background = on ? "#6366f1" : "#1e293b";
+    b.style.color = on ? "#fff" : "#cbd5e1";
+  });
+}
+
+function _selectFont(key) {
+  try { localStorage.setItem(FONT_KEY, key); } catch { /* ignore */ }
+  _markFont(key);
+  try { window.dispatchEvent(new CustomEvent("inkling:text-font", { detail: { value: key } })); } catch { /* ignore */ }
 }
 
 function _build() {
@@ -323,6 +349,28 @@ function _build() {
     sizeRow.appendChild(b);
   }
   overlay.appendChild(sizeRow);
+
+  // Font selector — swaps the 3D day-view typeface.
+  const fontRow = document.createElement("div");
+  fontRow.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px";
+  const fontLabel = document.createElement("span");
+  fontLabel.textContent = "Font:";
+  fontLabel.style.cssText = "font:700 13px system-ui;color:#a5b4fc";
+  fontRow.appendChild(fontLabel);
+  const curFont = getTextFont();
+  for (const [name, key] of FONTS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.font = key;
+    b.textContent = name;
+    const on = key === curFont;
+    b.style.cssText =
+      "border:0;border-radius:999px;padding:7px 13px;font:700 12px system-ui;cursor:pointer;" +
+      `background:${on ? "#6366f1" : "#1e293b"};color:${on ? "#fff" : "#cbd5e1"}`;
+    b.addEventListener("click", () => _selectFont(key));
+    fontRow.appendChild(b);
+  }
+  overlay.appendChild(fontRow);
 
   for (const group of GROUPS) {
     const section = document.createElement("div");

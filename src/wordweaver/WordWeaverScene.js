@@ -129,7 +129,7 @@ export class WordWeaverScene {
     // (style / colour / size), so the 3D note text updates immediately.
     if (typeof window !== "undefined") {
       const onTextPref = () => { if (this._navLevel === "day" && this._dayIso) this.enterDayViewIso(this._dayIso); };
-      for (const ev of ["inkling:text-style", "inkling:text-color", "inkling:text-size"]) {
+      for (const ev of ["inkling:text-style", "inkling:text-color", "inkling:text-size", "inkling:text-font"]) {
         window.addEventListener(ev, onTextPref);
       }
     }
