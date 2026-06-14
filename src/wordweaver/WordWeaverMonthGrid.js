@@ -944,6 +944,8 @@ export function createDayView(scene, dayIso, opts = {}) {
   const onRebuild = typeof opts.onRebuild === "function" ? opts.onRebuild : null;
   let mode = opts.mode || getDayMode(); // full stacked day (default) | scroll wheel
   const theme = getDayTheme();          // day | night | bw — background + text colour
+  const sizeScale = getTextScale();     // paint-icon Size — must drive BOTH text + layout spacing
+  const dayLineH = 0.82 * sizeScale;    // per-line height used by text + the stack layout
   const themeText = themeTextColor(theme);
   const group = new THREE.Group();
   group.name = "ww-day-view";
@@ -1083,10 +1085,9 @@ export function createDayView(scene, dayIso, opts = {}) {
       const params = text3dParams(textStyle, finalTextColor);
       params.color = finalTextColor;
       params.glowColor = finalTextColor;
-      const sizeScale = getTextScale(); // paint-icon Size control
       const fontKey = getTextFont();    // paint-icon Font control
       const fontSize = 0.62 * sizeScale;
-      const lineH = 0.82 * sizeScale;
+      const lineH = dayLineH;
       const startY = 0.45;
       lines.forEach((line, li) => {
         const t3d = createReal3DText(line, {
@@ -1148,9 +1149,10 @@ export function createDayView(scene, dayIso, opts = {}) {
     // columns are centered. Keeps each stack short so a busy day stays readable.
     const order = [0, 1, 2].filter((b) => cards.some((c) => c.bucket === b));
     const P = order.length || 1;
+    const cw = COLW * Math.max(1, sizeScale); // widen columns when text is scaled up
     const colX = {};
-    order.forEach((b, i) => { colX[b] = (i - (P - 1) / 2) * COLW; });
-    colHalfWidth = (P - 1) / 2 * COLW + COLW * 0.5;
+    order.forEach((b, i) => { colX[b] = (i - (P - 1) / 2) * cw; });
+    colHalfWidth = (P - 1) / 2 * cw + cw * 0.5;
 
     let maxDepth = 0;
     for (const b of order) {
@@ -1159,10 +1161,11 @@ export function createDayView(scene, dayIso, opts = {}) {
         colHeaders[b].position.set(colX[b], STACK_TOP + 1.4, 0);
       }
       let y = STACK_TOP;
-      const GAP = 1.05;
+      const GAP = 1.3; // clear separation between stacked notes
       for (const c of cards.filter((cc) => cc.bucket === b)) {
         const top = BOX_Y + 0.55;
-        const bottom = 0.45 - (c.lines - 1) * 0.82 - 0.5;
+        // Use the SCALED line height so larger text doesn't overlap the next note.
+        const bottom = 0.45 - (c.lines - 1) * dayLineH - 0.6;
         const h = top - bottom;
         c.group.position.set(colX[b], y - top, 0);
         c.group.visible = true;
