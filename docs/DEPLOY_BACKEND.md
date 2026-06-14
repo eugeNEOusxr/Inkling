@@ -77,6 +77,28 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 
 ---
 
+## Persistent disk (so accounts survive redeploys)
+
+The server stores accounts as JSON files. On the **free** tier the filesystem is
+ephemeral — wiped on every deploy/restart/sleep. Fix = a Render **persistent
+disk**. The server already supports it: it reads `DATA_ROOT` (or `DATA_DIR`).
+
+Render disks require a **paid instance** (free tier can't attach one). Bonus: a
+paid **Starter** instance is **always-on**, which also kills the cold-start lag.
+
+**Steps (Render dashboard → your `inkling` service):**
+1. **Settings → Instance Type →** change **Free → Starter** (~$7/mo; required for disks + no sleep).
+2. **Settings → Disks → Add Disk:**
+   - Name: `inkling-data`
+   - **Mount Path:** `/var/data`
+   - Size: **1 GB** (plenty for JSON; ~$0.25/GB-mo)
+3. **Environment → Add:** `DATA_ROOT` = `/var/data`
+   (the server then stores users in `/var/data/users`).
+4. **Save** → it redeploys. After this, accounts persist across deploys/restarts.
+
+⚠ The switch wipes the current ephemeral accounts **one last time** — create your
+real account *after* the disk + `DATA_ROOT` are live.
+
 ## Alternative: one host for everything
 
 The server also serves the static app (it serves files from the repo root + the
