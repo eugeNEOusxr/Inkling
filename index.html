@@ -9,6 +9,10 @@
   <link rel="manifest" href="/manifest.json" />
   <link rel="icon" href="/icons/notebookcalender.svg" type="image/svg+xml" />
   <title>Inkling</title>
+  <!-- Runtime config (sets window.__EUGENEOUS_API__ = the backend URL). MUST load
+       before the module scripts, or apiBase() falls back to this origin and login
+       POSTs to github.io/api → 404. Classic script = runs before deferred modules. -->
+  <script src="/inkling-config.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link

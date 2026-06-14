@@ -751,11 +751,80 @@ export class InklingPanel {
     } catch { return false; }
   }
 
+  /**
+   * Catch explicit reminders ("remind me at 7pm to call mom") BEFORE the brain/LLM
+   * so they always register in 🔔 Alerts — with a clear when/where confirmation.
+   * Defaults to today (or tomorrow if the time has passed); no date required.
+   * @returns {boolean} handled
+   */
+  _tryReminder(text) {
+    const lower = text.toLowerCase();
+    if (!/\b(remind me|set (a |an )?(reminder|alarm)|reminder to|alert me|wake me)\b/.test(lower)) return false;
+
+    const tm = lower.match(/\b(\d{1,2}):(\d{2})\s*(am|pm)?\b/) || lower.match(/\b(?:at|@)?\s*(\d{1,2})\s*(am|pm)\b/);
+    if (!tm) {
+      this._appendBubble("inkling", "Sure — what time should I remind you? (e.g. “7pm” or “14:30”)", "inkling-msg--proactive");
+      return true;
+    }
+    let h = parseInt(tm[1], 10);
+    let m = /^\d{2}$/.test(tm[2] || "") ? parseInt(tm[2], 10) : 0;
+    const ap = String(tm[3] || tm[2] || "").toLowerCase();
+    if (ap.includes("pm") && h < 12) h += 12;
+    if (ap.includes("am") && h === 12) h = 0;
+
+    const now = new Date();
+    const d = new Date(now);
+    const wd = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+    if (/\btomorrow\b/.test(lower)) d.setDate(d.getDate() + 1);
+    else {
+      for (let i = 0; i < 7; i++) {
+        if (lower.includes(wd[i])) { let diff = (i - now.getDay() + 7) % 7; if (diff === 0) diff = 7; d.setDate(d.getDate() + diff); break; }
+      }
+    }
+    d.setHours(h, m, 0, 0);
+    if (d.getTime() < now.getTime()) d.setDate(d.getDate() + 1); // already passed today → next day
+
+    const pad = (n) => String(n).padStart(2, "0");
+    const dateIso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    let body = text
+      .replace(/\d{1,2}(:\d{2})?\s*(am|pm)/gi, " ")  // glued "7pm" / "7:30 pm"
+      .replace(/\b(remind me|set (a |an )?(reminder|alarm)|reminder|alert me|wake me|to|at|on|tonight|today|tomorrow|am|pm|@)\b/gi, " ")
+      .replace(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/gi, " ")
+      .replace(/\b\d{1,2}(:\d{2})?\b/g, " ")
+      .replace(/\s+/g, " ").trim();
+    if (!body) body = "Reminder";
+
+    try {
+      addAlert(createAlert({ time, text: body, category: "reminder", date: dateIso, priority: AlertPriority.LOW }));
+      recomputeSchedule();
+      this.alerts?._refresh?.();
+    } catch { /* ignore */ }
+    try {
+      if ("Notification" in window && Notification.permission === "default") this.app?.notificationService?.requestPermission?.();
+    } catch { /* ignore */ }
+
+    const when = d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    this._appendBubble("inkling", `✓ Reminder set: <b>${escapeHtml(body)}</b><br>🔔 ${escapeHtml(when)} — find it under <b>Alerts</b>.`, "inkling-msg--proactive");
+    if (this.messagesEl) {
+      const b = document.createElement("button");
+      b.textContent = "Open Alerts";
+      b.style.cssText = "background:#1e293b;color:#cbd5e1;border:0;border-radius:999px;padding:6px 12px;font:700 12px system-ui;cursor:pointer;margin:2px 0 10px";
+      b.addEventListener("click", () => this.alerts?.show?.());
+      this.messagesEl.appendChild(b);
+      this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    }
+    return true;
+  }
+
   async _send() {
     const text = this.inputEl?.value?.trim();
     if (!text) return;
     this.inputEl.value = "";
     this._appendBubble("user", escapeHtml(text));
+
+    // Explicit reminder → always register in Alerts with a clear confirmation.
+    if (!this._awaitingCheckInReply && this._tryReminder(text)) return;
 
     // Check-in reply: capture what they're up to (or honor an opt-out) instead of
     // routing it as a command.

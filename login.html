@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#111217" />
   <title>Sign in — Inkling</title>
+  <!-- Backend URL config — MUST load before the module that calls the API, else
+       login posts to this origin (github.io) → 404 → "couldn't reach server". -->
+  <script src="/inkling-config.js"></script>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="style-enhancements.css" />
   <link rel="stylesheet" href="style-appearance-palettes.css" />
@@ -72,6 +75,17 @@
     const usernameInput = document.getElementById("auth-username");
     const emailLabel = document.getElementById("auth-email-label");
 
+    // Wake the free-tier backend early — cold starts take ~10-30s, so a login
+    // attempted against a sleeping server would otherwise time out / error.
+    try {
+      const base = window.__EUGENEOUS_API__;
+      if (base) {
+        statusEl.textContent = "Connecting to server…";
+        const done = () => { if (statusEl.textContent === "Connecting to server…") statusEl.textContent = ""; };
+        fetch(base + "/", { mode: "cors" }).then(done).catch(done);
+      }
+    } catch (e) { /* ignore */ }
+
     let mode = "signin";
 
     const setMode = (next) => {
@@ -121,10 +135,22 @@
         if (mode === "register" && usernameInput?.value?.trim()) {
           payload.username = usernameInput.value.trim();
         }
-        const result = await apiFetch(path, {
-          method: "POST",
-          body: JSON.stringify(payload)
-        });
+        // Retry through a cold start: the first hit on a sleeping free-tier
+        // backend can 502/stall, so try a few times before surfacing an error.
+        let result;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            result = await apiFetch(path, { method: "POST", body: JSON.stringify(payload) });
+            break;
+          } catch (e) {
+            if (attempt < 2 && (e.status === undefined || e.status >= 500)) {
+              statusEl.textContent = "Server's waking up (free tier) — hang on…";
+              await new Promise((r) => setTimeout(r, 3500));
+              continue;
+            }
+            throw e;
+          }
+        }
         // No token = no real backend (e.g. the static GitHub Pages build).
         // Don't fake a sign-in and bounce back — say so clearly.
         if (!result?.token) {
