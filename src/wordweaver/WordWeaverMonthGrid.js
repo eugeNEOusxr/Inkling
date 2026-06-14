@@ -134,17 +134,17 @@ const yearSharedGeometry = {
 
 const sharedMaterial = {
   month: new THREE.MeshPhysicalMaterial({
-    color: 0xf6f5ff, // soft pearl white
-    metalness: 0.18,
-    roughness: 0.14,
+    color: 0xffffff, // bright pearl white (was reading grey)
+    metalness: 0.0, // metalness was darkening the unlit faces toward grey
+    roughness: 0.22,
     clearcoat: 1.0,
-    clearcoatRoughness: 0.1,
-    iridescence: 0.7, // pearly sheen
-    iridescenceIOR: 1.3,
-    sheen: 0.6,
-    sheenColor: new THREE.Color(0xcfe0ff),
-    emissive: new THREE.Color(0x3a4668),
-    emissiveIntensity: 0.32
+    clearcoatRoughness: 0.12,
+    iridescence: 0.32, // subtle pearly sheen
+    iridescenceIOR: 1.25,
+    sheen: 0.5,
+    sheenColor: new THREE.Color(0xeef4ff),
+    emissive: new THREE.Color(0xeef2ff), // WHITE self-glow so it stays pearly even unlit
+    emissiveIntensity: 0.5
   }),
   day: new THREE.MeshPhysicalMaterial({
     color: 0xff8822,
@@ -189,7 +189,7 @@ const _animEuler = new THREE.Euler();
 /** Gentle "breathing" glow so the spheres feel alive (shared by both grids). */
 function pulseSpheres(elapsed) {
   const t = (Math.sin(elapsed * 1.6) + 1) * 0.5; // 0..1
-  sharedMaterial.month.emissiveIntensity = 0.26 + t * 0.12;
+  sharedMaterial.month.emissiveIntensity = 0.45 + t * 0.2; // keep the month box bright pearl
   sharedMaterial.day.emissiveIntensity = 0.18 + t * 0.18;
   sharedMaterial.note.emissiveIntensity = 0.32 + t * 0.28;
   noteColorMaterial.emissiveIntensity = 0.08 + t * 0.18;
@@ -827,7 +827,9 @@ function getDayMode() {
 function setDayMode(m) { try { localStorage.setItem(DAY_MODE_KEY, m); } catch { /* ignore */ } }
 /** Theme → note-text base colour (boxes keep their category colour). */
 function themeTextColor(theme) {
-  if (theme === "bw") return 0xf5c542; // gold pops on the grayscale photo
+  // On a desaturated B&W photo, a fully-saturated hue pops most (grey has zero
+  // saturation). Electric cyan reads strongest against neutral greys.
+  if (theme === "bw") return 0x22d3ee;
   return 0x111111; // black for day + night
 }
 
