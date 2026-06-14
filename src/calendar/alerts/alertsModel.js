@@ -198,6 +198,9 @@ export function createAlert({ time, text, category, priority, kind, date, timeli
     kind: kind ?? defaultKindForAlert(cat, pri),
     createdAt: Date.now(),
     dismissed: false,
+    // Remark state: "pending" until the user checks it off. A fired alert stays
+    // visible (awaiting review) instead of silently disappearing.
+    status: "pending",
     date: date ?? todayDateString(),
     timelineEntryId,
     firedPhases: []
@@ -305,6 +308,8 @@ function normalizeAlert(raw) {
     kind,
     createdAt: Number(raw.createdAt) || Date.now(),
     dismissed: Boolean(raw.dismissed),
+    status: raw.status === "done" || raw.status === "missed" ? raw.status : "pending",
+    resolvedAt: Number.isFinite(raw.resolvedAt) ? Number(raw.resolvedAt) : undefined,
     date: raw.date ?? todayDateString(),
     timelineEntryId: raw.timelineEntryId,
     firedPhases: Array.isArray(raw.firedPhases) ? [...raw.firedPhases] : [],
@@ -380,6 +385,61 @@ export function dismissAlert(id) {
   alerts[idx] = { ...alerts[idx], dismissed: true };
   if (!saveAlerts(alerts, snapshot)) return null;
   return alerts[idx];
+}
+
+/**
+ * Mark an alert's remark state. "done" = accomplished ✓, "missed" = unattained ✗,
+ * "pending" = un-resolve it. Resolved alerts persist (they don't auto-disappear)
+ * so the user reviews them deliberately.
+ * @param {string} id
+ * @param {"done"|"missed"|"pending"} status
+ * @returns {AlertRecord | null}
+ */
+export function setAlertStatus(id, status) {
+  const valid = status === "done" || status === "missed" ? status : "pending";
+  const snapshot = captureAlertsSnapshot();
+  const alerts = loadAlerts();
+  const idx = alerts.findIndex((a) => a.id === id);
+  if (idx < 0) return null;
+  alerts[idx] = {
+    ...alerts[idx],
+    status: valid,
+    resolvedAt: valid === "pending" ? undefined : Date.now()
+  };
+  if (!saveAlerts(alerts, snapshot)) return null;
+  return alerts[idx];
+}
+
+/**
+ * Alerts whose time has passed but the user hasn't checked off yet — these stay
+ * on screen (awaiting a ✓/✗ remark) instead of vanishing.
+ * @param {number} [now]
+ * @returns {{ alert: AlertRecord, triggerAt: number }[]}
+ */
+export function getAlertsAwaitingReview(now = Date.now()) {
+  /** @type {{ alert: AlertRecord, triggerAt: number }[]} */
+  const rows = [];
+  for (const alert of loadAlerts()) {
+    if (alert.dismissed) continue;
+    if (alert.status === "done" || alert.status === "missed") continue;
+    const triggers = buildScheduleTriggers(alert);
+    const atTime = triggers.find((t) => t.phase === "at_time") ?? triggers[triggers.length - 1];
+    if (atTime && atTime.fireAt <= now) rows.push({ alert, triggerAt: atTime.fireAt });
+  }
+  return rows.sort((a, b) => b.triggerAt - a.triggerAt);
+}
+
+/**
+ * Recently resolved alerts (checked ✓ or ✗), newest first — for the review log.
+ * @param {number} [now]
+ * @param {number} [withinMs] default 2 days
+ * @returns {AlertRecord[]}
+ */
+export function getResolvedAlerts(now = Date.now(), withinMs = 2 * 24 * 60 * 60 * 1000) {
+  const since = now - withinMs;
+  return loadAlerts()
+    .filter((a) => (a.status === "done" || a.status === "missed") && (a.resolvedAt ?? 0) >= since)
+    .sort((a, b) => (b.resolvedAt ?? 0) - (a.resolvedAt ?? 0));
 }
 
 /**

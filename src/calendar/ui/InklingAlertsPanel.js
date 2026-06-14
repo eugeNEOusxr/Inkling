@@ -12,9 +12,12 @@
 import * as bus from "../../utils/EventBus.js";
 import {
   getUpcomingAlerts,
+  getAlertsAwaitingReview,
+  getResolvedAlerts,
   getTimeUntil,
   dismissAlert,
-  snoozeAlert
+  snoozeAlert,
+  setAlertStatus
 } from "../alerts/alertsModel.js";
 import { getCategoryColor, formatTimelineDisplayTime } from "../../wordweaver/timelineModel.js";
 import { recomputeSchedule } from "../alerts/alertsScheduler.js";
@@ -128,11 +131,16 @@ export class InklingAlerts {
   }
 
   _refresh() {
-    let rows = [];
-    try { rows = getUpcomingAlerts(Date.now(), { withinMs: WEEK_MS }); } catch { /* ignore */ }
-    this._rows = rows;
     const now = Date.now();
-    const soon = rows.filter((r) => r.triggerAt - now <= DAY_MS).length;
+    let rows = [], awaiting = [], resolved = [];
+    try { rows = getUpcomingAlerts(now, { withinMs: WEEK_MS }); } catch { /* ignore */ }
+    try { awaiting = getAlertsAwaitingReview(now); } catch { /* ignore */ }
+    try { resolved = getResolvedAlerts(now); } catch { /* ignore */ }
+    this._rows = rows;
+    this._awaiting = awaiting;
+    this._resolved = resolved;
+    // Badge nags for soon-upcoming (24h) PLUS anything overdue still unchecked.
+    const soon = rows.filter((r) => r.triggerAt - now <= DAY_MS).length + awaiting.length;
     if (this._badge) {
       this._badge.textContent = soon > 9 ? "9+" : String(soon);
       this._badge.style.display = soon > 0 ? "flex" : "none";
@@ -193,13 +201,87 @@ export class InklingAlerts {
     this._panelBody = body;
   }
 
+  _sectionHead(text, color) {
+    const h = document.createElement("div");
+    h.textContent = text;
+    h.style.cssText =
+      `font:800 11px system-ui;letter-spacing:.5px;text-transform:uppercase;color:${color};margin:12px 2px 7px;opacity:.9`;
+    return h;
+  }
+
+  /**
+   * One alert row. mode: "awaiting" | "upcoming" | "resolved".
+   * @returns {HTMLElement}
+   */
+  _buildRow(alert, triggerAt, mode, now) {
+    const cat = String(alert.category ?? "reminder").toLowerCase();
+    const color = getCategoryColor(cat === "errand" ? "errands" : cat) || "#94a3b8";
+    const resolved = mode === "resolved";
+    const row = document.createElement("div");
+    row.style.cssText =
+      `display:flex;align-items:flex-start;gap:9px;padding:9px 10px;margin-bottom:7px;border-radius:9px;` +
+      `border-left:4px solid ${color};background:rgba(255,255,255,${resolved ? "0.03" : "0.05"})` +
+      (resolved ? ";opacity:.72" : "");
+
+    const left = document.createElement("div");
+    left.style.cssText = "flex:1;min-width:0";
+    const metaLine = resolved
+      ? (alert.status === "done"
+          ? "<span style='color:#34d399;font-weight:800'>✓ Accomplished</span>"
+          : "<span style='color:#f87171;font-weight:800'>✗ Missed</span>")
+      : escapeHtml(relLabel(triggerAt, now));
+    const textStyle = resolved ? "text-decoration:line-through;color:#cbd5e1" : "color:#f1f5f9";
+    left.innerHTML =
+      `<div style="font:800 13px system-ui;color:${color}">${escapeHtml(formatTimelineDisplayTime(alert.time))}` +
+      `<span style="color:#64748b;font-weight:600;font-size:11px;margin-left:8px">${escapeHtml(CAT_LABEL[cat] ?? cat)}</span></div>` +
+      `<div style="font:600 13px system-ui;${textStyle};margin-top:2px;white-space:normal;word-break:break-word">${colorizeAlertWords(escapeHtml(alert.text || "Reminder"))}</div>` +
+      `<div style="font-size:11px;color:#94a3b8;margin-top:3px">${metaLine}</div>`;
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex;flex-direction:column;gap:4px;flex:0 0 auto";
+    const mkBtn = (label, title, css, fn) => {
+      const b = document.createElement("button");
+      b.textContent = label; b.title = title; b.style.cssText = css;
+      b.addEventListener("click", fn);
+      return b;
+    };
+    const doneCss = "background:#064e3b;color:#a7f3d0;border:0;border-radius:7px;padding:4px 8px;font:800 13px system-ui;cursor:pointer";
+    const missCss = "background:#4c0519;color:#fecdd3;border:0;border-radius:7px;padding:4px 8px;font:800 13px system-ui;cursor:pointer";
+    const subCss = "background:#1e293b;color:#cbd5e1;border:0;border-radius:7px;padding:4px 7px;font:700 11px system-ui;cursor:pointer";
+
+    if (resolved) {
+      actions.append(mkBtn("↩", "Undo — back to pending", subCss, () => {
+        try { setAlertStatus(alert.id, "pending"); } catch { /* ignore */ }
+        this._refresh();
+      }));
+    } else {
+      actions.append(
+        mkBtn("✓", "Accomplished", doneCss, () => { try { setAlertStatus(alert.id, "done"); } catch { /* ignore */ } this._refresh(); }),
+        mkBtn("✗", "Missed / unattained", missCss, () => { try { setAlertStatus(alert.id, "missed"); } catch { /* ignore */ } this._refresh(); })
+      );
+      if (mode === "upcoming") {
+        actions.append(mkBtn("💤", "Snooze 10 minutes", subCss, () => {
+          try { snoozeAlert(alert.id, 10); recomputeSchedule(); } catch { /* ignore */ }
+          this._refresh();
+        }));
+      }
+      actions.append(mkBtn("✕", "Dismiss (remove entirely)",
+        "background:transparent;color:#64748b;border:0;border-radius:7px;padding:4px 7px;font:800 13px system-ui;cursor:pointer",
+        () => { try { dismissAlert(alert.id); } catch { /* ignore */ } this._refresh(); }));
+    }
+
+    row.append(left, actions);
+    return row;
+  }
+
   _render() {
     this._buildPanel();
     const body = this._panelBody;
     body.textContent = "";
     const now = Date.now();
 
-    if (!this._rows.length) {
+    const hasAny = (this._rows?.length || this._awaiting?.length || this._resolved?.length);
+    if (!hasAny) {
       const empty = document.createElement("div");
       empty.innerHTML =
         "No reminders set.<br><span style='opacity:.65;font-size:12px'>Add one in Schedule, or ask Inkling “remind me at 7pm to…”</span>";
@@ -208,41 +290,24 @@ export class InklingAlerts {
       return;
     }
 
-    for (const { alert, triggerAt } of this._rows) {
-      const cat = String(alert.category ?? "reminder").toLowerCase();
-      const color = getCategoryColor(cat === "errand" ? "errands" : cat) || "#94a3b8";
-      const row = document.createElement("div");
-      row.style.cssText =
-        `display:flex;align-items:flex-start;gap:9px;padding:9px 10px;margin-bottom:7px;border-radius:9px;` +
-        `border-left:4px solid ${color};background:rgba(255,255,255,0.05)`;
-
-      const left = document.createElement("div");
-      left.style.cssText = "flex:1;min-width:0";
-      left.innerHTML =
-        `<div style="font:800 13px system-ui;color:${color}">${escapeHtml(formatTimelineDisplayTime(alert.time))}` +
-        `<span style="color:#64748b;font-weight:600;font-size:11px;margin-left:8px">${escapeHtml(CAT_LABEL[cat] ?? cat)}</span></div>` +
-        `<div style="font:600 13px system-ui;color:#f1f5f9;margin-top:2px;white-space:normal;word-break:break-word">${colorizeAlertWords(escapeHtml(alert.text || "Reminder"))}</div>` +
-        `<div style="font-size:11px;color:#94a3b8;margin-top:3px">${escapeHtml(relLabel(triggerAt, now))}</div>`;
-
-      const actions = document.createElement("div");
-      actions.style.cssText = "display:flex;flex-direction:column;gap:4px;flex:0 0 auto";
-      const snooze = document.createElement("button");
-      snooze.textContent = "💤 10m";
-      snooze.title = "Snooze 10 minutes";
-      snooze.style.cssText = "background:#1e293b;color:#cbd5e1;border:0;border-radius:7px;padding:4px 7px;font:700 11px system-ui;cursor:pointer";
-      snooze.addEventListener("click", () => {
-        try { snoozeAlert(alert.id, 10); recomputeSchedule(); } catch { /* ignore */ }
-        this._refresh();
-      });
-      const dismiss = document.createElement("button");
-      dismiss.textContent = "✕";
-      dismiss.title = "Dismiss";
-      dismiss.style.cssText = "background:transparent;color:#64748b;border:0;border-radius:7px;padding:4px 7px;font:800 13px system-ui;cursor:pointer";
-      dismiss.addEventListener("click", () => { try { dismissAlert(alert.id); } catch { /* ignore */ } this._refresh(); });
-      actions.append(snooze, dismiss);
-
-      row.append(left, actions);
-      body.appendChild(row);
+    // Awaiting your check first — fired alerts persist here until you ✓/✗ them.
+    if (this._awaiting?.length) {
+      body.appendChild(this._sectionHead(`✅ Awaiting your check · ${this._awaiting.length}`, "#fca5a5"));
+      for (const { alert, triggerAt } of this._awaiting) {
+        body.appendChild(this._buildRow(alert, triggerAt, "awaiting", now));
+      }
+    }
+    if (this._rows?.length) {
+      body.appendChild(this._sectionHead("⏰ Upcoming", "#a5b4fc"));
+      for (const { alert, triggerAt } of this._rows) {
+        body.appendChild(this._buildRow(alert, triggerAt, "upcoming", now));
+      }
+    }
+    if (this._resolved?.length) {
+      body.appendChild(this._sectionHead("🗂 Reviewed", "#64748b"));
+      for (const alert of this._resolved) {
+        body.appendChild(this._buildRow(alert, null, "resolved", now));
+      }
     }
   }
 
