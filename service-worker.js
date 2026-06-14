@@ -37,54 +37,29 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
-  const isApiLike = url.pathname.startsWith("/api/");
 
-  if (isApiLike) {
-    // Network-first for dynamic/API-like routes with cache fallback.
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
+  // Let cross-origin requests (CDN modules, fonts, images) pass straight through.
+  if (url.origin !== self.location.origin) return;
 
-  const isSourceModule = url.pathname.startsWith("/src/");
-
-  // Network-first for ES modules so code updates are not stuck behind SW cache.
-  if (isSourceModule) {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200 && response.type === "basic") {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
-  // Cache-first for static app shell assets.
+  // NETWORK-FIRST for everything same-origin (HTML shell, CSS, icons, /src/, /api/)
+  // so a new deploy always shows fresh — no stale UI / old icons stuck in cache.
+  // The cache is only a fallback for offline use.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request)
-        .then((response) => {
-          if (!response || response.status !== 200 || response.type !== "basic") {
-            return response;
-          }
+    fetch(event.request)
+      .then((response) => {
+        if (response && response.status === 200 && response.type === "basic") {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          return response;
+        }
+        return response;
+      })
+      .catch(() =>
+        caches.match(event.request).then((cached) => {
+          if (cached) return cached;
+          // Offline navigation fallback to the cached shell.
+          if (event.request.mode === "navigate") return caches.match("/index.html");
+          return undefined;
         })
-        .catch(() => caches.match("/index.html"));
-    })
+      )
   );
 });

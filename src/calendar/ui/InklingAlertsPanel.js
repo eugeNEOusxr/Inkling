@@ -295,8 +295,17 @@ export class InklingAlerts {
         "flex:0 0 auto;background:#1e293b;color:#cbd5e1;border:0;border-radius:7px;padding:6px 10px;font:700 11px system-ui;cursor:pointer";
       const doSave = () => {
         try { setAlertRemark(alert.id, remark.value); } catch { /* ignore */ }
-        saveBtn.textContent = "Saved ✓"; saveBtn.style.color = "#a7f3d0";
-        setTimeout(() => { saveBtn.textContent = "Save"; saveBtn.style.color = "#cbd5e1"; }, 1300);
+        // Unmistakable confirmation: button flashes solid green, input border too.
+        saveBtn.textContent = "✓ Saved";
+        saveBtn.style.background = "#16a34a";
+        saveBtn.style.color = "#ffffff";
+        remark.style.borderColor = "#16a34a";
+        setTimeout(() => {
+          saveBtn.textContent = "Save";
+          saveBtn.style.background = "#1e293b";
+          saveBtn.style.color = "#cbd5e1";
+          remark.style.borderColor = "rgba(255,255,255,0.14)";
+        }, 1500);
       };
       saveBtn.addEventListener("click", doSave);
       // Also persist on blur so an un-clicked edit isn't lost; Enter = save.

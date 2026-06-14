@@ -1760,7 +1760,26 @@ export class CalendarApp {
     // Remove by deleting this method and the constructor call.
     if (!("serviceWorker" in navigator)) return;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/service-worker.js").catch(() => {
+      navigator.serviceWorker.register("/service-worker.js").then((reg) => {
+        // Pull updates now + every 30 min so a new deploy is noticed without a
+        // manual hard-refresh.
+        reg.update().catch(() => {});
+        setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+        // When a NEW worker installs AND one already controls the page (i.e. an
+        // update, not a first install), reload once so the user lands on the
+        // fresh UI instead of a stale cached one.
+        let reloaded = false;
+        reg.addEventListener("updatefound", () => {
+          const nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener("statechange", () => {
+            if (nw.state === "installed" && navigator.serviceWorker.controller && !reloaded) {
+              reloaded = true;
+              window.location.reload();
+            }
+          });
+        });
+      }).catch(() => {
         /* ignore registration failures in unsupported contexts */
       });
     });
