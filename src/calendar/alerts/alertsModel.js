@@ -201,6 +201,7 @@ export function createAlert({ time, text, category, priority, kind, date, timeli
     // Remark state: "pending" until the user checks it off. A fired alert stays
     // visible (awaiting review) instead of silently disappearing.
     status: "pending",
+    remark: "", // free-text note, e.g. "no show" — later surfaced in WordWeaver
     date: date ?? todayDateString(),
     timelineEntryId,
     firedPhases: []
@@ -309,6 +310,7 @@ function normalizeAlert(raw) {
     createdAt: Number(raw.createdAt) || Date.now(),
     dismissed: Boolean(raw.dismissed),
     status: raw.status === "done" || raw.status === "missed" ? raw.status : "pending",
+    remark: typeof raw.remark === "string" ? raw.remark : "",
     resolvedAt: Number.isFinite(raw.resolvedAt) ? Number(raw.resolvedAt) : undefined,
     date: raw.date ?? todayDateString(),
     timelineEntryId: raw.timelineEntryId,
@@ -406,6 +408,23 @@ export function setAlertStatus(id, status) {
     status: valid,
     resolvedAt: valid === "pending" ? undefined : Date.now()
   };
+  if (!saveAlerts(alerts, snapshot)) return null;
+  return alerts[idx];
+}
+
+/**
+ * Attach/replace a free-text remark on an alert (e.g. "no show"). Persisted so it
+ * can later be reviewed in WordWeaver.
+ * @param {string} id
+ * @param {string} text
+ * @returns {AlertRecord | null}
+ */
+export function setAlertRemark(id, text) {
+  const snapshot = captureAlertsSnapshot();
+  const alerts = loadAlerts();
+  const idx = alerts.findIndex((a) => a.id === id);
+  if (idx < 0) return null;
+  alerts[idx] = { ...alerts[idx], remark: String(text ?? "").slice(0, 500) };
   if (!saveAlerts(alerts, snapshot)) return null;
   return alerts[idx];
 }

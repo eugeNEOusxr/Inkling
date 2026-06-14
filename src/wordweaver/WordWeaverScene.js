@@ -313,11 +313,14 @@ export class WordWeaverScene {
     this._suppressLegacy3DLayout();
     if (!is3d) {
       if (this._monthGrid?.root) this._monthGrid.root.visible = false;
+      if (this._viewBtns) this._viewBtns.style.display = "none";
       this._flightForward = 0;
       this._flightStrafe = 0;
       this._flightLift = 0;
       return;
     }
+    this._ensureViewButtons();
+    this._updateViewButtons();
     if (!this._monthGrid) this._rebuildMonthGrid();
     // Respect the drill-down: only show + re-frame the YEAR grid at the year level.
     // While drilled into a month/day, keep it hidden so it can't "stick" behind the view.
@@ -985,6 +988,7 @@ export class WordWeaverScene {
     this._navMonthGrid.frameCamera(this.camera, this.controls);
     this._ensureBackButton();
     this._updateBackButton();
+    this._updateViewButtons();
   }
 
   /**
@@ -1011,6 +1015,7 @@ export class WordWeaverScene {
     this._daySel = 0;
     this._ensureBackButton();
     this._updateBackButton();
+    this._updateViewButtons();
   }
 
   /** True when the 3D drill-down is on a single day. */
@@ -1057,6 +1062,20 @@ export class WordWeaverScene {
       this._navLevel = "year";
     }
     this._updateBackButton();
+    this._updateViewButtons();
+  }
+
+  /** Jump straight back to the YEAR overview from any level. */
+  enterYearView() {
+    this._dayView?.dispose();
+    this._dayView = null;
+    this._navMonthGrid?.dispose();
+    this._navMonthGrid = null;
+    if (this._monthGrid?.root) this._monthGrid.root.visible = true;
+    this._monthGrid?.frameCamera(this.camera, this.controls);
+    this._navLevel = "year";
+    this._updateBackButton();
+    this._updateViewButtons();
   }
 
   /**
@@ -1110,7 +1129,7 @@ export class WordWeaverScene {
     Object.assign(btn.style, {
       position: "absolute",
       left: "12px",
-      top: "64px",
+      top: "108px", // sits below the Year/Month/Day view-button bar
       zIndex: "30",
       padding: "9px 15px",
       borderRadius: "10px",
@@ -1128,6 +1147,56 @@ export class WordWeaverScene {
     (this.container || document.body).appendChild(btn);
     this._backBtn = btn;
     return btn;
+  }
+
+  /** Year / Month / Day buttons to jump straight to a 3D view level. */
+  _ensureViewButtons() {
+    if (this._viewBtns) return this._viewBtns;
+    const wrap = document.createElement("div");
+    wrap.className = "ww-view-buttons";
+    Object.assign(wrap.style, {
+      position: "absolute", left: "12px", top: "64px", zIndex: "30",
+      display: "none", borderRadius: "10px", overflow: "hidden",
+      border: "1px solid rgba(120,200,255,0.45)", background: "rgba(8,14,28,0.85)",
+      font: "700 12px system-ui, sans-serif", boxShadow: "0 4px 14px rgba(0,0,0,0.4)"
+    });
+    const todayIso = () => {
+      const n = new Date();
+      return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+    };
+    const mk = (label, level, onClick) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = label; b.dataset.level = level;
+      Object.assign(b.style, {
+        padding: "8px 13px", border: "0", background: "transparent",
+        color: "#cbd5e1", cursor: "pointer", font: "inherit"
+      });
+      b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); });
+      wrap.appendChild(b);
+      return b;
+    };
+    mk("Year", "year", () => this.enterYearView());
+    mk("Month", "month", () => this.enterMonthView(this._navMonthIndex ?? new Date().getMonth()));
+    mk("Day", "day", () => {
+      const iso = this._dayIso ?? todayIso();
+      this.enterMonthView(Number(iso.split("-")[1]) - 1); // month underneath so Back works
+      this.enterDayViewIso(iso);
+    });
+    (this.container || document.body).appendChild(wrap);
+    this._viewBtns = wrap;
+    return wrap;
+  }
+
+  _updateViewButtons() {
+    const wrap = this._viewBtns;
+    if (!wrap) return;
+    const is3d = getCalendarMode() === "3d" && isWordWeaverTabActive();
+    wrap.style.display = is3d ? "flex" : "none";
+    for (const b of wrap.children) {
+      const active = b.dataset.level === this._navLevel;
+      b.style.background = active ? "#312e81" : "transparent";
+      b.style.color = active ? "#e0e7ff" : "#cbd5e1";
+    }
   }
 
   /**

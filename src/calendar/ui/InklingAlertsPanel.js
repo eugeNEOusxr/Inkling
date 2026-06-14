@@ -17,7 +17,8 @@ import {
   getTimeUntil,
   dismissAlert,
   snoozeAlert,
-  setAlertStatus
+  setAlertStatus,
+  setAlertRemark
 } from "../alerts/alertsModel.js";
 import { getCategoryColor, formatTimelineDisplayTime } from "../../wordweaver/timelineModel.js";
 import { recomputeSchedule } from "../alerts/alertsScheduler.js";
@@ -219,7 +220,7 @@ export class InklingAlerts {
     const resolved = mode === "resolved";
     const row = document.createElement("div");
     row.style.cssText =
-      `display:flex;align-items:flex-start;gap:9px;padding:9px 10px;margin-bottom:7px;border-radius:9px;` +
+      `display:flex;flex-direction:column;gap:7px;padding:9px 10px;margin-bottom:7px;border-radius:9px;` +
       `border-left:4px solid ${color};background:rgba(255,255,255,${resolved ? "0.03" : "0.05"})` +
       (resolved ? ";opacity:.72" : "");
 
@@ -270,7 +271,25 @@ export class InklingAlerts {
         () => { try { dismissAlert(alert.id); } catch { /* ignore */ } this._refresh(); }));
     }
 
-    row.append(left, actions);
+    const topRow = document.createElement("div");
+    topRow.style.cssText = "display:flex;align-items:flex-start;gap:9px";
+    topRow.append(left, actions);
+    row.appendChild(topRow);
+
+    // Remark box — annotate fired/reviewed alerts ("no show" etc.); persists for
+    // later review in WordWeaver.
+    if (mode === "awaiting" || resolved) {
+      const remark = document.createElement("input");
+      remark.type = "text";
+      remark.value = alert.remark || "";
+      remark.placeholder = "📝 remark (e.g. no show)…";
+      remark.style.cssText =
+        "width:100%;box-sizing:border-box;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.14);" +
+        "border-radius:7px;padding:6px 9px;color:#e2e8f0;font:600 12px system-ui;outline:none";
+      remark.addEventListener("change", () => { try { setAlertRemark(alert.id, remark.value); } catch { /* ignore */ } });
+      remark.addEventListener("keydown", (e) => e.stopPropagation());
+      row.appendChild(remark);
+    }
     return row;
   }
 
