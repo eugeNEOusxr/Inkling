@@ -7,6 +7,8 @@ import { parseIsoDate } from "./timelineModel.js";
 
 const STYLE_ID = "ww-calendar-2d-styles";
 
+const pad2 = (n) => String(n).padStart(2, "0");
+
 function injectCalendar2DStyles() {
   if (document.getElementById(STYLE_ID)) return;
   const tag = document.createElement("style");
@@ -335,13 +337,56 @@ export class Calendar2D {
     const now = new Date();
     this.year = now.getFullYear();
     this.month = now.getMonth() + 1;
-    /** @type {"year" | "month" | "day"} */
-    this.view = "year";
-    this.selectedDate = null;
+    /** @type {"year" | "month" | "week" | "day"} */
+    this.view = "month";
+    const iso = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+    this.anchorIso = iso; // source of truth the arrows step through
+    this.selectedDate = iso;
     this.el = null;
     this.bodyEl = null;
     this.titleEl = null;
     this.backBtn = null;
+    this._navToggleBtns = [];
+  }
+
+  _todayIso() {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
+  /** Keep year/month/selectedDate consistent with the anchor date. */
+  _syncFromAnchor() {
+    const [y, m] = this.anchorIso.split("-").map(Number);
+    this.year = y;
+    this.month = m;
+    this.selectedDate = this.anchorIso;
+  }
+
+  /** Step the anchor by one unit of the active view (day/week/month/year). */
+  _shift(delta) {
+    const [y, m, d] = this.anchorIso.split("-").map(Number);
+    let dt;
+    if (this.view === "day") dt = new Date(y, m - 1, d + delta);
+    else if (this.view === "week") dt = new Date(y, m - 1, d + 7 * delta);
+    else if (this.view === "month") dt = new Date(y, m - 1 + delta, Math.min(d, 28));
+    else dt = new Date(y + delta, m - 1, Math.min(d, 28));
+    this.anchorIso = `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+    this._syncFromAnchor();
+    this._render();
+  }
+
+  /** Jump the anchor to today, keeping the active view. */
+  _goToday() {
+    this.anchorIso = this._todayIso();
+    this._syncFromAnchor();
+    this._render();
+  }
+
+  /** Switch view level (day/week/month/year) keeping the anchor date. */
+  _setLevel(view) {
+    this.view = view;
+    this._syncFromAnchor();
+    this._render();
   }
 
   /**
@@ -386,10 +431,47 @@ export class Calendar2D {
 
     header.append(to3dBtn, backBtn, title);
 
+    // Date nav: ‹ Today › + Day/Week/Month/Year toggle. The arrows step by the
+    // ACTIVE view (day→day, week→week, month→month, year→year).
+    const nav = document.createElement("div");
+    nav.className = "ww-calendar-2d__nav";
+    nav.style.cssText =
+      "display:flex;align-items:center;gap:8px;padding:7px 12px;flex-shrink:0;flex-wrap:wrap;" +
+      "border-bottom:1px solid rgba(78,230,230,0.15)";
+    const mkNavBtn = (label, fn) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.style.cssText =
+        "border:1px solid rgba(78,230,230,0.35);background:rgba(15,23,42,0.9);color:#e2e8f0;" +
+        "border-radius:8px;padding:6px 11px;font:700 12px system-ui;cursor:pointer";
+      b.addEventListener("click", fn);
+      return b;
+    };
+    const cluster = document.createElement("div");
+    cluster.style.cssText = "display:flex;align-items:center;gap:6px;flex:0 0 auto";
+    cluster.append(
+      mkNavBtn("‹", () => this._shift(-1)),
+      mkNavBtn("Today", () => this._goToday()),
+      mkNavBtn("›", () => this._shift(1))
+    );
+    const spacer = document.createElement("div");
+    spacer.style.cssText = "flex:1 1 auto";
+    const toggle = document.createElement("div");
+    toggle.style.cssText = "display:flex;gap:4px;flex:0 0 auto";
+    this._navToggleBtns = [];
+    for (const [lvl, lbl] of [["day", "Day"], ["week", "Week"], ["month", "Month"], ["year", "Year"]]) {
+      const b = mkNavBtn(lbl, () => this._setLevel(lvl));
+      b.dataset.level = lvl;
+      this._navToggleBtns.push(b);
+      toggle.appendChild(b);
+    }
+    nav.append(cluster, spacer, toggle);
+
     const body = document.createElement("div");
     body.className = "ww-calendar-2d__body";
 
-    root.append(header, body);
+    root.append(header, nav, body);
     container.appendChild(root);
 
     this.el = root;
@@ -463,12 +545,17 @@ export class Calendar2D {
   }
 
   _goBack() {
-    if (this.view === "day") {
-      this.view = "month";
-      this._render();
-    } else if (this.view === "month") {
-      this.view = "year";
-      this._render();
+    if (this.view === "day" || this.view === "week") this.view = "month";
+    else if (this.view === "month") this.view = "year";
+    this._render();
+  }
+
+  _updateNavToggle() {
+    for (const b of this._navToggleBtns || []) {
+      const active = b.dataset.level === this.view;
+      b.style.background = active ? "rgba(78,230,230,0.25)" : "rgba(15,23,42,0.9)";
+      b.style.color = active ? "#7df3ff" : "#e2e8f0";
+      b.style.borderColor = active ? "rgba(78,230,230,0.7)" : "rgba(78,230,230,0.35)";
     }
   }
 
@@ -479,6 +566,7 @@ export class Calendar2D {
   openMonth(year, month) {
     this.year = year;
     this.month = month;
+    this.anchorIso = `${year}-${pad2(month)}-01`;
     this.view = "month";
     this._render();
   }
@@ -488,6 +576,7 @@ export class Calendar2D {
    */
   openDay(dateIso) {
     this.selectedDate = dateIso;
+    this.anchorIso = dateIso;
     this.view = "day";
     this._dayEvents = getEventsForDate(dateIso);
     this._render();
@@ -497,8 +586,18 @@ export class Calendar2D {
     if (!this.bodyEl || !this.titleEl || !this.backBtn) return;
 
     this.backBtn.hidden = this.view === "year";
-    // Label the back button with where it goes (Year ← Month ← Day).
-    this.backBtn.textContent = this.view === "day" ? "← Month" : "← Year";
+    // Label the back button with where it goes (Year ← Month ← Week/Day).
+    this.backBtn.textContent = this.view === "month" ? "← Year" : "← Month";
+    this._updateNavToggle();
+
+    if (this.view === "week") {
+      const ws = weekStartForDate(this.anchorIso);
+      const wsD = new Date(ws + "T12:00:00");
+      this.titleEl.textContent = "Week of " + wsD.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+      const wk = new WeekGrid2D({ weekStartIso: ws, onDaySelect: (iso) => this.openDay(iso) });
+      this.bodyEl.replaceChildren(wk.render());
+      return;
+    }
 
     if (this.view === "year") {
       this.titleEl.textContent = String(this.year);

@@ -1129,13 +1129,15 @@ export function createDayView(scene, dayIso, opts = {}) {
     group.add(empty.mesh);
     labels.push(empty);
   } else {
-    // One CARD per note (box + glow + centered text). All cards sit in the same
-    // focused spot; only the current one is visible — a wheel you step through.
-    const BOX = 0.9;
-    const boxGeo = new THREE.BoxGeometry(BOX, BOX, BOX);
-    const edgesGeo = new THREE.EdgesGeometry(boxGeo);
-    dayBoxGeos.boxGeo = boxGeo;
-    dayBoxGeos.edgesGeo = edgesGeo;
+    // One CARD per note. The marker is a CLUSTER of small cubes (not one big
+    // block) that tumble together — keeps the box motif + animation. All cards
+    // sit in the same focused spot; only the current one shows in wheel mode.
+    const MINI = 0.38;
+    const miniGeo = new THREE.BoxGeometry(MINI, MINI, MINI);
+    const miniEdgeGeo = new THREE.EdgesGeometry(miniGeo);
+    dayBoxGeos.boxGeo = miniGeo;       // reuse keys for disposal
+    dayBoxGeos.edgesGeo = miniEdgeGeo;
+    const CLUSTER = [[0, 0, 0], [0.34, 0.13, -0.12], [-0.3, 0.17, 0.12], [0.17, -0.3, 0.15], [-0.19, -0.27, -0.16]];
     events.forEach((ev, idx) => {
       const card = new THREE.Group();
       card.name = `ww-day-card-${idx}`;
@@ -1148,14 +1150,23 @@ export function createDayView(scene, dayIso, opts = {}) {
         roughness: 0.3,
         metalness: 0.2
       });
-      const box = new THREE.Mesh(boxGeo, mat);
+      // `box` is now a GROUP of mini cubes (kept the name for animate/select compat).
+      const box = new THREE.Group();
       box.position.set(0, BOX_Y, 0);
-      const edges = new THREE.LineSegments(edgesGeo, new THREE.LineBasicMaterial({
+      const edgeMat = new THREE.LineBasicMaterial({
         color: new THREE.Color(color).multiplyScalar(0.35), transparent: true, opacity: 0.9
-      }));
-      box.add(edges);
+      });
+      CLUSTER.forEach(([ox, oy, oz], ci) => {
+        const cube = new THREE.Mesh(miniGeo, mat);
+        cube.position.set(ox, oy, oz);
+        cube.rotation.set(ci * 0.5, ci * 0.7, 0);
+        const ed = new THREE.LineSegments(miniEdgeGeo, edgeMat);
+        cube.add(ed);
+        box.add(cube);
+        spheres.push(cube);
+      });
+      spheres.push({ material: edgeMat });
       card.add(box);
-      spheres.push(box, edges);
 
       // Glow aura behind the box.
       const glow = new THREE.Sprite(new THREE.SpriteMaterial({
