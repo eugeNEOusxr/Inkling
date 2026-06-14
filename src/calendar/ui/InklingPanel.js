@@ -12,6 +12,7 @@ import { openPanel } from "./AppLauncher.js";
 import { InklingAlerts, colorizeAlertWords } from "./InklingAlertsPanel.js";
 import { analyzePatterns, patternInsights, dataNudge, reportSuggestions, CONNECTIONS_PROMPT, checkInQuestions, followUpSuggestions, recentRemarks } from "../ai/patternBrain.js";
 import { GoalsPanel } from "./GoalsPanel.js";
+import { createEvent } from "../../wordweaver/timelineModel.js";
 import { createAlert, addAlert, AlertPriority } from "../alerts/alertsModel.js";
 import { recomputeSchedule } from "../alerts/alertsScheduler.js";
 const INKLING_CRON_KEY = "calendar3d-inkling-cron-v1";
@@ -79,6 +80,12 @@ export class InklingPanel {
     // digest or alert bubble that fires before the user opens the panel.
     this.showWelcomeIfNeeded();
     this._startCron();
+
+    // Gentle in-app check-in: if the user's been away a while, Inkling asks what
+    // they're up to when they come back (no push, no permissions). Delayed so the
+    // app settles first.
+    this._awaitingCheckInReply = false;
+    setTimeout(() => this._initCheckIn(), 1800);
   }
 
   _bindPanelShellEvents() {
@@ -625,11 +632,124 @@ export class InklingPanel {
     }
   }
 
+  // ── Gentle in-app check-in ────────────────────────────────────────────────
+  // When the user returns after a gap, Inkling asks what they're up to and offers
+  // to jot it down. In-app only — no push, no permissions. Opt-out: "stop check-ins".
+  _initCheckIn() {
+    try { this.maybeCheckIn(); } catch { /* ignore */ }
+    const bump = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      try { localStorage.setItem("inkling-last-seen", String(Date.now())); } catch { /* ignore */ }
+    };
+    bump();
+    this._checkInTimer = setInterval(bump, 60000);
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") { try { this.maybeCheckIn(); } catch { /* ignore */ } }
+      });
+    }
+  }
+
+  _checkInDue() {
+    try {
+      if (localStorage.getItem("inkling-checkin-off") === "1") return false;
+      const last = Number(localStorage.getItem("inkling-last-seen")) || 0;
+      if (!last) return false; // first ever visit — don't pounce
+      const today = new Date().toISOString().slice(0, 10);
+      if (localStorage.getItem("inkling-last-checkin") === today) return false; // ≤ once/day
+      return (Date.now() - last) / 3600000 >= 6; // away ≥ 6h
+    } catch { return false; }
+  }
+
+  maybeCheckIn() {
+    if (this._awaitingCheckInReply || !this._checkInDue()) return;
+    try { localStorage.setItem("inkling-last-checkin", new Date().toISOString().slice(0, 10)); } catch { /* ignore */ }
+    this._awaitingCheckInReply = true;
+    this._appendBubble(
+      "inkling",
+      "✦ Hey — been a little while. <b>What are you up to right now?</b><br>" +
+        "<span style='opacity:.7;font-size:12px'>Tell me in a line and I can jot it down as today's note. (Say “stop check-ins” to turn these off.)</span>",
+      "inkling-msg--proactive"
+    );
+    this._showCheckInNudge();
+  }
+
+  _showCheckInNudge() {
+    if (typeof document === "undefined") return;
+    document.getElementById("inkling-checkin-nudge")?.remove();
+    const n = document.createElement("button");
+    n.id = "inkling-checkin-nudge";
+    n.type = "button";
+    n.textContent = "✦ What are you up to?";
+    n.style.cssText =
+      "position:fixed;right:16px;bottom:84px;z-index:11090;background:rgba(15,23,42,.95);color:#e2e8f0;" +
+      "border:1px solid rgba(129,140,248,.55);border-radius:999px;padding:9px 14px;font:700 12px system-ui;" +
+      "cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.5)";
+    n.addEventListener("click", () => { n.remove(); try { this.expand(); } catch { /* ignore */ } });
+    document.body.appendChild(n);
+    setTimeout(() => n.remove(), 14000);
+  }
+
+  _offerSaveAsNote(text) {
+    this._appendBubble("inkling", "Nice. Want me to save that as today's note?", "inkling-msg--proactive");
+    if (!this.messagesEl) return;
+    const wrap = document.createElement("div");
+    wrap.className = "inkling-title-ideas";
+    wrap.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 10px";
+    const yes = document.createElement("button");
+    yes.textContent = "💾 Save as today's note";
+    yes.style.cssText = "background:#059669;color:#fff;border:0;border-radius:999px;padding:6px 12px;font:700 12px system-ui;cursor:pointer";
+    yes.addEventListener("click", () => {
+      const ok = this._saveTodayNote(text);
+      wrap.remove();
+      this._appendBubble("inkling",
+        ok ? "Saved to today ✓ — it'll show up in your calendar + connections." : "Hmm, couldn't save that one.",
+        "inkling-msg--proactive");
+    });
+    const no = document.createElement("button");
+    no.textContent = "No thanks";
+    no.style.cssText = "background:#1e293b;color:#cbd5e1;border:0;border-radius:999px;padding:6px 12px;font:600 12px system-ui;cursor:pointer";
+    no.addEventListener("click", () => { wrap.remove(); this._appendBubble("inkling", "No worries.", "inkling-msg--proactive"); });
+    wrap.append(yes, no);
+    this.messagesEl.appendChild(wrap);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+  }
+
+  _saveTodayNote(text) {
+    try {
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      const iso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      createEvent({
+        title: text.slice(0, 80),
+        text,
+        startTime: now.toISOString(),
+        endTime: new Date(now.getTime() + 30 * 60000).toISOString(),
+        category: "personal",
+        date: iso
+      });
+      return true;
+    } catch { return false; }
+  }
+
   async _send() {
     const text = this.inputEl?.value?.trim();
     if (!text) return;
     this.inputEl.value = "";
     this._appendBubble("user", escapeHtml(text));
+
+    // Check-in reply: capture what they're up to (or honor an opt-out) instead of
+    // routing it as a command.
+    if (this._awaitingCheckInReply) {
+      this._awaitingCheckInReply = false;
+      if (/\b(stop|turn off|no more|disable)\b.*check|check.?ins?\s*(off|stop)/i.test(text)) {
+        try { localStorage.setItem("inkling-checkin-off", "1"); } catch { /* ignore */ }
+        this._appendBubble("inkling", "Got it — I won't check in like that anymore. Flip it back on whenever you like.", "inkling-msg--proactive");
+        return;
+      }
+      this._offerSaveAsNote(text);
+      return;
+    }
 
     // "Take me to <date>" → open that day in the Schedule.
     const nav = this._parseNavDate(text);
