@@ -48,6 +48,38 @@ export class CosmosIntro {
         transform:translateY(-4px) scale(1.04); border-color:#a5b4fc;
         box-shadow:0 14px 42px rgba(0,0,0,.6), 0 0 30px rgba(129,140,248,.5);
       }
+      /* Drifting nebula clouds + shooting stars over the cosmos */
+      #cosmos-sky { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+      #cosmos-sky .nebula {
+        position:absolute; border-radius:50%; filter:blur(48px);
+        mix-blend-mode:screen; opacity:.42; will-change:transform;
+      }
+      #cosmos-sky .nebula.n1 { width:46vw; height:46vw; left:-8vw; top:-6vh;
+        background:radial-gradient(circle, rgba(167,139,250,.9), rgba(167,139,250,0) 68%);
+        animation:nebula-a 26s ease-in-out infinite; }
+      #cosmos-sky .nebula.n2 { width:52vw; height:52vw; right:-12vw; top:18vh;
+        background:radial-gradient(circle, rgba(56,189,248,.8), rgba(56,189,248,0) 68%);
+        animation:nebula-b 32s ease-in-out infinite; }
+      #cosmos-sky .nebula.n3 { width:40vw; height:40vw; left:24vw; bottom:-14vh;
+        background:radial-gradient(circle, rgba(240,171,252,.75), rgba(240,171,252,0) 68%);
+        animation:nebula-c 38s ease-in-out infinite; }
+      @keyframes nebula-a { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(5vw,4vh) scale(1.18)} }
+      @keyframes nebula-b { 0%,100%{transform:translate(0,0) scale(1.05)} 50%{transform:translate(-6vw,-3vh) scale(0.9)} }
+      @keyframes nebula-c { 0%,100%{transform:translate(0,0) scale(0.95)} 50%{transform:translate(3vw,-5vh) scale(1.2)} }
+      #cosmos-sky .shooting-star {
+        position:absolute; width:3px; height:3px; border-radius:50%; background:#fff;
+        box-shadow:0 0 7px 2px rgba(255,255,255,.85); opacity:0;
+        animation:cosmos-shoot 1.1s ease-in forwards;
+      }
+      #cosmos-sky .shooting-star::after {
+        content:""; position:absolute; right:3px; top:50%; width:130px; height:1.5px;
+        transform:translateY(-50%);
+        background:linear-gradient(90deg, rgba(255,255,255,.9), rgba(255,255,255,0));
+      }
+      @keyframes cosmos-shoot {
+        0%{transform:translate(0,0) rotate(18deg);opacity:0}
+        12%{opacity:1} 100%{transform:translate(-380px,150px) rotate(18deg);opacity:0}
+      }
     `;
     document.head.appendChild(s);
   }
@@ -57,6 +89,13 @@ export class CosmosIntro {
     this._injectStyles();
     const el = document.createElement("div");
     el.id = "cosmos-intro";
+
+    // Drifting nebula clouds behind the content.
+    const sky = document.createElement("div");
+    sky.id = "cosmos-sky";
+    sky.innerHTML = `<div class="nebula n1"></div><div class="nebula n2"></div><div class="nebula n3"></div>`;
+    el.appendChild(sky);
+    this._sky = sky;
 
     const greet = document.createElement("div");
     greet.id = "cosmos-intro-greet";
@@ -105,6 +144,27 @@ export class CosmosIntro {
     this._portals.style.display = "none";
     this._el.style.display = "flex";
     document.body.classList.add("cosmos-intro-active");
+    this._startShootingStars();
+  }
+
+  _startShootingStars() {
+    if (this._starTimer) return;
+    const spawn = () => {
+      if (!this._sky || !this.isOpen()) return;
+      const star = document.createElement("div");
+      star.className = "shooting-star";
+      star.style.top = `${Math.random() * 55}%`;
+      star.style.left = `${55 + Math.random() * 40}%`;
+      this._sky.appendChild(star);
+      setTimeout(() => star.remove(), 1300);
+    };
+    // a star every 1.8–4s
+    this._starTimer = setInterval(() => { if (Math.random() < 0.8) spawn(); }, 2000 + Math.random() * 1200);
+    setTimeout(spawn, 600);
+  }
+
+  _stopShootingStars() {
+    if (this._starTimer) { clearInterval(this._starTimer); this._starTimer = null; }
   }
 
   _reveal() {
@@ -124,6 +184,7 @@ export class CosmosIntro {
   hide() {
     if (this._el) this._el.style.display = "none";
     document.body.classList.remove("cosmos-intro-active");
+    this._stopShootingStars();
   }
 
   isOpen() {
