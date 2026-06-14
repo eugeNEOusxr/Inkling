@@ -12,7 +12,12 @@ import { openPanel } from "./AppLauncher.js";
 import { InklingAlerts, colorizeAlertWords } from "./InklingAlertsPanel.js";
 import { analyzePatterns, patternInsights, dataNudge, reportSuggestions, CONNECTIONS_PROMPT, checkInQuestions, followUpSuggestions, recentRemarks } from "../ai/patternBrain.js";
 import { GoalsPanel } from "./GoalsPanel.js";
+import { Connections2D } from "./Connections2D.js";
 import { createEvent } from "../../wordweaver/timelineModel.js";
+
+const CHECKIN_HTML =
+  "✦ Hey — been a little while. <b>What are you up to right now?</b><br>" +
+  "<span style='opacity:.7;font-size:12px'>Tell me in a line and I can jot it down as today's note. (Say “stop check-ins” to turn these off.)</span>";
 import { createAlert, addAlert, AlertPriority } from "../alerts/alertsModel.js";
 import { recomputeSchedule } from "../alerts/alertsScheduler.js";
 const INKLING_CRON_KEY = "calendar3d-inkling-cron-v1";
@@ -305,6 +310,7 @@ export class InklingPanel {
     this._orbItems = [
       mk("💬", "Chat with Inkling", () => this.openWithContext()),
       mk("🔗", "Connections", () => this.showConnections()),
+      mk("🕸", "Connections map", () => this.showConnectionsMap()),
       mk("🎯", "Goals", () => this.showGoals()),
       mk("🔔", "Alerts", () => this.alerts?.show()),
       mk("⏰", "Alarm clock", () => this.app?.openAlarmClock?.()),
@@ -392,6 +398,12 @@ export class InklingPanel {
   showGoals() {
     if (!this._goals) this._goals = new GoalsPanel();
     this._goals.show();
+  }
+
+  /** Open the 2D connections node map. */
+  showConnectionsMap() {
+    if (!this._connMap) this._connMap = new Connections2D();
+    this._connMap.show();
   }
 
   /** Open Inkling and show the patterns it has spotted + reports it could make. */
@@ -636,6 +648,15 @@ export class InklingPanel {
   // When the user returns after a gap, Inkling asks what they're up to and offers
   // to jot it down. In-app only — no push, no permissions. Opt-out: "stop check-ins".
   _initCheckIn() {
+    // Restore an unanswered check-in from a previous load so (a) the question is
+    // visible in chat for context and (b) the reply still gets captured/saved.
+    try {
+      if (localStorage.getItem("inkling-checkin-pending") === "1") {
+        this._awaitingCheckInReply = true;
+        this._appendBubble("inkling", CHECKIN_HTML, "inkling-msg--proactive");
+        this._showCheckInNudge();
+      }
+    } catch { /* ignore */ }
     try { this.maybeCheckIn(); } catch { /* ignore */ }
     const bump = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
@@ -663,14 +684,12 @@ export class InklingPanel {
 
   maybeCheckIn() {
     if (this._awaitingCheckInReply || !this._checkInDue()) return;
-    try { localStorage.setItem("inkling-last-checkin", new Date().toISOString().slice(0, 10)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem("inkling-last-checkin", new Date().toISOString().slice(0, 10));
+      localStorage.setItem("inkling-checkin-pending", "1"); // survives reloads
+    } catch { /* ignore */ }
     this._awaitingCheckInReply = true;
-    this._appendBubble(
-      "inkling",
-      "✦ Hey — been a little while. <b>What are you up to right now?</b><br>" +
-        "<span style='opacity:.7;font-size:12px'>Tell me in a line and I can jot it down as today's note. (Say “stop check-ins” to turn these off.)</span>",
-      "inkling-msg--proactive"
-    );
+    this._appendBubble("inkling", CHECKIN_HTML, "inkling-msg--proactive");
     this._showCheckInNudge();
   }
 
@@ -740,8 +759,10 @@ export class InklingPanel {
 
     // Check-in reply: capture what they're up to (or honor an opt-out) instead of
     // routing it as a command.
-    if (this._awaitingCheckInReply) {
+    const checkInPending = this._awaitingCheckInReply || (() => { try { return localStorage.getItem("inkling-checkin-pending") === "1"; } catch { return false; } })();
+    if (checkInPending) {
       this._awaitingCheckInReply = false;
+      try { localStorage.removeItem("inkling-checkin-pending"); } catch { /* ignore */ }
       if (/\b(stop|turn off|no more|disable)\b.*check|check.?ins?\s*(off|stop)/i.test(text)) {
         try { localStorage.setItem("inkling-checkin-off", "1"); } catch { /* ignore */ }
         this._appendBubble("inkling", "Got it — I won't check in like that anymore. Flip it back on whenever you like.", "inkling-msg--proactive");
