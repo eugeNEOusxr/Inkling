@@ -801,8 +801,8 @@ function getDayMode() {
 function setDayMode(m) { try { localStorage.setItem(DAY_MODE_KEY, m); } catch { /* ignore */ } }
 /** Theme → note-text base colour (boxes keep their category colour). */
 function themeTextColor(theme) {
-  void theme;
-  return 0x111111; // black text across day / night / B&W
+  if (theme === "bw") return 0xf5c542; // gold pops on the grayscale photo
+  return 0x111111; // black for day + night
 }
 
 // ── Rough DAY VIEW (click-to-zoom prototype) ───────────────────────────────
