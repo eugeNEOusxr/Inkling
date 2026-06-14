@@ -936,6 +936,34 @@ export function createDayView(scene, dayIso, opts = {}) {
   group.add(headingGroup);
   textNodes.push(heading3d);
 
+  // SAMPLE: the month's scenic photo behind everything (light scrim for
+  // readability). Easy to toggle off later if it competes with the text.
+  let bgPhoto = null;
+  {
+    const monthIndex = (parseInt(dayIso.split("-")[1], 10) || 1) - 1;
+    const url = monthSceneUrl(monthIndex, opts.segment === "night" ? "night" : "day");
+    if (url) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0x141b2a, toneMapped: false });
+      bgPhoto = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+      bgPhoto.name = "ww-day-photo-bg";
+      bgPhoto.scale.set(100, 70, 1);
+      bgPhoto.position.set(0, 0, -12);
+      bgPhoto.renderOrder = -10;
+      bgPhoto.layers.set(1);
+      group.add(bgPhoto);
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const tex = buildDayBackdropTexture(img);
+        mat.map = tex;
+        mat.color.set(0xffffff);
+        mat.needsUpdate = true;
+      };
+      img.onerror = () => { /* keep the dark placeholder */ };
+      img.src = url;
+    }
+  }
+
   const BOX_Y = 1.9; // box sits above the centered text block
 
   if (!events.length) {
@@ -1225,6 +1253,13 @@ export function createDayView(scene, dayIso, opts = {}) {
       }
       dayBoxGeos.boxGeo?.dispose();
       dayBoxGeos.edgesGeo?.dispose();
+      if (bgPhoto) {
+        bgPhoto.geometry.dispose();
+        if (bgPhoto.material instanceof THREE.Material) {
+          bgPhoto.material.map?.dispose();
+          bgPhoto.material.dispose();
+        }
+      }
     }
   };
 }
