@@ -100,6 +100,8 @@ export class WordWeaverEmbed {
     });
     document.getElementById("wordweaver-date-today")?.addEventListener("click", (e) => {
       e.stopPropagation();
+      // In the 3D drill-down day view, jump the day there.
+      if (getCalendarMode() === "3d" && this._scene?.goToTodayDay?.()) return;
       this.show(this._todayIso(), this._time, true, { immersive: this._immersive });
     });
 
@@ -330,6 +332,16 @@ export class WordWeaverEmbed {
   }
 
   _shiftDate(delta) {
+    // In the 3D drill-down DAY view, the ‹ › arrows step the focused day there.
+    if (getCalendarMode() === "3d" && this._scene?.stepDay?.(delta)) {
+      const base = this._scene._dayIso ?? this._date;
+      if (base) {
+        this._date = base;
+        const el = document.getElementById("wordweaver-embed-date");
+        if (el) el.textContent = this._formatDateLabel(base);
+      }
+      return;
+    }
     if (!this._date) return;
     const d = new Date(`${this._date}T12:00:00`);
     d.setDate(d.getDate() + delta);

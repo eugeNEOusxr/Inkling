@@ -980,6 +980,7 @@ export class WordWeaverScene {
    * @param {string} dayIso
    */
   enterDayViewIso(dayIso) {
+    this._dayIso = dayIso; // remember the focused day for ‹ › day stepping
     this._dayView?.dispose();
     this.controls.minDistance = 4;
     this.controls.maxDistance = 300;
@@ -998,6 +999,34 @@ export class WordWeaverScene {
     this._daySel = 0;
     this._ensureBackButton();
     this._updateBackButton();
+  }
+
+  /** True when the 3D drill-down is on a single day. */
+  isDayView() {
+    return this._navLevel === "day";
+  }
+
+  /**
+   * Step the focused day forward/back by `delta` days (3D day view only).
+   * @param {number} delta +1 next day / -1 previous day
+   * @returns {boolean} handled
+   */
+  stepDay(delta) {
+    if (this._navLevel !== "day" || !this._dayIso) return false;
+    const d = new Date(`${this._dayIso}T12:00:00`);
+    d.setDate(d.getDate() + (delta < 0 ? -1 : 1));
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    this.enterDayViewIso(iso);
+    return true;
+  }
+
+  /** Jump the day view to today (3D day view only). @returns {boolean} handled */
+  goToTodayDay() {
+    if (this._navLevel !== "day") return false;
+    const n = new Date();
+    const iso = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+    this.enterDayViewIso(iso);
+    return true;
   }
 
   /** Go up one level: day → month → year. */
