@@ -886,11 +886,15 @@ function wrapWords(text, maxChars) {
   return lines.length ? lines : [""];
 }
 
-export function createDayView(scene, dayIso, segment = "afternoon") {
-  void segment;
+export function createDayView(scene, dayIso, opts = {}) {
+  // opts: { camera, controls, segment, mode }. Back-compat: a string = segment.
+  if (typeof opts === "string") opts = { segment: opts };
+  const camera = opts.camera ?? null;
+  const controls = opts.controls ?? null;
+  let mode = opts.mode === "wheel" ? "wheel" : "full"; // default: full stacked day
   const group = new THREE.Group();
   group.name = "ww-day-view";
-  // Earliest-first so the wheel opens on the first note of the day.
+  // Earliest-first so the day reads top→bottom by time.
   const events = [...getEventsForDate(dayIso)].sort((a, b) => parseHHMM(a.time) - parseHHMM(b.time));
   const textStyle = getTextStyle(); // user-chosen 3D look (chrome/neon/gold/…)
   void preloadReal3DFont(); // beveled 3D note text needs the typeface loaded
@@ -1000,9 +1004,9 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
         textNodes.push(t3d);
       });
 
-      card.visible = idx === 0;
+      card.visible = true;
       group.add(card);
-      cards.push({ group: card, box, baseY: BOX_Y, event: ev });
+      cards.push({ group: card, box, baseY: BOX_Y, event: ev, lines: lines.length });
       items.push({ mesh: box, y: 0, event: ev });
     });
   }
@@ -1016,28 +1020,102 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
     window.addEventListener("wordweaver:font-ready", _reLayer);
   }
 
-  // --- 2D carousel arrows (DOM overlay) ---
+  // --- two layouts: FULL (all notes stacked, box-above-text) + WHEEL (one at a
+  //     time, ‹ › arrows). Default is FULL; a 2D toggle switches between them. ---
   let current = 0;
-  let dom = null;
-  let domLabel = null;
+  let stackBottom = 0;
+  const STACK_TOP = 3.4;
+  let modeBar = null, arrowBar = null, domLabel = null, fullBtn = null, wheelBtn = null;
+
+  function layoutFull() {
+    let y = STACK_TOP;
+    const GAP = 1.15;
+    for (const c of cards) {
+      const top = BOX_Y + 0.55;                       // box top within card-local
+      const bottom = 0.45 - (c.lines - 1) * 0.82 - 0.5;
+      const h = top - bottom;
+      c.group.position.set(0, y - top, 0);            // align this card's top to y
+      c.group.visible = true;
+      c.box.position.set(0, c.baseY, 0);
+      y -= h + GAP;
+    }
+    stackBottom = y;
+  }
+  function layoutWheel() {
+    cards.forEach((c, idx) => {
+      c.group.position.set(0, 0, 0);
+      c.group.visible = idx === current;
+      c.box.position.set(0, c.baseY, 0);
+    });
+  }
+  function frame() {
+    if (!camera || !controls) return;
+    camera.up.set(0, 1, 0);
+    if (mode === "full" && cards.length) {
+      const top = 4.6, bottom = stackBottom;
+      const cy = (top + bottom) / 2;
+      const h = Math.max(7, top - bottom);
+      const dist = (h / 2) / Math.tan(((camera.fov || 50) * Math.PI / 180) / 2) + 3;
+      if (controls.maxDistance < dist + 5) controls.maxDistance = dist + 40;
+      controls.target.set(0, cy, 0);
+      camera.position.set(0, cy, dist);
+    } else {
+      controls.target.set(0, 1.0, 0);
+      camera.position.set(0, 1.0, 12);
+    }
+    camera.lookAt(controls.target);
+    controls.update();
+  }
   function syncLabel() {
     if (!domLabel || !cards.length) return;
     const ev = cards[current].event;
     const title = String(ev.text || ev.title || "Note").trim();
     domLabel.textContent = `${ev.time} · ${title.length > 26 ? title.slice(0, 25) + "…" : title}  (${current + 1}/${cards.length})`;
   }
+  function updateUI() {
+    const paint = (btn, on) => { if (btn) { btn.style.background = on ? "#312e81" : "transparent"; btn.style.color = on ? "#e0e7ff" : "#94a3b8"; } };
+    paint(fullBtn, mode === "full");
+    paint(wheelBtn, mode === "wheel");
+    if (arrowBar) arrowBar.style.display = mode === "wheel" ? "flex" : "none";
+    syncLabel();
+  }
   function select(i) {
     if (!cards.length) return;
     current = ((i % cards.length) + cards.length) % cards.length;
-    cards.forEach((c, idx) => { c.group.visible = idx === current; });
+    if (mode === "wheel") cards.forEach((c, idx) => { c.group.visible = idx === current; });
     syncLabel();
   }
   function step(dir) { select(current + (dir < 0 ? -1 : 1)); }
+  function setMode(m) {
+    mode = m === "wheel" ? "wheel" : "full";
+    if (mode === "wheel") layoutWheel(); else layoutFull();
+    frame();
+    updateUI();
+  }
+
   if (typeof document !== "undefined" && cards.length) {
-    dom = document.createElement("div");
-    dom.id = "ww-day-carousel";
-    dom.style.cssText =
-      "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:10260;display:flex;align-items:center;gap:14px;" +
+    // Mode toggle — sits with the calendar's 2D/3D controls (top center).
+    modeBar = document.createElement("div");
+    modeBar.id = "ww-day-modebar";
+    modeBar.style.cssText =
+      "position:fixed;left:50%;top:72px;transform:translateX(-50%);z-index:10261;display:flex;gap:6px;" +
+      "background:rgba(8,12,22,0.74);backdrop-filter:blur(8px);border:1px solid rgba(99,102,241,0.45);border-radius:999px;" +
+      "padding:5px 6px;box-shadow:0 6px 20px rgba(0,0,0,0.4)";
+    fullBtn = document.createElement("button"); fullBtn.textContent = "📆 Full day";
+    wheelBtn = document.createElement("button"); wheelBtn.textContent = "🎡 Scroll";
+    for (const b of [fullBtn, wheelBtn]) {
+      b.style.cssText = "border:0;border-radius:999px;padding:7px 14px;font:700 12px system-ui;cursor:pointer;background:transparent;color:#94a3b8";
+    }
+    fullBtn.addEventListener("click", () => setMode("full"));
+    wheelBtn.addEventListener("click", () => setMode("wheel"));
+    modeBar.append(fullBtn, wheelBtn);
+    document.body.appendChild(modeBar);
+
+    // Wheel arrows (shown only in scroll mode).
+    arrowBar = document.createElement("div");
+    arrowBar.id = "ww-day-carousel";
+    arrowBar.style.cssText =
+      "position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:10260;display:none;align-items:center;gap:14px;" +
       "background:rgba(8,12,22,0.72);backdrop-filter:blur(8px);border:1px solid rgba(99,102,241,0.45);border-radius:999px;" +
       "padding:8px 14px;color:#e6ebff;font:700 13px system-ui;box-shadow:0 8px 28px rgba(0,0,0,0.45)";
     const prev = document.createElement("button"); prev.textContent = "‹"; prev.title = "Earlier note";
@@ -1049,33 +1127,45 @@ export function createDayView(scene, dayIso, segment = "afternoon") {
     domLabel.style.cssText = "min-width:150px;max-width:300px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
     prev.addEventListener("click", () => step(-1));
     next.addEventListener("click", () => step(1));
-    dom.append(prev, domLabel, next);
-    document.body.appendChild(dom);
+    arrowBar.append(prev, domLabel, next);
+    document.body.appendChild(arrowBar);
   }
-  select(0); // open on the earliest note
+
+  // Initial layout (full day) + camera frame.
+  if (mode === "wheel") layoutWheel(); else layoutFull();
+  frame();
+  updateUI();
+
+  /** Animate one box (spin + planar drift) around its card-local base. */
+  function animateBox(c, elapsed, ph) {
+    const b = c.box;
+    b.rotation.y = elapsed * 0.5 + ph;
+    b.rotation.x = Math.sin(elapsed * 0.4 + ph) * 0.18;
+    b.position.x = Math.sin(elapsed * 0.8 + ph) * 0.34; // shift on the plane, in its spot
+    b.position.z = Math.cos(elapsed * 0.8 + ph) * 0.34;
+    b.position.y = c.baseY + Math.sin(elapsed * 1.1 + ph) * 0.07;
+  }
 
   return {
     group,
     items,
     select,
     step,
+    setMode,
+    get mode() { return mode; },
     get current() { return current; },
     get count() { return cards.length; },
-    /** Per-frame: spin + drift the focused box on its plane so it feels alive. */
     update(elapsed) {
       if (!cards.length) return;
-      const b = cards[current].box;
-      b.rotation.y = elapsed * 0.5;
-      b.rotation.x = Math.sin(elapsed * 0.4) * 0.2;
-      b.position.x = Math.sin(elapsed * 0.8) * 0.5; // shift on the plane, in its spot
-      b.position.z = Math.cos(elapsed * 0.8) * 0.5;
-      b.position.y = cards[current].baseY + Math.sin(elapsed * 1.2) * 0.08;
+      if (mode === "wheel") animateBox(cards[current], elapsed, 0);
+      else cards.forEach((c, i) => animateBox(c, elapsed, i * 0.7));
     },
     dispose() {
       if (typeof window !== "undefined") {
         window.removeEventListener("wordweaver:font-ready", _reLayer);
       }
-      if (dom) dom.remove();
+      modeBar?.remove();
+      arrowBar?.remove();
       for (const t of textNodes) t.dispose();
       scene.remove(group);
       for (const s of spheres) {

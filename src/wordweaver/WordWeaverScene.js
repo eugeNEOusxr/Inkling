@@ -981,20 +981,20 @@ export class WordWeaverScene {
    */
   enterDayViewIso(dayIso) {
     this._dayView?.dispose();
-    this._dayView = createDayView(this.scene, dayIso, this._scenicBackdropSegment ?? "afternoon");
+    this.controls.minDistance = 4;
+    this.controls.maxDistance = 300;
+    this.camera.far = Math.max(this.camera.far, 400);
+    this.camera.updateProjectionMatrix();
+    // The day view manages its own layout (full day vs scroll wheel) and frames
+    // the camera accordingly.
+    this._dayView = createDayView(this.scene, dayIso, {
+      camera: this.camera,
+      controls: this.controls,
+      segment: this._scenicBackdropSegment ?? "afternoon"
+    });
     if (this._navMonthGrid?.root) this._navMonthGrid.root.visible = false;
     this._navLevel = "day";
     this._daySel = 0;
-    this.controls.minDistance = 4;
-    this.controls.maxDistance = 120;
-    this.camera.far = Math.max(this.camera.far, 200);
-    this.camera.updateProjectionMatrix();
-    // Frame the single focused card (the wheel shows one note at a time).
-    this.controls.target.set(0, 1.0, 0);
-    this.camera.up.set(0, 1, 0);
-    this.camera.position.set(0, 1.0, 12);
-    this.camera.lookAt(this.controls.target);
-    this.controls.update();
     this._ensureBackButton();
     this._updateBackButton();
   }
