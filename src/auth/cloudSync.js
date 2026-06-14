@@ -50,20 +50,35 @@ function apiBase() {
  */
 export async function apiFetch(path, init = {}) {
   const session = getSession();
+  const { timeoutMs, ...rest } = init;
   const headers = {
     "Content-Type": "application/json",
     "X-Inkling-Client": "Inkling",
-    ...(init.headers || {})
+    ...(rest.headers || {})
   };
   if (session?.token) headers.Authorization = `Bearer ${session.token}`;
-  const res = await fetch(`${apiBase()}${path}`, { ...init, headers });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(body.error || res.statusText || "Request failed");
-    err.status = res.status;
-    throw err;
+  // Bound the request so a sleeping free-tier backend can't hang the UI forever
+  // (e.g. "Signing in…" stuck). An abort throws a status-less error → callers can
+  // retry through the cold start instead of waiting indefinitely.
+  let signal = rest.signal;
+  let timer = null;
+  if (timeoutMs && typeof AbortController !== "undefined") {
+    const ac = new AbortController();
+    timer = setTimeout(() => ac.abort(), timeoutMs);
+    signal = ac.signal;
   }
-  return body;
+  try {
+    const res = await fetch(`${apiBase()}${path}`, { ...rest, headers, signal });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(body.error || res.statusText || "Request failed");
+      err.status = res.status;
+      throw err;
+    }
+    return body;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**

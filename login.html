@@ -140,7 +140,7 @@
         let result;
         for (let attempt = 0; ; attempt++) {
           try {
-            result = await apiFetch(path, { method: "POST", body: JSON.stringify(payload) });
+            result = await apiFetch(path, { method: "POST", body: JSON.stringify(payload), timeoutMs: 12000 });
             break;
           } catch (e) {
             if (attempt < 2 && (e.status === undefined || e.status >= 500)) {
