@@ -11,6 +11,7 @@ import { registerInklingApp, installWriterNavigation } from "./Writer.js";
 import { openPanel } from "./AppLauncher.js";
 import { InklingAlerts, colorizeAlertWords } from "./InklingAlertsPanel.js";
 import { analyzePatterns, patternInsights, dataNudge, reportSuggestions, CONNECTIONS_PROMPT, checkInQuestions, followUpSuggestions, recentRemarks } from "../ai/patternBrain.js";
+import { GoalsPanel } from "./GoalsPanel.js";
 import { createAlert, addAlert, AlertPriority } from "../alerts/alertsModel.js";
 import { recomputeSchedule } from "../alerts/alertsScheduler.js";
 const INKLING_CRON_KEY = "calendar3d-inkling-cron-v1";
@@ -297,6 +298,7 @@ export class InklingPanel {
     this._orbItems = [
       mk("💬", "Chat with Inkling", () => this.openWithContext()),
       mk("🔗", "Connections", () => this.showConnections()),
+      mk("🎯", "Goals", () => this.showGoals()),
       mk("🔔", "Alerts", () => this.alerts?.show()),
       mk("⏰", "Alarm clock", () => this.app?.openAlarmClock?.()),
       mk("＋", "New event", () => this._orbNewEvent()),
@@ -377,6 +379,12 @@ export class InklingPanel {
   openWithContext() {
     this.expand();
     try { this._postContextPrompt(); } catch { /* ignore */ }
+  }
+
+  /** Open the Goals surface (capture + review goals). */
+  showGoals() {
+    if (!this._goals) this._goals = new GoalsPanel();
+    this._goals.show();
   }
 
   /** Open Inkling and show the patterns it has spotted + reports it could make. */

@@ -57,26 +57,36 @@ function catOf(ev) {
   return c === "errand" ? "errands" : c;
 }
 
-/** Canvas text sprite (transparent, billboard-ish plane). */
-function labelSprite(text, { color = "#f1f5f9", size = 48, planeW = 4, planeH = 0.9, bg = null } = {}) {
+/** Canvas text sprite (transparent, billboard-ish plane). Auto-shrinks the font
+ *  so long notes FIT instead of being cut off. */
+function labelSprite(text, { color = "#f1f5f9", size = 48, planeW = 4, planeH = 0.9, bg = null, maxChars = 46 } = {}) {
+  const W = 720, H = 128;
   const canvas = document.createElement("canvas");
-  canvas.width = 512; canvas.height = 128;
+  canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    ctx.clearRect(0, 0, 512, 128);
-    if (bg) { ctx.fillStyle = bg; roundRect(ctx, 6, 18, 500, 92, 16); ctx.fill(); }
-    ctx.font = `800 ${size}px system-ui, sans-serif`;
+    ctx.clearRect(0, 0, W, H);
+    const t = text.length > maxChars ? text.slice(0, maxChars - 1) + "…" : text;
+    const padX = 26;
+    let f = size;
+    ctx.font = `800 ${f}px system-ui, sans-serif`;
+    while (ctx.measureText(t).width > W - padX * 2 && f > 16) {
+      f -= 2;
+      ctx.font = `800 ${f}px system-ui, sans-serif`;
+    }
+    if (bg) { ctx.fillStyle = bg; roundRect(ctx, 6, 14, W - 12, H - 28, 18); ctx.fill(); }
     ctx.fillStyle = color;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.shadowColor = "rgba(0,0,0,0.8)";
     ctx.shadowBlur = 8;
-    ctx.fillText(text.slice(0, 26), 256, 64);
+    ctx.fillText(t, W / 2, H / 2);
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.needsUpdate = true;
   const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeH), mat);
+  // Keep plane aspect = canvas aspect (W/H) so text isn't stretched.
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(planeW, planeW * (H / W)), mat);
   mesh.renderOrder = 11;
   return { mesh, mat, tex };
 }

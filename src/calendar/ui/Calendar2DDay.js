@@ -239,7 +239,7 @@ export class Calendar2DDay {
     // Header bar
     const head = document.createElement("div");
     head.style.cssText =
-      "flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:12px 14px;" +
+      "flex:0 0 auto;display:flex;flex-direction:column;gap:8px;padding:10px 12px;" +
       `border-bottom:1px solid ${P.headBorder};background:${P.headBg}`;
     const prev = this._navBtn("‹", () => this.shiftDay(-1));
     const next = this._navBtn("›", () => this.shiftDay(1));
@@ -296,13 +296,18 @@ export class Calendar2DDay {
     paintBtn.title = "Text style";
     paintBtn.style.fontSize = "16px";
     const close = this._navBtn("✕", () => this.close());
-    // ‹ date › cluster sits together; Today/Month on the left, tools on the right.
-    const nav = document.createElement("div");
-    nav.style.cssText = "display:flex;align-items:center;gap:6px;flex:0 0 auto";
-    nav.append(prev, title, next);
-    const spacer = document.createElement("div");
-    spacer.style.cssText = "flex:1 1 auto";
-    head.append(dayBtn, monthBtn, nav, spacer, themeBtn, zoomLabel, slotSel, noteBtn, paintBtn, close);
+    // Row 1: the date between the ‹ › arrows on its OWN line so it has room and
+    // doesn't squeeze the buttons off-screen.
+    title.style.flex = "1 1 auto";
+    const row1 = document.createElement("div");
+    row1.style.cssText = "display:flex;align-items:center;justify-content:center;gap:10px;width:100%";
+    row1.append(prev, title, next);
+    // Row 2: action buttons — WRAP so every button (incl. theme) stays visible on
+    // narrow screens instead of being cut off.
+    const row2 = document.createElement("div");
+    row2.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%";
+    row2.append(dayBtn, monthBtn, themeBtn, zoomLabel, slotSel, noteBtn, paintBtn, close);
+    head.append(row1, row2);
 
     // Scrollable grid
     const scroll = document.createElement("div");
