@@ -10,6 +10,7 @@ import { submitFeedback } from "../../auth/userAccount.js";
 import { registerInklingApp, installWriterNavigation } from "./Writer.js";
 import { openPanel } from "./AppLauncher.js";
 import { InklingAlerts, colorizeAlertWords } from "./InklingAlertsPanel.js";
+import { analyzePatterns, patternInsights, dataNudge, reportSuggestions, CONNECTIONS_PROMPT } from "../ai/patternBrain.js";
 const INKLING_CRON_KEY = "calendar3d-inkling-cron-v1";
 
 /**
@@ -293,6 +294,7 @@ export class InklingPanel {
     };
     this._orbItems = [
       mk("💬", "Chat with Inkling", () => this.openWithContext()),
+      mk("🔗", "Connections", () => this.showConnections()),
       mk("🔔", "Alerts", () => this.alerts?.show()),
       mk("⏰", "Alarm clock", () => this.app?.openAlarmClock?.()),
       mk("＋", "New event", () => this._orbNewEvent()),
@@ -373,6 +375,45 @@ export class InklingPanel {
   openWithContext() {
     this.expand();
     try { this._postContextPrompt(); } catch { /* ignore */ }
+  }
+
+  /** Open Inkling and show the patterns it has spotted + reports it could make. */
+  showConnections() {
+    this.expand();
+    try { this._postConnections(); } catch { /* ignore */ }
+  }
+
+  _postConnections() {
+    if (!this.messagesEl) return;
+    const p = analyzePatterns();
+    // 1) the orb's invitation
+    this._appendBubble("inkling", escapeHtml(CONNECTIONS_PROMPT), "inkling-msg--proactive");
+    // 2) the patterns it sees
+    this._appendBubble("inkling", patternInsights(p).join("<br>"), "inkling-msg--proactive");
+    // 3) the honest "log more" nudge (scaled to data)
+    const nudge = dataNudge(p);
+    if (nudge) {
+      this._appendBubble("inkling", `<span style="opacity:.85">${nudge}</span>`, "inkling-msg--proactive");
+    }
+    // 4) reports it could build — tappable; each explains what to log
+    const wrap = document.createElement("div");
+    wrap.className = "inkling-title-ideas";
+    wrap.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px";
+    for (const r of reportSuggestions()) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = r.label;
+      b.style.cssText =
+        "background:#eef2ff;color:#4338ca;border:0;border-radius:999px;padding:6px 12px;font:600 12px system-ui;cursor:pointer";
+      b.addEventListener("click", () => {
+        this._appendBubble("inkling",
+          `<b>${escapeHtml(r.label)}</b><br>To unlock this, ${escapeHtml(r.need)}. Keep it up and I'll build the report from your own logs.`,
+          "inkling-msg--proactive");
+      });
+      wrap.appendChild(b);
+    }
+    this.messagesEl.appendChild(wrap);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
 
   _scheduleIsOpen() {
