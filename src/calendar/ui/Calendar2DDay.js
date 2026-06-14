@@ -141,8 +141,8 @@ export class Calendar2DDay {
   setView(view) {
     this.view = view;
     this._scrolled = false;
-    if (this._dayBtn) this._dayBtn.style.background = view === "day" ? "#dbeafe" : "#fff";
-    if (this._monthBtn) this._monthBtn.style.background = view === "month" ? "#dbeafe" : "#fff";
+    if (this._dayBtn) this._setViewBtnActive(this._dayBtn, view === "day");
+    if (this._monthBtn) this._setViewBtnActive(this._monthBtn, view === "month");
     for (const el of this._zoomEls ?? []) el.style.display = view === "day" ? "" : "none";
     this.render();
   }
@@ -326,6 +326,14 @@ export class Calendar2DDay {
         if (r && typeof r.catch === "function") r.catch(() => {});
       }
     } catch { /* ignore */ }
+  }
+
+  /** Palette-aware active/inactive styling for the Today / Month toggle. */
+  _setViewBtnActive(btn, active) {
+    const P = this._pal();
+    btn.style.background = active ? "#6366f1" : P.btnBg;
+    btn.style.color = active ? "#ffffff" : P.btnText;
+    btn.style.borderColor = active ? "#6366f1" : P.btnBorder;
   }
 
   _navBtn(label, onClick) {

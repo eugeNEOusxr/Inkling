@@ -119,9 +119,10 @@ const RADIUS = GRID_RADIUS;
 
 /** Shared geometry + materials (perf seam for year grid). */
 const sharedGeometry = {
-  // Month markers are 3D BOXES (days stay spheres).
+  // Month + day markers are 3D BOXES (day = small white box w/ the date inside);
+  // notes stay small spheres.
   month: new THREE.BoxGeometry(RADIUS.month * 1.7, RADIUS.month * 1.7, RADIUS.month * 1.7),
-  day: new THREE.SphereGeometry(RADIUS.day, 22, 22),
+  day: new THREE.BoxGeometry(RADIUS.day * 1.7, RADIUS.day * 1.7, RADIUS.day * 1.7),
   note: new THREE.SphereGeometry(RADIUS.note, 16, 16)
 };
 
@@ -147,13 +148,13 @@ const sharedMaterial = {
     emissiveIntensity: 0.5
   }),
   day: new THREE.MeshPhysicalMaterial({
-    color: 0xff8822,
-    metalness: 0.28,
-    roughness: 0.19,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.1,
-    emissive: new THREE.Color(0x552200),
-    emissiveIntensity: 0.22
+    color: 0xffffff, // clean white day box (was orange)
+    metalness: 0.0,
+    roughness: 0.32,
+    clearcoat: 0.6,
+    clearcoatRoughness: 0.2,
+    emissive: new THREE.Color(0xe8eeff),
+    emissiveIntensity: 0.32
   }),
   note: new THREE.MeshPhysicalMaterial({
     color: 0x3399ff,
@@ -186,13 +187,12 @@ const _scale = new THREE.Vector3(1, 1, 1);
 const _animQuat = new THREE.Quaternion();
 const _animEuler = new THREE.Euler();
 
-/** Gentle "breathing" glow so the spheres feel alive (shared by both grids). */
-function pulseSpheres(elapsed) {
-  const t = (Math.sin(elapsed * 1.6) + 1) * 0.5; // 0..1
-  sharedMaterial.month.emissiveIntensity = 0.45 + t * 0.2; // keep the month box bright pearl
-  sharedMaterial.day.emissiveIntensity = 0.18 + t * 0.18;
-  sharedMaterial.note.emissiveIntensity = 0.32 + t * 0.28;
-  noteColorMaterial.emissiveIntensity = 0.08 + t * 0.18;
+/** Static marker glow (no idle animation — markers only react on click). */
+function pulseSpheres() {
+  sharedMaterial.month.emissiveIntensity = 0.5; // bright pearl
+  sharedMaterial.day.emissiveIntensity = 0.32;
+  sharedMaterial.note.emissiveIntensity = 0.45;
+  noteColorMaterial.emissiveIntensity = 0.16;
 }
 
 /**
@@ -323,49 +323,19 @@ export class WordWeaverMonthGrid {
     this._monthLabel = monthLabel;
     this._labels.push(monthLabel);
 
+    // Day number sits on the front of each white day box (black, legible).
     for (const cell of this._layout.cells) {
       const label = createLabelSprite(String(cell.day), {
-        fontSize: "700 48px system-ui, sans-serif",
-        fill: "#fff7ed",
+        fontSize: "800 52px system-ui, sans-serif",
+        fill: "#0f172a",
         width: 96,
         height: 96,
-        planeW: 0.52,
-        planeH: 0.52
+        planeW: 0.5,
+        planeH: 0.5
       });
       label.mesh.position.set(cell.x, cell.y, RADIUS.day + 0.22);
       this.root.add(label.mesh);
       this._labels.push(label);
-    }
-
-    // Day CELLS as light 3D boxes with darker edge lines: gives the flat grid
-    // real depth (reads as 3D from far away) while the number spheres + labels
-    // stay on top so the date always shows. Walls are light/translucent, edges
-    // darker than the walls. Gently animated in update().
-    {
-      const xs = this._layout.cells.map((c) => c.x).sort((a, b) => a - b);
-      let pitch = Infinity;
-      for (let i = 1; i < xs.length; i++) { const dx = xs[i] - xs[i - 1]; if (dx > 0.01) pitch = Math.min(pitch, dx); }
-      if (!Number.isFinite(pitch)) pitch = RADIUS.day * 2.4;
-      const s = pitch * 0.84;
-      const depth = Math.max(0.5, RADIUS.day * 1.5);
-      const backZ = -depth * 0.5 + 0.05;
-      this._dayBoxGeo = new THREE.BoxGeometry(s, s, depth);
-      this._dayBoxEdgesGeo = new THREE.EdgesGeometry(this._dayBoxGeo);
-      this._dayBoxWallMat = new THREE.MeshBasicMaterial({ color: 0xe2e8ff, transparent: true, opacity: 0.18, depthWrite: false });
-      this._dayBoxEdgeMat = new THREE.LineBasicMaterial({ color: 0x334155, transparent: true, opacity: 0.85 });
-      this._dayBoxes = [];
-      for (const cell of this._layout.cells) {
-        const box = new THREE.Mesh(this._dayBoxGeo, this._dayBoxWallMat);
-        box.position.set(cell.x, cell.y, backZ);
-        box.raycast = () => {}; // don't intercept day-cell clicks
-        const edges = new THREE.LineSegments(this._dayBoxEdgesGeo, this._dayBoxEdgeMat);
-        edges.position.copy(box.position);
-        edges.raycast = () => {};
-        edges.renderOrder = 2;
-        this.root.add(box);
-        this.root.add(edges);
-        this._dayBoxes.push({ box, edges, baseZ: backZ, phase: Math.random() * Math.PI * 2 });
-      }
     }
 
     // Weekday headers (Sun–Sat) slanted at 45° (the hypotenuse) above each column.
@@ -462,21 +432,9 @@ export class WordWeaverMonthGrid {
    * @param {number} _delta
    * @param {number} elapsed
    */
-  update(_delta, elapsed) {
-    if (this._monthLabel?.mesh) {
-      this._monthLabel.mesh.position.y =
-        (this._layout?.monthCenter.y ?? 0) + RADIUS.month + 1.9 + Math.sin(elapsed * 1.1) * 0.06;
-    }
-    // Day boxes: a gentle per-cell depth bob + a shared edge-line shimmer.
-    if (this._dayBoxes) {
-      if (this._dayBoxEdgeMat) this._dayBoxEdgeMat.opacity = 0.62 + 0.2 * Math.sin(elapsed * 1.6);
-      for (const d of this._dayBoxes) {
-        const z = d.baseZ + Math.sin(elapsed * 0.9 + d.phase) * 0.06;
-        d.box.position.z = z;
-        d.edges.position.z = z;
-      }
-    }
-    pulseSpheres(elapsed);
+  update(_delta, _elapsed) {
+    // Static by default — markers don't move on their own (bounce comes on click).
+    pulseSpheres();
   }
 
   disposeContent() {
@@ -492,15 +450,6 @@ export class WordWeaverMonthGrid {
       this._connectors.material.dispose();
       this._connectors = null;
     }
-
-    if (this._dayBoxes) {
-      for (const d of this._dayBoxes) { this.root.remove(d.box); this.root.remove(d.edges); }
-      this._dayBoxes = null;
-    }
-    this._dayBoxGeo?.dispose(); this._dayBoxGeo = null;
-    this._dayBoxEdgesGeo?.dispose(); this._dayBoxEdgesGeo = null;
-    this._dayBoxWallMat?.dispose(); this._dayBoxWallMat = null;
-    this._dayBoxEdgeMat?.dispose(); this._dayBoxEdgeMat = null;
 
     for (const label of this._labels) {
       this.root.remove(label.mesh);
@@ -674,20 +623,9 @@ export class WordWeaverYearGrid {
    * @param {number} _delta
    * @param {number} elapsed
    */
-  update(_delta, elapsed) {
-    pulseSpheres(elapsed);
-    // Spin + gently bob each month box in place (like the day-view boxes).
-    if (this._monthMesh && this._monthBasePos) {
-      for (let i = 0; i < this._monthBasePos.length; i++) {
-        const p = this._monthBasePos[i];
-        _animEuler.set(Math.sin(elapsed * 0.4 + i) * 0.18, elapsed * 0.45 + i * 0.6, 0);
-        _animQuat.setFromEuler(_animEuler);
-        _position.set(p.x, p.y + Math.sin(elapsed * 0.8 + i) * 0.18, p.z);
-        _matrix.compose(_position, _animQuat, _scale);
-        this._monthMesh.setMatrixAt(i, _matrix);
-      }
-      this._monthMesh.instanceMatrix.needsUpdate = true;
-    }
+  update(_delta, _elapsed) {
+    // Static by default — month boxes hold still (no idle spin/bob).
+    pulseSpheres();
   }
 
   /** Poster planes behind each month that has a configured scene (MONTH_SCENES). */
