@@ -108,7 +108,7 @@ export class CosmosIntro {
       `<div style="font:800 clamp(34px,8vw,64px) system-ui;letter-spacing:1px;` +
       `background:linear-gradient(90deg,#c7d2fe,#a5b4fc,#f0abfc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">✦ Inkling</div>` +
       `<div style="margin-top:14px;font:600 16px system-ui;color:#aab6e8">Where would you like to start?</div>` +
-      `<div id="cosmos-intro-tap" style="margin-top:30px;font:800 14px system-ui;letter-spacing:.4px;color:#7c3aed;text-shadow:0 1px 4px rgba(0,0,0,.9),0 0 12px rgba(139,92,246,.55);animation:cosmos-pulse 1.8s ease-in-out infinite">Tap anywhere to begin</div>`;
+      `<div id="cosmos-intro-tap" style="margin-top:30px;font:900 15px system-ui;letter-spacing:.6px;color:#8b5cf6;-webkit-text-stroke:0.6px rgba(255,255,255,.9);text-stroke:0.6px rgba(255,255,255,.9);text-shadow:0 1px 2px rgba(0,0,0,.85);animation:cosmos-pulse 1.8s ease-in-out infinite">Tap anywhere to begin</div>`;
     el.appendChild(greet);
 
     const portals = document.createElement("div");
