@@ -115,9 +115,11 @@ export async function writeUser(record) {
   if ((await storeMode()) === "db") {
     try {
       const n = normalizeUser(record);
+      // Pass the object directly (node-postgres serializes it for the jsonb
+      // column) — more compatible than an explicit ::jsonb text cast.
       await query(
         `INSERT INTO users (email, username, data, updated_at)
-         VALUES ($1, $2, $3::jsonb, $4)
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (email)
          DO UPDATE SET username = EXCLUDED.username, data = EXCLUDED.data, updated_at = EXCLUDED.updated_at`,
         [n.email, n.username, JSON.stringify(n), n.updatedAt]
