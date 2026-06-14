@@ -42,7 +42,13 @@ if (loginBtn) {
       window.location.href = "/login.html";
     });
   } else {
-    loginBtn.classList.add("hidden");
+    // Signed in: show the username/email on the right (not just a hidden button)
+    // so the user always knows they're logged in. Tap → manage account.
+    const name = session.user?.username || (session.email ? session.email.split("@")[0] : "Account");
+    loginBtn.textContent = name;
+    loginBtn.title = `Signed in as ${session.email || name} — manage account`;
+    loginBtn.classList.remove("hidden");
+    loginBtn.addEventListener("click", () => { window.location.href = "/account-settings.html"; });
   }
 }
 

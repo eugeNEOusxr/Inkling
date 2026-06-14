@@ -243,14 +243,17 @@ export class Calendar2DDay {
       `border-bottom:1px solid ${P.headBorder};background:${P.headBg}`;
     const prev = this._navBtn("‹", () => this.shiftDay(-1));
     const next = this._navBtn("›", () => this.shiftDay(1));
-    // Theme toggle sits where Today was; label shows the active theme.
-    const themeBtn = this._navBtn(this.theme === "dark" ? "🌙 Dark theme" : "☀️ Light theme", () => this._toggleTheme());
+    // Theme toggle — short label to save header space.
+    const themeBtn = this._navBtn(this.theme === "dark" ? "🌙 Dark" : "☀️ Light", () => this._toggleTheme());
     themeBtn.style.width = "auto";
     themeBtn.style.padding = "0 12px";
     themeBtn.style.fontSize = "13px";
+    // The current date — sits BETWEEN the ‹ › arrows so the user always knows
+    // which day/month they're on (was off to the side / blank).
     const title = document.createElement("div");
     title.style.cssText =
-      `flex:1;font-weight:800;font-size:18px;color:${P.title};letter-spacing:0.2px;text-shadow:${P.titleShadow}`;
+      `flex:0 1 auto;min-width:120px;text-align:center;font-weight:800;font-size:17px;color:${P.title};` +
+      `letter-spacing:0.2px;text-shadow:${P.titleShadow};white-space:nowrap;overflow:hidden;text-overflow:ellipsis`;
     this._title = title;
 
     const slotSel = document.createElement("select");
@@ -293,7 +296,13 @@ export class Calendar2DDay {
     paintBtn.title = "Text style";
     paintBtn.style.fontSize = "16px";
     const close = this._navBtn("✕", () => this.close());
-    head.append(prev, next, themeBtn, dayBtn, monthBtn, title, zoomLabel, slotSel, noteBtn, paintBtn, close);
+    // ‹ date › cluster sits together; Today/Month on the left, tools on the right.
+    const nav = document.createElement("div");
+    nav.style.cssText = "display:flex;align-items:center;gap:6px;flex:0 0 auto";
+    nav.append(prev, title, next);
+    const spacer = document.createElement("div");
+    spacer.style.cssText = "flex:1 1 auto";
+    head.append(dayBtn, monthBtn, nav, spacer, themeBtn, zoomLabel, slotSel, noteBtn, paintBtn, close);
 
     // Scrollable grid
     const scroll = document.createElement("div");

@@ -58,10 +58,21 @@ body.inkling-tab-wordweaver .top-chrome__bar {
 }
 #top-chrome .top-chrome__month {
   white-space: nowrap;
+  /* Stay top-LEFT and never grow into the login/account on the right. */
+  max-width: 48vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 #top-chrome .top-chrome__actions {
   margin-left: auto !important;
   flex-shrink: 0 !important;
+}
+/* On the idle cosmos screen (incl. the "where would you like to start" intro),
+   the Calendar embed bar + its date arrows do nothing — hide them so only the
+   month (left) and login/account (right) sit over the cosmos. */
+body.inkling-surface-idle #wordweaver-embed.wordweaver-embed--topbar,
+body.cosmos-intro-active #wordweaver-embed.wordweaver-embed--topbar {
+  display: none !important;
 }
 
 /* Bell Alerts in view nav */

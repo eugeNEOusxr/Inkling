@@ -1292,13 +1292,16 @@ export function createDayView(scene, dayIso, opts = {}) {
       const distH = (contentH / 2) / Math.tan(fovR / 2);
       const distW = (contentW / 2) / (Math.tan(fovR / 2) * aspect);
       // Pull back to fit BOTH dimensions, plus a margin so everything shows.
-      const dist = Math.max(distH, distW) + 5;
+      // A few extra paces back so the date heading is never cropped at the top.
+      const dist = Math.max(distH, distW) + 9;
       if (controls.maxDistance < dist + 5) controls.maxDistance = dist + 60;
       controls.target.set(0, cy, 0);
       camera.position.set(0, cy, dist);
     } else {
-      controls.target.set(0, 1.0, 0);
-      camera.position.set(0, 1.0, 12);
+      // Empty day (no cards): sit back + raise the aim so the date heading and
+      // "No notes this day" both sit comfortably in frame (was too close before).
+      controls.target.set(0, 2.6, 0);
+      camera.position.set(0, 2.6, 19);
     }
     camera.lookAt(controls.target);
     controls.update();

@@ -376,9 +376,15 @@ export class Calendar2D {
     to3dBtn.className = "ww-calendar-2d__back";
     to3dBtn.textContent = "🧊 3D";
     to3dBtn.title = "Back to the 3D map";
+    // Bigger + top-LEFT so it's obvious how to get back to the 3D world.
+    to3dBtn.style.fontSize = "14px";
+    to3dBtn.style.padding = "7px 14px";
+    to3dBtn.style.fontWeight = "700";
+    to3dBtn.style.color = "#7df3ff";
+    to3dBtn.style.borderColor = "rgba(78,230,230,0.6)";
     to3dBtn.addEventListener("click", () => setCalendarMode("3d"));
 
-    header.append(backBtn, title, to3dBtn);
+    header.append(to3dBtn, backBtn, title);
 
     const body = document.createElement("div");
     body.className = "ww-calendar-2d__body";
