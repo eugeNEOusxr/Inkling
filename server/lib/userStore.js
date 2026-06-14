@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { DATA_DIR } from "./config.js";
+import { dbEnabled, ensureDb, query } from "./db.js";
 
 function userPath(email) {
   const id = crypto.createHash("sha256").update(email.toLowerCase()).digest("hex");
@@ -50,7 +51,8 @@ export async function ensureDataDir() {
   await fs.mkdir(DATA_DIR, { recursive: true });
 }
 
-export async function readUser(email) {
+// ── file-backed implementations (fallback / local dev) ─────────────────────
+async function readUserFile(email) {
   try {
     const raw = await fs.readFile(userPath(email), "utf8");
     return normalizeUser(JSON.parse(raw));
@@ -58,16 +60,11 @@ export async function readUser(email) {
     return null;
   }
 }
-
-export async function writeUser(record) {
+async function writeUserFile(record) {
   await ensureDataDir();
-  record.updatedAt = Date.now();
   await fs.writeFile(userPath(record.email), JSON.stringify(record, null, 2), "utf8");
 }
-
-export async function findByUsername(username) {
-  if (!username) return null;
-  const needle = username.toLowerCase();
+async function findByUsernameFile(needle) {
   await ensureDataDir();
   const files = await fs.readdir(DATA_DIR);
   for (const file of files) {
@@ -84,9 +81,56 @@ export async function findByUsername(username) {
   return null;
 }
 
+// ── public API: Postgres when DATABASE_URL is set, else files ──────────────
+export async function readUser(email) {
+  if (dbEnabled() && (await ensureDb())) {
+    try {
+      const r = await query("SELECT data FROM users WHERE email = $1", [email.toLowerCase()]);
+      return r.rows[0] ? normalizeUser(r.rows[0].data) : null;
+    } catch (err) {
+      console.error("[db] readUser failed, using file:", err?.message || err);
+    }
+  }
+  return readUserFile(email);
+}
+
+export async function writeUser(record) {
+  record.updatedAt = Date.now();
+  if (dbEnabled() && (await ensureDb())) {
+    try {
+      const n = normalizeUser(record);
+      await query(
+        `INSERT INTO users (email, username, data, updated_at)
+         VALUES ($1, $2, $3::jsonb, $4)
+         ON CONFLICT (email)
+         DO UPDATE SET username = EXCLUDED.username, data = EXCLUDED.data, updated_at = EXCLUDED.updated_at`,
+        [n.email, n.username, JSON.stringify(n), n.updatedAt]
+      );
+      return;
+    } catch (err) {
+      console.error("[db] writeUser failed, using file:", err?.message || err);
+    }
+  }
+  await writeUserFile(record);
+}
+
+export async function findByUsername(username) {
+  if (!username) return null;
+  const needle = String(username).toLowerCase();
+  if (dbEnabled() && (await ensureDb())) {
+    try {
+      const r = await query("SELECT data FROM users WHERE LOWER(username) = $1 LIMIT 1", [needle]);
+      return r.rows[0] ? normalizeUser(r.rows[0].data) : null;
+    } catch (err) {
+      console.error("[db] findByUsername failed, using file:", err?.message || err);
+    }
+  }
+  return findByUsernameFile(needle);
+}
+
 export function isValidUsername(username) {
   if (!username) return true;
   return /^[a-zA-Z0-9_]{3,24}$/.test(username);
 }
 
-export { emailNickname, userPath };
+export { emailNickname, userPath, normalizeUser };

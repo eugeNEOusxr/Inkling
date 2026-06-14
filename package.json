@@ -20,6 +20,9 @@
     "visual:smoke": "bash scripts/visual-smoke-test.sh",
     "visual:dev": "npm run serve:pwa"
   },
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.2",
     "serve": "^14.2.4"
