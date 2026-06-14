@@ -207,38 +207,65 @@ body.inkling-notebook-layout.inkling-open #inkling-fab.inkling-avatar {
 }
 @keyframes inkling-orb-sheen { to { transform: rotate(360deg); } }
 
-/* Options menu that rises from the orb on click. */
+/* Options menu: icon BUBBLES that arc around the orb's left edge (top→left→bottom).
+   Positions are set in JS relative to the orb; left/top = each bubble's centre. */
 #inkling-orb-menu {
   position: fixed;
+  inset: 0;
   z-index: 11006;
   display: none;
-  flex-direction: column;
-  gap: 8px;
+  pointer-events: none;
 }
-#inkling-orb-menu.open { display: flex; }
+#inkling-orb-menu.open { display: block; }
 #inkling-orb-menu .inkling-orb-action {
+  position: fixed;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(15, 18, 32, 0.92);
-  color: #e0e7ff;
-  border: 1px solid rgba(129, 140, 248, 0.5);
-  border-radius: 999px;
-  padding: 9px 15px;
-  font: 700 13px system-ui;
+  justify-content: center;
+  font-size: 20px;
+  line-height: 1;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0) 38%),
+    radial-gradient(circle at 50% 50%, #a5b4fc 0%, #6366f1 46%, #4338ca 100%);
+  box-shadow: 0 5px 16px rgba(49, 46, 129, 0.55), inset 0 1px 4px rgba(255, 255, 255, 0.4);
   cursor: pointer;
-  white-space: nowrap;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45), 0 0 14px rgba(99, 102, 241, 0.35);
-  animation: inkling-orb-rise 0.22s ease both;
+  pointer-events: auto;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  transition: transform 0.24s cubic-bezier(0.2, 1.3, 0.5, 1), opacity 0.18s ease, filter 0.15s ease;
+}
+#inkling-orb-menu.open .inkling-orb-action {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
 }
 #inkling-orb-menu .inkling-orb-action:hover {
-  background: rgba(67, 56, 202, 0.95);
-  border-color: #a5b4fc;
+  filter: brightness(1.12);
+  transform: translate(-50%, -50%) scale(1.16);
 }
-@keyframes inkling-orb-rise {
-  from { opacity: 0; transform: translateY(8px) scale(0.96); }
-  to { opacity: 1; transform: none; }
+/* readable label that appears to the left of each bubble on hover/focus */
+#inkling-orb-menu .inkling-orb-action::after {
+  content: attr(data-label);
+  position: absolute;
+  right: 54px;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  background: rgba(10, 14, 26, 0.94);
+  color: #e6ebff;
+  font: 700 11px system-ui;
+  padding: 4px 9px;
+  border-radius: 7px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease;
 }
+#inkling-orb-menu .inkling-orb-action:hover::after,
+#inkling-orb-menu .inkling-orb-action:focus-visible::after { opacity: 1; }
 
 /* Hard gate: when the journal is NOT active, ALL its fixed overlays are gone —
    they must never float on top of the regular calendar / writer / Inkling. */

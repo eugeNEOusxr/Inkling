@@ -276,21 +276,25 @@ export class InklingPanel {
     if (this._orbMenu) return;
     const menu = document.createElement("div");
     menu.id = "inkling-orb-menu";
-    const mk = (label, fn) => {
+    const mk = (icon, label, fn) => {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "inkling-orb-action";
-      b.textContent = label;
+      b.textContent = icon;
+      b.title = label;
+      b.dataset.label = label;
+      b.setAttribute("aria-label", label);
       b.addEventListener("click", () => { menu.classList.remove("open"); fn(); });
       return b;
     };
-    menu.append(
-      mk("💬  Chat with Inkling", () => this.openWithContext()),
-      mk("🔔  Alerts", () => this.alerts?.show()),
-      mk("＋  New event", () => this._orbNewEvent()),
-      mk("🎨  Text style", () => openTextStylePicker()),
-      mk("📅  Go to today", () => this._orbToday())
-    );
+    this._orbItems = [
+      mk("💬", "Chat with Inkling", () => this.openWithContext()),
+      mk("🔔", "Alerts", () => this.alerts?.show()),
+      mk("＋", "New event", () => this._orbNewEvent()),
+      mk("🎨", "Text style", () => openTextStylePicker()),
+      mk("📅", "Go to today", () => this._orbToday())
+    ];
+    for (const b of this._orbItems) menu.appendChild(b);
     document.body.appendChild(menu);
     this._orbMenu = menu;
     document.addEventListener("pointerdown", (e) => {
@@ -307,12 +311,26 @@ export class InklingPanel {
   }
 
   _positionOrbMenu() {
-    const orb = this._orb, menu = this._orbMenu;
-    if (!orb || !menu) return;
+    const orb = this._orb;
+    const items = this._orbItems;
+    if (!orb || !items?.length) return;
     const r = orb.getBoundingClientRect();
-    menu.style.left = `${Math.max(8, Math.min(window.innerWidth - 200, r.left + r.width / 2 - 90))}px`;
-    menu.style.top = "auto";
-    menu.style.bottom = `${window.innerHeight - r.top + 10}px`;
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const radius = r.width / 2 + 36; // hug just outside the orb's circumference
+    const n = items.length;
+    items.forEach((b, i) => {
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      // Arc the bubbles around the LEFT edge: screen angle 270° (top) → 180°
+      // (left) → 90° (bottom), so they read top → left → bottom.
+      const deg = 270 - t * 180;
+      const rad = (deg * Math.PI) / 180;
+      const x = cx + radius * Math.cos(rad);
+      const y = cy + radius * Math.sin(rad);
+      b.style.left = `${x}px`;
+      b.style.top = `${y}px`;
+      b.style.transitionDelay = `${i * 0.035}s`;
+    });
   }
 
   async _orbNewEvent() {
