@@ -9,7 +9,11 @@
 
 const PREF_KEY = "inkling-text-style";
 const ANIM_KEY = "inkling-text-anim";
+const COLOR_KEY = "inkling-text-color";
 const SAMPLE = "Today";
+
+/** Preset text colours offered in the picker (plus a custom swatch + Auto). */
+const COLORS = ["#ffffff", "#ef4444", "#f59e0b", "#fde047", "#22c55e", "#22d3ee", "#3b82f6", "#a855f7", "#ec4899"];
 
 /** Animation options → CSS `animation` value (keyframes injected once). */
 const ANIMS = [
@@ -101,6 +105,17 @@ export function textAnimCss(value) {
   return a && a[2] ? `animation:${a[2]}` : "";
 }
 
+/** Chosen text colour as a #rrggbb string, or null = "Auto" (category colour). */
+export function getTextColorCss() {
+  try { const v = localStorage.getItem(COLOR_KEY); return v && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : null; } catch { return null; }
+}
+
+/** Chosen text colour as a hex int, or null = "Auto" (use the category colour). */
+export function getTextColor() {
+  const css = getTextColorCss();
+  return css ? parseInt(css.slice(1), 16) : null;
+}
+
 /**
  * Map a style value → Real3DText material params for extruded 3D text.
  * The 3D-group looks change material/finish; 2D/2.5D picks fall back to a clean
@@ -163,6 +178,26 @@ function _selectAnim(id) {
   try { window.dispatchEvent(new CustomEvent("inkling:text-anim", { detail: { value: id } })); } catch { /* ignore */ }
 }
 
+function _markColor(hex) {
+  if (!_panel) return;
+  const v = hex ? hex.toLowerCase() : "auto";
+  _panel.querySelectorAll("[data-color]").forEach((el) => {
+    const on = el.dataset.color === v;
+    if (el.dataset.color === "auto") {
+      el.style.background = on ? "#6366f1" : "#1e293b";
+      el.style.color = on ? "#fff" : "#cbd5e1";
+    } else {
+      el.style.borderColor = on ? "#fff" : "rgba(255,255,255,.25)";
+    }
+  });
+}
+
+function _selectColor(hex) {
+  try { if (hex) localStorage.setItem(COLOR_KEY, hex); else localStorage.removeItem(COLOR_KEY); } catch { /* ignore */ }
+  _markColor(hex);
+  try { window.dispatchEvent(new CustomEvent("inkling:text-color", { detail: { value: hex || null } })); } catch { /* ignore */ }
+}
+
 function _build() {
   if (_panel) return;
   const overlay = document.createElement("div");
@@ -206,6 +241,42 @@ function _build() {
     animRow.appendChild(b);
   }
   overlay.appendChild(animRow);
+
+  // Colour selector — overrides the note text colour ("Auto" = category colour).
+  const colorRow = document.createElement("div");
+  colorRow.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px";
+  const colorLabel = document.createElement("span");
+  colorLabel.textContent = "Colour:";
+  colorLabel.style.cssText = "font:700 13px system-ui;color:#a5b4fc";
+  colorRow.appendChild(colorLabel);
+  const curColor = getTextColorCss();
+  const autoBtn = document.createElement("button");
+  autoBtn.type = "button";
+  autoBtn.dataset.color = "auto";
+  autoBtn.textContent = "Auto";
+  autoBtn.style.cssText =
+    "border:0;border-radius:999px;padding:7px 13px;font:700 12px system-ui;cursor:pointer;" +
+    `background:${curColor ? "#1e293b" : "#6366f1"};color:${curColor ? "#cbd5e1" : "#fff"}`;
+  autoBtn.addEventListener("click", () => _selectColor(null));
+  colorRow.appendChild(autoBtn);
+  for (const hex of COLORS) {
+    const sw = document.createElement("button");
+    sw.type = "button";
+    sw.dataset.color = hex.toLowerCase();
+    sw.style.cssText =
+      `width:30px;height:30px;border-radius:50%;cursor:pointer;background:${hex};` +
+      `border:2px solid ${curColor === hex.toLowerCase() ? "#fff" : "rgba(255,255,255,.25)"}`;
+    sw.addEventListener("click", () => _selectColor(hex));
+    colorRow.appendChild(sw);
+  }
+  const custom = document.createElement("input");
+  custom.type = "color";
+  custom.value = curColor || "#a5b4fc";
+  custom.title = "Custom colour";
+  custom.style.cssText = "width:34px;height:34px;border:0;background:transparent;cursor:pointer;padding:0";
+  custom.addEventListener("input", () => _selectColor(custom.value));
+  colorRow.appendChild(custom);
+  overlay.appendChild(colorRow);
 
   for (const group of GROUPS) {
     const section = document.createElement("div");

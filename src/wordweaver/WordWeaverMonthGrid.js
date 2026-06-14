@@ -6,7 +6,7 @@
 import * as THREE from "three";
 import { getYearTopology, getEventsForDate, classifyText, CategoryColors } from "./timelineModel.js";
 import { createReal3DText, preloadReal3DFont } from "./Real3DText.js";
-import { getTextStyle, text3dParams } from "../calendar/ui/TextStylePicker.js";
+import { getTextStyle, text3dParams, getTextColor } from "../calendar/ui/TextStylePicker.js";
 import {
   computeMonthGridLayout,
   computeYearGridLayout,
@@ -119,13 +119,15 @@ const RADIUS = GRID_RADIUS;
 
 /** Shared geometry + materials (perf seam for year grid). */
 const sharedGeometry = {
-  month: new THREE.SphereGeometry(RADIUS.month, 28, 28),
+  // Month markers are 3D BOXES (days stay spheres).
+  month: new THREE.BoxGeometry(RADIUS.month * 1.7, RADIUS.month * 1.7, RADIUS.month * 1.7),
   day: new THREE.SphereGeometry(RADIUS.day, 22, 22),
   note: new THREE.SphereGeometry(RADIUS.note, 16, 16)
 };
 
 const yearSharedGeometry = {
-  month: new THREE.SphereGeometry(YEAR_GRID_RADIUS.month, 28, 28),
+  // The year view's 12 white month markers are boxes too.
+  month: new THREE.BoxGeometry(YEAR_GRID_RADIUS.month * 1.7, YEAR_GRID_RADIUS.month * 1.7, YEAR_GRID_RADIUS.month * 1.7),
   day: sharedGeometry.day,
   note: sharedGeometry.note
 };
@@ -930,7 +932,7 @@ export function createDayView(scene, dayIso, opts = {}) {
     emissiveIntensity: hp.emissiveIntensity
   });
   const headingGroup = heading3d.getGroup();
-  headingGroup.position.set(0, 4.7, 0);
+  headingGroup.position.set(0, 6.2, 0); // raised so the bigger column headers clear it
   headingGroup.layers.set(1);
   headingGroup.traverse((o) => o.layers.set(1));
   group.add(headingGroup);
@@ -1018,9 +1020,12 @@ export function createDayView(scene, dayIso, opts = {}) {
       spheres.push(glow);
 
       // Centered note text below the box (Real3DText centers each line at x=0).
+      // Box stays the category colour (differentiation); the TEXT honours the
+      // paint-icon colour choice when set, else the category colour.
       const fullText = `${ev.time}  ${String(ev.text || ev.title || "").trim()}`;
       const lines = wrapWords(fullText, 20);
-      const params = text3dParams(textStyle, color);
+      const userTextColor = getTextColor();
+      const params = text3dParams(textStyle, userTextColor != null ? userTextColor : color);
       const fontSize = 0.62;
       const lineH = 0.82;
       const startY = 0.45;
@@ -1053,7 +1058,7 @@ export function createDayView(scene, dayIso, opts = {}) {
     for (let b = 0; b < 3; b++) {
       if (!present[b]) continue;
       const lab = createLabelSprite(HEADER_LABELS[b], {
-        fontSize: "800 64px system-ui, sans-serif", fill: "#c7d2fe", width: 512, height: 140, planeW: 3.4, planeH: 0.93
+        fontSize: "800 116px system-ui, sans-serif", fill: "#c7d2fe", width: 960, height: 256, planeW: 6.8, planeH: 1.86
       });
       lab.mesh.layers.set(1);
       lab.mesh.visible = false; // shown in full layout only
@@ -1076,7 +1081,7 @@ export function createDayView(scene, dayIso, opts = {}) {
   //     time, ‹ › arrows). Default is FULL; a 2D toggle switches between them. ---
   let current = 0;
   let stackBottom = 0;
-  const STACK_TOP = 3.4;
+  const STACK_TOP = 2.6; // lowered so the bigger headers sit between title + cards
   let modeBar = null, arrowBar = null, domLabel = null, fullBtn = null, wheelBtn = null;
 
   function layoutFull() {
@@ -1121,7 +1126,7 @@ export function createDayView(scene, dayIso, opts = {}) {
     if (!camera || !controls) return;
     camera.up.set(0, 1, 0);
     if (mode === "full" && cards.length) {
-      const top = STACK_TOP + 2.7, bottom = stackBottom;
+      const top = 7.2, bottom = stackBottom; // include the raised date heading
       const cy = (top + bottom) / 2;
       const contentH = Math.max(7, top - bottom);
       const contentW = Math.max(10, 2 * (colHalfWidth + 3.5)); // include text width
