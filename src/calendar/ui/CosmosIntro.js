@@ -108,7 +108,7 @@ export class CosmosIntro {
       `<div style="font:800 clamp(34px,8vw,64px) system-ui;letter-spacing:1px;` +
       `background:linear-gradient(90deg,#c7d2fe,#a5b4fc,#f0abfc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">✦ Inkling</div>` +
       `<div style="margin-top:14px;font:600 16px system-ui;color:#aab6e8">Where would you like to start?</div>` +
-      `<div id="cosmos-intro-tap" style="margin-top:30px;font:700 13px system-ui;color:#818cf8;animation:cosmos-pulse 1.8s ease-in-out infinite">Tap anywhere to begin</div>`;
+      `<div id="cosmos-intro-tap" style="margin-top:30px;font:800 14px system-ui;letter-spacing:.4px;color:#7c3aed;text-shadow:0 1px 4px rgba(0,0,0,.9),0 0 12px rgba(139,92,246,.55);animation:cosmos-pulse 1.8s ease-in-out infinite">Tap anywhere to begin</div>`;
     el.appendChild(greet);
 
     const portals = document.createElement("div");
@@ -117,6 +117,7 @@ export class CosmosIntro {
       ["📅", "Calendar", "Your year in 3D", () => this.app?._handleBottomNavTab?.("wordweaver", { toggle: false })],
       ["🕐", "Schedule", "Plan your day", () => this.app?._handleBottomNavTab?.("writer", { toggle: false })],
       ["🔔", "Alerts", "Your reminders", () => this.app?._handleBottomNavTab?.("alerts", { toggle: false })],
+      ["⏰", "Alarm Clock", "Alarm · timer · stopwatch", () => this.app?.openAlarmClock?.()],
       ["✦", "Chat with Inkling", "Ask me anything", () => this.app?.inklingPanel?.openWithContext?.()]
     ];
     for (const [icon, title, sub, fn] of PORTALS) {

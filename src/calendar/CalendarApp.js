@@ -908,7 +908,7 @@ export class CalendarApp {
     this.bottomNav?.show();
 
     const startTab = new URLSearchParams(window.location.search).get("tab");
-    const allowedTabs = new Set(["calendar", "writer", "wordweaver", "inkling", "alerts"]);
+    const allowedTabs = new Set(["calendar", "writer", "wordweaver", "inkling", "alerts", "alarm"]);
     if (allowedTabs.has(startTab)) {
       // Deep-linked (e.g. the ?tab=wordweaver share link) → go straight there.
       queueMicrotask(() => void this._handleBottomNavTab(startTab, { toggle: false }));
@@ -916,6 +916,15 @@ export class CalendarApp {
       // Default: land on the cosmos intro and let the user choose where to start.
       queueMicrotask(() => void this._showCosmosIntro());
     }
+  }
+
+  /** Open the Alarm Clock (analog clock + alarm / stopwatch / timer). */
+  async openAlarmClock() {
+    if (!this._alarmClock) {
+      const { AlarmClock } = await import("./ui/AlarmClock.js");
+      this._alarmClock = new AlarmClock(this);
+    }
+    this._alarmClock.show();
   }
 
   /** Land on the cosmos backdrop with the entry-portal intro. */
@@ -1143,6 +1152,11 @@ export class CalendarApp {
         if (this.viewMode === "notification-wall") await this.exitNotificationWall();
         // Full-screen Alerts surface; ✕ tears the nav stage back down.
         this.inklingPanel?.alerts?.show({ full: true, onClose: () => this._closeBottomStage() });
+        break;
+      case "alarm":
+        document.body.classList.add("inkling-stage-open");
+        this._showStageBackdrop(true);
+        await this.openAlarmClock();
         break;
       default:
         break;

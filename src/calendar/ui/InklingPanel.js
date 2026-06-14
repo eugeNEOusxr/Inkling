@@ -294,6 +294,7 @@ export class InklingPanel {
     this._orbItems = [
       mk("💬", "Chat with Inkling", () => this.openWithContext()),
       mk("🔔", "Alerts", () => this.alerts?.show()),
+      mk("⏰", "Alarm clock", () => this.app?.openAlarmClock?.()),
       mk("＋", "New event", () => this._orbNewEvent()),
       mk("🎨", "Text style", () => openTextStylePicker()),
       mk("📅", "Go to today", () => this._orbToday())
