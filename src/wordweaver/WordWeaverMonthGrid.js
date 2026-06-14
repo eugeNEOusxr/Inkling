@@ -765,8 +765,8 @@ export class WordWeaverYearGrid {
   }
 }
 
-/** Crisp month backdrop for the day view — light scrim only (readability test). */
-function buildDayBackdropTexture(source) {
+/** Crisp month backdrop for the day view — optional grayscale + dark scrim. */
+function buildDayBackdropTexture(source, { grayscale = false, scrim = 0.2 } = {}) {
   const sw = /** @type {HTMLImageElement} */ (source).width || 1600;
   const sh = /** @type {HTMLImageElement} */ (source).height || 900;
   const w = Math.min(1920, sw);
@@ -776,13 +776,33 @@ function buildDayBackdropTexture(source) {
   canvas.height = h;
   const ctx = canvas.getContext("2d");
   if (ctx) {
+    if (grayscale) ctx.filter = "grayscale(1)";
     ctx.drawImage(source, 0, 0, w, h);
-    ctx.fillStyle = "rgba(0, 0, 0, 0.2)"; // light scrim only — keep it crisp
+    ctx.filter = "none";
+    ctx.fillStyle = `rgba(0, 0, 0, ${scrim})`;
     ctx.fillRect(0, 0, w, h);
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.needsUpdate = true;
   return tex;
+}
+
+// Day-view background theme + layout mode (persisted).
+const DAY_THEME_KEY = "inkling-dayview-theme";
+const DAY_MODE_KEY = "inkling-dayview-mode";
+/** @returns {"day"|"night"|"bw"} */
+function getDayTheme() {
+  try { const v = localStorage.getItem(DAY_THEME_KEY); return v === "night" || v === "bw" ? v : "day"; } catch { return "day"; }
+}
+function setDayTheme(t) { try { localStorage.setItem(DAY_THEME_KEY, t); } catch { /* ignore */ } }
+function getDayMode() {
+  try { return localStorage.getItem(DAY_MODE_KEY) === "wheel" ? "wheel" : "full"; } catch { return "full"; }
+}
+function setDayMode(m) { try { localStorage.setItem(DAY_MODE_KEY, m); } catch { /* ignore */ } }
+/** Theme → note-text base colour (boxes keep their category colour). */
+function themeTextColor(theme) {
+  if (theme === "night") return 0xf5c542; // gold pops on the dark night photo
+  return 0x111111; // black for bright day / B&W photos
 }
 
 // ── Rough DAY VIEW (click-to-zoom prototype) ───────────────────────────────
@@ -893,7 +913,10 @@ export function createDayView(scene, dayIso, opts = {}) {
   if (typeof opts === "string") opts = { segment: opts };
   const camera = opts.camera ?? null;
   const controls = opts.controls ?? null;
-  let mode = opts.mode === "wheel" ? "wheel" : "full"; // default: full stacked day
+  const onRebuild = typeof opts.onRebuild === "function" ? opts.onRebuild : null;
+  let mode = opts.mode || getDayMode(); // full stacked day (default) | scroll wheel
+  const theme = getDayTheme();          // day | night | bw — background + text colour
+  const themeText = themeTextColor(theme);
   const group = new THREE.Group();
   group.name = "ww-day-view";
   // Earliest-first so the day reads top→bottom by time.
@@ -943,7 +966,7 @@ export function createDayView(scene, dayIso, opts = {}) {
   let bgPhoto = null;
   {
     const monthIndex = (parseInt(dayIso.split("-")[1], 10) || 1) - 1;
-    const url = monthSceneUrl(monthIndex, opts.segment === "night" ? "night" : "day");
+    const url = monthSceneUrl(monthIndex, theme === "night" ? "night" : "day");
     if (url) {
       const mat = new THREE.MeshBasicMaterial({ color: 0x141b2a, toneMapped: false });
       bgPhoto = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
@@ -956,7 +979,7 @@ export function createDayView(scene, dayIso, opts = {}) {
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {
-        const tex = buildDayBackdropTexture(img);
+        const tex = buildDayBackdropTexture(img, { grayscale: theme === "bw", scrim: theme === "night" ? 0.15 : 0.22 });
         mat.map = tex;
         mat.color.set(0xffffff);
         mat.needsUpdate = true;
@@ -1025,7 +1048,13 @@ export function createDayView(scene, dayIso, opts = {}) {
       const fullText = `${ev.time}  ${String(ev.text || ev.title || "").trim()}`;
       const lines = wrapWords(fullText, 20);
       const userTextColor = getTextColor();
-      const params = text3dParams(textStyle, userTextColor != null ? userTextColor : color);
+      const finalTextColor = userTextColor != null ? userTextColor : themeText;
+      // Keep the style's FINISH (metalness/depth/etc.) but force the COLOUR to
+      // the theme/user choice, so day=black & night=gold hold even if a coloured
+      // style (gold/chrome) is selected.
+      const params = text3dParams(textStyle, finalTextColor);
+      params.color = finalTextColor;
+      params.glowColor = finalTextColor;
       const fontSize = 0.62;
       const lineH = 0.82;
       const startY = 0.45;
@@ -1168,6 +1197,7 @@ export function createDayView(scene, dayIso, opts = {}) {
   function step(dir) { select(current + (dir < 0 ? -1 : 1)); }
   function setMode(m) {
     mode = m === "wheel" ? "wheel" : "full";
+    setDayMode(mode);
     if (mode === "wheel") layoutWheel(); else layoutFull();
     frame();
     updateUI();
@@ -1189,6 +1219,22 @@ export function createDayView(scene, dayIso, opts = {}) {
     fullBtn.addEventListener("click", () => setMode("full"));
     wheelBtn.addEventListener("click", () => setMode("wheel"));
     modeBar.append(fullBtn, wheelBtn);
+
+    // Background theme: Day (bright + black text) / Night (dark + gold text) /
+    // B&W (grayscale + black text). Switching rebuilds the day view.
+    const divider = document.createElement("div");
+    divider.style.cssText = "width:1px;height:22px;background:rgba(255,255,255,.18);margin:0 3px";
+    modeBar.append(divider);
+    for (const [t, label] of [["day", "☀️ Day"], ["night", "🌙 Night"], ["bw", "⬜ B&W"]]) {
+      const tb = document.createElement("button");
+      tb.dataset.theme = t;
+      tb.textContent = label;
+      tb.style.cssText =
+        "border:0;border-radius:999px;padding:7px 12px;font:700 12px system-ui;cursor:pointer;" +
+        `background:${theme === t ? "#312e81" : "transparent"};color:${theme === t ? "#e0e7ff" : "#94a3b8"}`;
+      tb.addEventListener("click", () => { setDayTheme(t); if (onRebuild) onRebuild(); });
+      modeBar.append(tb);
+    }
     document.body.appendChild(modeBar);
 
     // Wheel arrows (shown only in scroll mode).

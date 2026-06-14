@@ -990,7 +990,8 @@ export class WordWeaverScene {
     this._dayView = createDayView(this.scene, dayIso, {
       camera: this.camera,
       controls: this.controls,
-      segment: this._scenicBackdropSegment ?? "afternoon"
+      segment: this._scenicBackdropSegment ?? "afternoon",
+      onRebuild: () => this.enterDayViewIso(dayIso) // re-enter on theme switch
     });
     if (this._navMonthGrid?.root) this._navMonthGrid.root.visible = false;
     this._navLevel = "day";

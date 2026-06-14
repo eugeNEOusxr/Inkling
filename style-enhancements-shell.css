@@ -4,6 +4,10 @@
   --inkling-top-bar-h: 48px;
 }
 
+/* Hide the legacy Morning/Afternoon/Night segment buttons — the 3D day view's
+   own Day/Night/B&W theme toggle replaces them. */
+.wordweaver-embed__segments { display: none !important; }
+
 @media (min-width: 640px) {
   :root {
     --inkling-top-bar-h: 56px;
