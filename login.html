@@ -13,27 +13,22 @@
   <main class="auth-screen auth-screen--page">
     <form id="auth-form" class="auth-card panel-card">
       <h1 class="auth-card__title">Inkling</h1>
-      <p class="auth-card__lead">Sign in with your email to keep notes, appointments, and notification settings after every restart.</p>
+      <p class="auth-card__lead">Sign in with your email or username to keep notes, appointments, and notification settings after every restart.</p>
 
       <div class="auth-tabs" role="tablist">
         <button type="button" class="auth-tab is-active" data-auth-tab="signin" role="tab">Sign in</button>
         <button type="button" class="auth-tab" data-auth-tab="register" role="tab">Create account</button>
       </div>
 
-      <label for="auth-email">Email</label>
-      <input type="email" id="auth-email" name="email" autocomplete="email" required placeholder="you@example.com" />
+      <label for="auth-email" id="auth-email-label">Email or username</label>
+      <input type="text" id="auth-email" name="email" autocomplete="username" inputmode="email" required placeholder="you@example.com or your username" />
 
       <label for="auth-password">Password</label>
       <input type="password" id="auth-password" name="password" autocomplete="current-password" required placeholder="At least 6 characters" minlength="6" />
 
       <div id="auth-username-wrap" class="auth-username-wrap hidden">
-        <label for="auth-username">Username <span class="label-secondary">(optional)</span></label>
+        <label for="auth-username">Username <span class="label-secondary">(for username login)</span></label>
         <input type="text" id="auth-username" name="username" autocomplete="username" placeholder="letters, numbers, underscore" pattern="[a-zA-Z0-9_]{3,24}" />
-      </div>
-
-      <div id="auth-appearance-wrap" class="auth-appearance-picker auth-username-wrap hidden">
-        <p class="auth-card__lead" style="margin: 0 0 8px; font-size: 13px;">Pick your color style (you can change this anytime in Settings).</p>
-        <div id="auth-appearance-picker" data-auth-appearance-picker></div>
       </div>
 
       <p class="auth-forgot"><a href="/forgot-password.html">Forgot password?</a></p>
@@ -58,9 +53,6 @@
     import { setSession } from "./src/auth/session.js";
     import { apiFetch, pullCloudBundle } from "./src/auth/cloudSync.js";
     import { applyServerUserToClient } from "./src/auth/userSettingsSync.js";
-    import { renderAppearancePalettePicker } from "./src/theme/appearancePaletteUi.js";
-    import { applyPaletteToDocument } from "./src/theme/appearancePalettes.js";
-    import { saveNotificationSettings } from "./src/calendar/notifications/notificationSettings.js";
 
     const SKIP_LOGIN_KEY = "inklingSkipLogin";
 
@@ -78,19 +70,7 @@
     const tabRegister = document.querySelector('[data-auth-tab="register"]');
     const usernameWrap = document.getElementById("auth-username-wrap");
     const usernameInput = document.getElementById("auth-username");
-    const appearanceWrap = document.getElementById("auth-appearance-wrap");
-    const appearanceMount = document.getElementById("auth-appearance-picker");
-
-    let registerAppearance = "neutral";
-    const appearancePicker = appearanceMount
-      ? renderAppearancePalettePicker(appearanceMount, {
-          selectedId: "neutral",
-          onSelect: (id) => {
-            registerAppearance = id;
-            applyPaletteToDocument(id);
-          }
-        })
-      : null;
+    const emailLabel = document.getElementById("auth-email-label");
 
     let mode = "signin";
 
@@ -99,7 +79,10 @@
       tabSignIn?.classList.toggle("is-active", mode === "signin");
       tabRegister?.classList.toggle("is-active", mode === "register");
       usernameWrap?.classList.toggle("hidden", mode !== "register");
-      appearanceWrap?.classList.toggle("hidden", mode !== "register");
+      // Sign in accepts an email OR a username; registering needs a real email.
+      if (emailLabel) emailLabel.textContent = mode === "signin" ? "Email or username" : "Email";
+      if (emailInput) emailInput.placeholder =
+        mode === "signin" ? "you@example.com or your username" : "you@example.com";
       if (submitBtn) submitBtn.querySelector("span").textContent =
         mode === "signin" ? "Sign in" : "Create account";
       errorEl?.classList.add("hidden");
@@ -116,10 +99,15 @@
 
     form?.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const email = emailInput?.value?.trim().toLowerCase() ?? "";
+      const identifier = emailInput?.value?.trim().toLowerCase() ?? "";
       const password = passwordInput?.value ?? "";
-      if (!email.includes("@") || password.length < 6) {
-        errorEl.textContent = "Enter a valid email and password (6+ characters).";
+      if (mode === "register" && !(identifier.includes("@") && identifier.includes("."))) {
+        errorEl.textContent = "Enter a valid email to create an account.";
+        errorEl.classList.remove("hidden");
+        return;
+      }
+      if (!identifier || password.length < 6) {
+        errorEl.textContent = "Enter your email or username and a password (6+ characters).";
         errorEl.classList.remove("hidden");
         return;
       }
@@ -129,10 +117,9 @@
 
       try {
         const path = mode === "signin" ? "/api/auth/login" : "/api/auth/register";
-        const payload = { email, password };
-        if (mode === "register") {
-          if (usernameInput?.value?.trim()) payload.username = usernameInput.value.trim();
-          payload.appearancePalette = registerAppearance;
+        const payload = { email: identifier, password };
+        if (mode === "register" && usernameInput?.value?.trim()) {
+          payload.username = usernameInput.value.trim();
         }
         const result = await apiFetch(path, {
           method: "POST",
@@ -146,10 +133,6 @@
           );
         }
         setSession({ token: result.token, email: result.email, user: result.user });
-        if (mode === "register") {
-          saveNotificationSettings({ appearancePalette: registerAppearance });
-          applyPaletteToDocument(registerAppearance);
-        }
         applyServerUserToClient(result.user);
         statusEl.textContent = "Loading your calendar…";
         await pullCloudBundle();

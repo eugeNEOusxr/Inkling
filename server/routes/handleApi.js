@@ -138,17 +138,20 @@ export async function handleApi(req, res, url) {
 
     const body = await readBody(req);
     if (!body) return json(res, 400, { error: "Invalid JSON" });
-    const email = String(body.email || "")
+    // Accept an email OR a username as the login identifier.
+    const identifier = String(body.email || body.identifier || "")
       .trim()
       .toLowerCase();
     const password = String(body.password || "");
-    const user = await readUser(email);
+    const user = identifier.includes("@")
+      ? await readUser(identifier)
+      : await findByUsername(identifier);
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
-      return json(res, 401, { error: "Invalid email or password." });
+      return json(res, 401, { error: "Invalid login or password." });
     }
     await appendAudit(user, "login", { ip });
     await writeUser(user);
-    return json(res, 200, { token: signToken(email), user: publicUser(user) });
+    return json(res, 200, { token: signToken(user.email), user: publicUser(user) });
   }
 
   if (req.method === "POST" && url.pathname === "/api/auth/forgot-password") {
