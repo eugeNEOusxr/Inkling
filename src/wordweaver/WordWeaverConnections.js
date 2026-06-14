@@ -10,8 +10,14 @@
  */
 import * as THREE from "three";
 import { getEventsForDate, CategoryColors, classifyText } from "./timelineModel.js";
+import { analyzePatterns, patternInsights, checkInQuestions, CONNECTIONS_PROMPT } from "../calendar/ai/patternBrain.js";
 
 const BRACKET_RED = 0xff4d4d;
+
+/** Per-user overrides — health reads as RED (user's "red health box"). */
+const CAT_COLOR_OVERRIDE = {
+  health: "#ef4444"
+};
 
 /** Category → display label. */
 const CAT_LABEL = {
@@ -22,8 +28,28 @@ const CAT_LABEL = {
 };
 
 function catColor(cat) {
-  return CategoryColors[cat === "errand" ? "errands" : cat] ?? CategoryColors.default ?? "#94a3b8";
+  const key = cat === "errand" ? "errands" : cat;
+  return CAT_COLOR_OVERRIDE[key] ?? CategoryColors[key] ?? CategoryColors.default ?? "#94a3b8";
 }
+
+/** Gather events for a day, or for the whole (Sun-start) week containing it. */
+function gatherEvents(iso, scope) {
+  if (scope !== "week") return (getEventsForDate(iso) || []).map((e) => ({ ...e, _iso: iso }));
+  const [y, m, d] = iso.split("-").map(Number);
+  const base = new Date(y, m - 1, d);
+  const start = new Date(base);
+  start.setDate(base.getDate() - base.getDay()); // back up to Sunday
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(start);
+    dt.setDate(start.getDate() + i);
+    const di = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    for (const e of getEventsForDate(di) || []) out.push({ ...e, _iso: di });
+  }
+  return out;
+}
+
+const WD_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function catOf(ev) {
   let c = String(ev.category || "").toLowerCase().trim();
@@ -79,6 +105,8 @@ function formatHeading(iso) {
  */
 export function createConnectionsView(scene, opts = {}) {
   const iso = opts.iso;
+  const scope = opts.scope === "week" ? "week" : "day";
+  const onScope = typeof opts.onScope === "function" ? opts.onScope : null;
   const camera = opts.camera ?? null;
   const controls = opts.controls ?? null;
   const group = new THREE.Group();
@@ -88,8 +116,9 @@ export function createConnectionsView(scene, opts = {}) {
   const disposers = [];
   /** @type {Array<{ mesh: THREE.Mesh, baseY: number, phase: number }>} */
   const animBoxes = [];
+  const NOTE_CAP = 6;
 
-  const events = getEventsForDate(iso) || [];
+  const events = gatherEvents(iso, scope);
 
   // Group by category.
   /** @type {Map<string, any[]>} */
@@ -102,7 +131,8 @@ export function createConnectionsView(scene, opts = {}) {
   const cats = [...byCat.keys()].sort((a, b) => byCat.get(b).length - byCat.get(a).length);
 
   // Heading.
-  const heading = labelSprite(`🔗 ${formatHeading(iso)}`, { color: "#e0f2fe", size: 46, planeW: 9, planeH: 1.5 });
+  const heading = labelSprite(scope === "week" ? `🔗 Week of ${formatHeading(iso)}` : `🔗 ${formatHeading(iso)}`,
+    { color: "#e0f2fe", size: 44, planeW: 10, planeH: 1.5 });
   heading.mesh.position.set(0, 7.4, 0);
   group.add(heading.mesh);
   disposers.push(heading);
@@ -147,9 +177,12 @@ export function createConnectionsView(scene, opts = {}) {
     disposers.push(lab);
 
     // Red BRACKET spine down the column + a tick to each note (the alert look).
+    const shown = items.slice(0, NOTE_CAP);
+    const extra = items.length - shown.length;
+    const rows = shown.length + (extra > 0 ? 1 : 0);
     const top = 3.3;
     const rowH = 1.15;
-    const bottom = top - Math.max(1, items.length) * rowH;
+    const bottom = top - Math.max(1, rows) * rowH;
     const spineX = x - 2.6;
     segs.push({ from: new THREE.Vector3(x, 3.7, 0.02), to: new THREE.Vector3(spineX, top, 0.02) }); // box → spine top
     segs.push({ from: new THREE.Vector3(spineX, top, 0.02), to: new THREE.Vector3(spineX, bottom, 0.02) }); // spine
@@ -157,17 +190,25 @@ export function createConnectionsView(scene, opts = {}) {
     segs.push({ from: new THREE.Vector3(spineX, top, 0.02), to: new THREE.Vector3(spineX + 0.35, top, 0.02) });
     segs.push({ from: new THREE.Vector3(spineX, bottom, 0.02), to: new THREE.Vector3(spineX + 0.35, bottom, 0.02) });
 
-    items.forEach((ev, i) => {
+    shown.forEach((ev, i) => {
       const y = top - 0.55 - i * rowH;
       segs.push({ from: new THREE.Vector3(spineX, y, 0.02), to: new THREE.Vector3(x - 2.2, y, 0.02) }); // tick
       const time = ev.time ? `${ev.time}  ` : "";
-      const note = labelSprite(`${time}${(ev.text || ev.title || "Note").trim()}`, {
+      const wd = scope === "week" && ev._iso ? `${WD_SHORT[new Date(ev._iso + "T12:00:00").getDay()]} ` : "";
+      const note = labelSprite(`${wd}${time}${(ev.text || ev.title || "Note").trim()}`, {
         color: "#f8fafc", size: 30, planeW: 5.4, planeH: 0.82, bg: "rgba(10,14,26,0.55)"
       });
       note.mesh.position.set(x + 0.55, y, 0.05);
       group.add(note.mesh);
       disposers.push(note);
     });
+    if (extra > 0) {
+      const y = top - 0.55 - shown.length * rowH;
+      const more = labelSprite(`+${extra} more`, { color: "#94a3b8", size: 26, planeW: 3, planeH: 0.7 });
+      more.mesh.position.set(x + 0.2, y, 0.05);
+      group.add(more.mesh);
+      disposers.push(more);
+    }
   }
 
   // Build the red bracket lines.
@@ -190,7 +231,7 @@ export function createConnectionsView(scene, opts = {}) {
   group.traverse((o) => o.layers.set(1));
   scene.add(group);
 
-  // Filter buttons (All + present categories).
+  // Top bar: Day/Week scope toggle + category filters (All + present categories).
   let filterBar = null;
   if (typeof document !== "undefined") {
     filterBar = document.createElement("div");
@@ -199,32 +240,57 @@ export function createConnectionsView(scene, opts = {}) {
       "position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:30;display:flex;gap:6px;flex-wrap:wrap;justify-content:center;" +
       "max-width:92vw;background:rgba(8,12,22,0.82);backdrop-filter:blur(8px);border:1px solid rgba(99,102,241,0.4);" +
       "border-radius:999px;padding:5px 8px;box-shadow:0 6px 20px rgba(0,0,0,0.45)";
-    const setVisible = (only) => {
-      for (const cat of cats) {
-        const show = only === "all" || only === cat;
-        group.traverse((o) => { if (o.userData.cat) { /* per-object filter below */ } });
-        void show;
-      }
-    };
-    void setVisible;
-    const mkF = (key, label, color) => {
-      const b = document.createElement("button");
-      b.type = "button"; b.textContent = label;
-      b.style.cssText =
-        `border:0;border-radius:999px;padding:6px 12px;font:700 12px system-ui;cursor:pointer;` +
-        `background:${color || "#1e293b"};color:#fff`;
-      b.addEventListener("click", () => applyFilter(key));
-      filterBar.appendChild(b);
-      return b;
-    };
     const applyFilter = (key) => {
       for (const obj of group.children) {
         if (obj.userData.cat) obj.visible = key === "all" || obj.userData.cat === key;
       }
     };
-    mkF("all", "All", "#4338ca");
-    for (const cat of cats) mkF(cat, CAT_LABEL[cat] ?? cat, catColor(cat));
-    if (cats.length) document.body.appendChild(filterBar);
+    const mkBtn = (label, bg, onClick) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = label;
+      b.style.cssText = `border:0;border-radius:999px;padding:6px 12px;font:700 12px system-ui;cursor:pointer;background:${bg};color:#fff`;
+      b.addEventListener("click", onClick);
+      filterBar.appendChild(b);
+      return b;
+    };
+    // Scope: Day | Week (rebuilds the whole view through the scene).
+    if (onScope) {
+      mkBtn(scope === "day" ? "● Day" : "Day", scope === "day" ? "#0e7490" : "#1e293b", () => onScope("day"));
+      mkBtn(scope === "week" ? "● Week" : "Week", scope === "week" ? "#0e7490" : "#1e293b", () => onScope("week"));
+      const sep = document.createElement("span");
+      sep.style.cssText = "width:1px;background:rgba(255,255,255,.2);margin:2px 2px";
+      filterBar.appendChild(sep);
+    }
+    mkBtn("All", "#4338ca", () => applyFilter("all"));
+    for (const cat of cats) mkBtn(CAT_LABEL[cat] ?? cat, catColor(cat), () => applyFilter(cat));
+    document.body.appendChild(filterBar);
+  }
+
+  // Inkling chimes in INSIDE the world: the "any connections?" prompt + the
+  // patterns it sees + a casual check-in. (bottom-left HUD, collapsible).
+  let hud = null;
+  if (typeof document !== "undefined") {
+    const p = analyzePatterns();
+    const insights = patternInsights(p).slice(0, 4);
+    const checks = checkInQuestions({ max: 1 });
+    hud = document.createElement("div");
+    hud.id = "ww-connections-hud";
+    hud.style.cssText =
+      "position:fixed;left:12px;bottom:78px;z-index:30;width:min(320px,82vw);max-height:46vh;overflow:auto;" +
+      "background:rgba(8,12,22,0.9);backdrop-filter:blur(10px);border:1px solid rgba(129,140,248,0.45);border-radius:14px;" +
+      "padding:12px 13px;color:#e2e8f0;font:600 12px system-ui;box-shadow:0 10px 34px rgba(0,0,0,0.5)";
+    const lines = [];
+    lines.push(`<div style="display:flex;align-items:center;gap:7px;margin-bottom:7px"><span style="font-size:17px">✦</span><b style="color:#c7d2fe">Inkling</b></div>`);
+    lines.push(`<div style="color:#a5b4fc;font-weight:800;margin-bottom:6px">${CONNECTIONS_PROMPT}</div>`);
+    for (const s of insights) lines.push(`<div style="margin:3px 0;line-height:1.35">${s}</div>`);
+    if (checks.length) lines.push(`<div style="margin-top:8px;color:#fbcfe8">💬 ${checks[0].replace(/</g, "&lt;")}</div>`);
+    hud.innerHTML = lines.join("");
+    const close = document.createElement("button");
+    close.textContent = "×";
+    close.style.cssText = "position:absolute;top:6px;right:8px;background:transparent;border:0;color:#64748b;font:800 16px system-ui;cursor:pointer";
+    close.addEventListener("click", () => hud.remove());
+    hud.appendChild(close);
+    document.body.appendChild(hud);
   }
 
   // Tag children with their category so the filter can toggle them.
@@ -268,6 +334,7 @@ export function createConnectionsView(scene, opts = {}) {
     },
     dispose() {
       filterBar?.remove();
+      hud?.remove();
       scene.remove(group);
       for (const d of disposers) {
         try { d.mesh?.geometry?.dispose?.(); } catch { /* ignore */ }

@@ -1083,8 +1083,9 @@ export class WordWeaverScene {
    * red bracket style, with filter buttons.
    * @param {string} dayIso
    */
-  enterConnectionsView(dayIso) {
+  enterConnectionsView(dayIso, scope = "day") {
     this._dayIso = dayIso;
+    this._connScope = scope === "week" ? "week" : "day";
     this._dayView?.dispose(); this._dayView = null;
     this._connView?.dispose();
     if (this._navMonthGrid?.root) this._navMonthGrid.root.visible = false;
@@ -1094,7 +1095,8 @@ export class WordWeaverScene {
     this.camera.far = Math.max(this.camera.far, 500);
     this.camera.updateProjectionMatrix();
     this._connView = createConnectionsView(this.scene, {
-      iso: dayIso, camera: this.camera, controls: this.controls
+      iso: dayIso, scope: this._connScope, camera: this.camera, controls: this.controls,
+      onScope: (s) => this.enterConnectionsView(this._dayIso, s)
     });
     this._navLevel = "connections";
     this._ensureBackButton();
