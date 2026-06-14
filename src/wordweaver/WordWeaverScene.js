@@ -889,14 +889,18 @@ export class WordWeaverScene {
         if (monthIndex != null) {
           event.preventDefault();
           event.stopPropagation();
-          this.enterMonthView(monthIndex);
+          // Bounce the month's atom, then fly in (so the pop is visible).
+          this._monthGrid?.bounceMonth?.(monthIndex);
+          setTimeout(() => this.enterMonthView(monthIndex), 200);
         }
       } else if (this._navLevel === "month") {
         const iso = this._pickDayAt(event);
         if (iso) {
           event.preventDefault();
           event.stopPropagation();
-          this.enterDayViewIso(iso);
+          // Bounce the day box, then drill into the day view.
+          this._monthGrid?.bounceDay?.(iso);
+          setTimeout(() => this.enterDayViewIso(iso), 200);
         }
       }
       // "day" level: clicks reserved for timeframe/note interaction (next milestone)

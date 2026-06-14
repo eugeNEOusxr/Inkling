@@ -157,15 +157,18 @@ const sharedMaterial = {
     emissiveIntensity: 0.32
   }),
   note: new THREE.MeshPhysicalMaterial({
-    color: 0x3399ff,
+    color: 0x22d3ee, // aqua note dots (was blue)
     metalness: 0.28,
     roughness: 0.16,
     clearcoat: 1.0,
     clearcoatRoughness: 0.1,
-    emissive: new THREE.Color(0x113366),
-    emissiveIntensity: 0.4
+    emissive: new THREE.Color(0x0e7490),
+    emissiveIntensity: 0.45
   })
 };
+
+/** Uniform aqua for note dots + their connecting lines (visual test variation). */
+const NOTE_AQUA = new THREE.Color(0x22d3ee);
 
 /** White base so per-instance setColorAt() shows true category colors. */
 const noteColorMaterial = new THREE.MeshPhysicalMaterial({
@@ -186,6 +189,115 @@ const _scale = new THREE.Vector3(1, 1, 1);
 // used when (re)building instanced tiers).
 const _animQuat = new THREE.Quaternion();
 const _animEuler = new THREE.Euler();
+const _animScale = new THREE.Vector3();
+
+// ── Atom month-marker (replaces the cheesy big white box over each month) ──────
+// A tiny aqua core + two tilted rings + a few orbiting electrons. Shared geo/mat
+// (cheap even with 12 atoms in the year view). Electrons gently orbit; the rest
+// of the calendar stays static.
+const ATOM_GEO = {
+  core: new THREE.SphereGeometry(1, 18, 18),
+  ring: new THREE.TorusGeometry(1, 0.04, 10, 56),
+  electron: new THREE.SphereGeometry(1, 12, 12)
+};
+const ATOM_MAT = {
+  core: new THREE.MeshStandardMaterial({
+    color: 0x22d3ee, emissive: new THREE.Color(0x0e7490), emissiveIntensity: 1.2,
+    roughness: 0.3, metalness: 0.25
+  }),
+  ring: new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.5 }),
+  electron: new THREE.MeshStandardMaterial({
+    color: 0xa5f3fc, emissive: new THREE.Color(0x22d3ee), emissiveIntensity: 1.5, roughness: 0.4
+  })
+};
+
+/**
+ * Build one atom marker. Returns { group, update(t), dispose() }.
+ * Shared geometry/materials are NOT disposed (module-level).
+ * @param {number} scale
+ */
+function createAtomMarker(scale = 1) {
+  const group = new THREE.Group();
+  group.name = "ww-atom-marker";
+
+  const core = new THREE.Mesh(ATOM_GEO.core, ATOM_MAT.core);
+  core.scale.setScalar(0.2 * scale);
+  group.add(core);
+
+  const ringR = 0.62 * scale;
+  const ring1 = new THREE.Mesh(ATOM_GEO.ring, ATOM_MAT.ring);
+  ring1.scale.setScalar(ringR); ring1.rotation.set(Math.PI / 2.3, 0.5, 0);
+  const ring2 = new THREE.Mesh(ATOM_GEO.ring, ATOM_MAT.ring);
+  ring2.scale.setScalar(ringR); ring2.rotation.set(Math.PI / 2.3, -0.9, 0);
+  group.add(ring1, ring2);
+
+  /** @type {Array<{ mesh: THREE.Mesh, r: number, tilt: number, speed: number, phase: number }>} */
+  const electrons = [];
+  const defs = [
+    { r: ringR, tilt: 0.5, speed: 1.5, phase: 0 },
+    { r: ringR, tilt: -0.9, speed: 1.15, phase: 2.1 },
+    { r: ringR, tilt: -0.9, speed: 1.15, phase: 4.2 }
+  ];
+  for (const d of defs) {
+    const e = new THREE.Mesh(ATOM_GEO.electron, ATOM_MAT.electron);
+    e.scale.setScalar(0.08 * scale);
+    group.add(e);
+    electrons.push({ mesh: e, ...d });
+  }
+
+  return {
+    group,
+    update(t) {
+      for (const el of electrons) {
+        const a = t * el.speed + el.phase;
+        const x = Math.cos(a) * el.r;
+        const y = Math.sin(a) * el.r;
+        // tilt the circular orbit around the X axis so the rings read as 3D
+        el.mesh.position.set(x, y * Math.cos(el.tilt), y * Math.sin(el.tilt));
+      }
+    }
+  };
+}
+
+/** Spring/bounce a single InstancedMesh instance back to its base (click feedback). */
+function triggerInstBounce(arr, mesh, index, base) {
+  if (!mesh) return;
+  arr.push({ mesh, index, base, start: performance.now() / 1000, dur: 0.5 });
+}
+function processInstBounces(arr) {
+  if (!arr.length) return;
+  const now = performance.now() / 1000;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const b = arr[i];
+    const p = (now - b.start) / b.dur;
+    const done = p >= 1;
+    const s = done ? 1 : 1 + Math.sin(Math.min(1, p) * Math.PI) * 0.5;
+    const dy = done ? 0 : Math.sin(Math.min(1, p) * Math.PI) * 0.45;
+    _position.set(b.base.x, b.base.y + dy, b.base.z);
+    _animScale.set(s, s, s);
+    _matrix.compose(_position, _quat, _animScale);
+    b.mesh.setMatrixAt(b.index, _matrix);
+    b.mesh.instanceMatrix.needsUpdate = true;
+    if (done) arr.splice(i, 1);
+  }
+}
+/** Spring/bounce an Object3D group's scale (used for atom markers). */
+function triggerGroupBounce(arr, obj) {
+  if (!obj) return;
+  arr.push({ obj, start: performance.now() / 1000, dur: 0.5 });
+}
+function processGroupBounces(arr) {
+  if (!arr.length) return;
+  const now = performance.now() / 1000;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const b = arr[i];
+    const p = (now - b.start) / b.dur;
+    const done = p >= 1;
+    const s = done ? 1 : 1 + Math.sin(Math.min(1, p) * Math.PI) * 0.6;
+    b.obj.scale.setScalar(s);
+    if (done) { b.obj.scale.setScalar(1); arr.splice(i, 1); }
+  }
+}
 
 /** Static marker glow (no idle animation — markers only react on click). */
 function pulseSpheres() {
@@ -256,6 +368,10 @@ export class WordWeaverMonthGrid {
     this._connectors = null;
     this._layout = null;
     this._monthLabel = null;
+    /** @type {Array<{ group: THREE.Group, update: (t:number)=>void }>} */
+    this._atoms = [];
+    this._instBounces = [];
+    this._groupBounces = [];
   }
 
   build() {
@@ -284,7 +400,7 @@ export class WordWeaverMonthGrid {
       let prev = new THREE.Vector3(cell.x, cell.y + RADIUS.day * 0.85, 0.1);
       events.forEach((ev, i) => {
         const noteY = cell.y + RADIUS.day + RADIUS.note + 0.06 + i * NOTE_STACK_STEP;
-        const color = new THREE.Color(noteColorFor(ev?.text ?? ev?.title ?? ev?.note ?? ""));
+        const color = NOTE_AQUA.clone(); // uniform aqua dots + connectors
         noteInstances.push({ x: cell.x, y: noteY, z: 0.12, iso: cell.iso, dayIndex: cell.day });
         noteColors.push(color);
         const here = new THREE.Vector3(cell.x, noteY, 0.11);
@@ -293,7 +409,17 @@ export class WordWeaverMonthGrid {
       });
     }
 
-    this._addInstancedTier("month", monthInstances);
+    // The month marker is now an ATOM (not a big white box) above the grid.
+    const atom = createAtomMarker(1.15);
+    atom.group.position.set(
+      this._layout.monthCenter.x,
+      this._layout.monthCenter.y,
+      0.3
+    );
+    this.root.add(atom.group);
+    this._atoms.push(atom);
+    this._monthAtom = atom;
+
     this._addInstancedTier("day", dayInstances);
     this._addInstancedTier("note", noteInstances);
 
@@ -432,12 +558,31 @@ export class WordWeaverMonthGrid {
    * @param {number} _delta
    * @param {number} elapsed
    */
-  update(_delta, _elapsed) {
-    // Static by default — markers don't move on their own (bounce comes on click).
+  update(_delta, elapsed) {
+    // Static grid — only the atom electrons orbit + click bounces play.
     pulseSpheres();
+    for (const a of this._atoms) a.update(elapsed);
+    processInstBounces(this._instBounces);
+    processGroupBounces(this._groupBounces);
+  }
+
+  /** Spring the day box for `iso` (click feedback before drilling into the day). */
+  bounceDay(iso) {
+    const cells = this._layout?.cells ?? [];
+    const idx = cells.findIndex((c) => c.iso === iso);
+    if (idx < 0) return;
+    const dayMesh = this._instanced.find((m) => /-day-instances$/.test(m.name));
+    const c = cells[idx];
+    triggerInstBounce(this._instBounces, dayMesh, idx, { x: c.x, y: c.y, z: 0.08 });
   }
 
   disposeContent() {
+    for (const a of this._atoms) this.root.remove(a.group);
+    this._atoms = [];
+    this._monthAtom = null;
+    this._instBounces = [];
+    this._groupBounces = [];
+
     for (const mesh of this._instanced) {
       this.root.remove(mesh);
       mesh.dispose();
@@ -532,6 +677,9 @@ export class WordWeaverYearGrid {
     /** @type {Map<number, { mesh: THREE.Mesh, texture: THREE.CanvasTexture | null, url: string | null }>} */
     this._backboards = new Map();
     this._segment = "afternoon";
+    /** @type {Array<{ atom: { group: THREE.Group, update: (t:number)=>void }, monthIndex: number }>} */
+    this._atoms = [];
+    this._groupBounces = [];
   }
 
   build() {
@@ -543,15 +691,12 @@ export class WordWeaverYearGrid {
     this.setScenicBackdropForSegment(this._segment);
 
     /** @type {Array<{ x: number, y: number, z: number }>} */
-    const monthInstances = [];
-    /** @type {Array<{ x: number, y: number, z: number }>} */
     const dayInstances = [];
     /** @type {Array<{ x: number, y: number, z: number }>} */
     const noteInstances = [];
 
     for (const cluster of this._layout.clusters) {
       const { origin, monthLayout, monthCenter } = cluster;
-      monthInstances.push({ ...monthCenter });
 
       for (const cell of monthLayout.cells) {
         const x = origin.x + cell.x;
@@ -584,16 +729,16 @@ export class WordWeaverYearGrid {
       );
       this.root.add(monthLabel.mesh);
       this._labels.push(monthLabel);
+
+      // Atom marker over each month (replaces the cheesy big white box).
+      const atom = createAtomMarker(0.95);
+      atom.group.position.set(monthCenter.x, monthCenter.y, 0.3);
+      this.root.add(atom.group);
+      this._atoms.push({ atom, monthIndex: cluster.monthIndex });
     }
 
-    addInstancedTier(this.root, this._instanced, yearSharedGeometry, "month", monthInstances, "ww-year-grid");
     addInstancedTier(this.root, this._instanced, yearSharedGeometry, "day", dayInstances, "ww-year-grid");
     addInstancedTier(this.root, this._instanced, yearSharedGeometry, "note", noteInstances, "ww-year-grid");
-
-    // Keep the month-box InstancedMesh + base positions so update() can spin/bob
-    // each month box in place (added first, so it's _instanced[0]).
-    this._monthMesh = this._instanced[0] ?? null;
-    this._monthBasePos = monthInstances.map((p) => ({ x: p.x, y: p.y, z: p.z }));
 
     this.root.layers.set(1);
     this.root.traverse((obj) => obj.layers.set(1));
@@ -623,9 +768,17 @@ export class WordWeaverYearGrid {
    * @param {number} _delta
    * @param {number} elapsed
    */
-  update(_delta, _elapsed) {
-    // Static by default — month boxes hold still (no idle spin/bob).
+  update(_delta, elapsed) {
+    // Static grid — only the atom electrons orbit + click bounces play.
     pulseSpheres();
+    for (const a of this._atoms) a.atom.update(elapsed);
+    processGroupBounces(this._groupBounces);
+  }
+
+  /** Spring the atom marker for calendar month `monthIndex` (0-11) on click. */
+  bounceMonth(monthIndex) {
+    const entry = this._atoms.find((a) => a.monthIndex === monthIndex);
+    if (entry) triggerGroupBounce(this._groupBounces, entry.atom.group);
   }
 
   /** Poster planes behind each month that has a configured scene (MONTH_SCENES). */
@@ -707,6 +860,10 @@ export class WordWeaverYearGrid {
 
   disposeContent() {
     this._disposeBackboards();
+
+    for (const a of this._atoms) this.root.remove(a.atom.group);
+    this._atoms = [];
+    this._groupBounces = [];
 
     for (const mesh of this._instanced) {
       this.root.remove(mesh);
