@@ -910,6 +910,10 @@ export function createDayView(scene, dayIso, opts = {}) {
   const items = [];
   /** shared box + edge geometry, captured so dispose() can free them. */
   const dayBoxGeos = {};
+  /** bucket index → header sprite mesh (Morning/Afternoon/Evening columns). */
+  const colHeaders = {};
+  const COLW = 9; // horizontal spacing between time-of-day columns
+  let colHalfWidth = COLW;
 
   // NO white wall any more — the cosmic background shows through; one note's
   // animated box + centered text floats in the focused spot.
@@ -1004,11 +1008,31 @@ export function createDayView(scene, dayIso, opts = {}) {
         textNodes.push(t3d);
       });
 
+      // Time-of-day bucket: 0 morning (12am–12pm), 1 afternoon (12–6pm), 2 evening (6pm–12am).
+      const mm = parseHHMM(ev.time);
+      const bucket = mm < 720 ? 0 : mm < 1080 ? 1 : 2;
+
       card.visible = true;
       group.add(card);
-      cards.push({ group: card, box, baseY: BOX_Y, event: ev, lines: lines.length });
+      cards.push({ group: card, box, baseY: BOX_Y, event: ev, lines: lines.length, bucket });
       items.push({ mesh: box, y: 0, event: ev });
     });
+
+    // Column headers for whichever time buckets have notes.
+    const HEADER_LABELS = ["Morning", "Afternoon", "Evening"];
+    const present = [false, false, false];
+    for (const c of cards) present[c.bucket] = true;
+    for (let b = 0; b < 3; b++) {
+      if (!present[b]) continue;
+      const lab = createLabelSprite(HEADER_LABELS[b], {
+        fontSize: "800 64px system-ui, sans-serif", fill: "#c7d2fe", width: 512, height: 140, planeW: 3.4, planeH: 0.93
+      });
+      lab.mesh.layers.set(1);
+      lab.mesh.visible = false; // shown in full layout only
+      group.add(lab.mesh);
+      labels.push(lab);
+      colHeaders[b] = lab.mesh;
+    }
   }
 
   group.layers.set(1);
@@ -1028,20 +1052,37 @@ export function createDayView(scene, dayIso, opts = {}) {
   let modeBar = null, arrowBar = null, domLabel = null, fullBtn = null, wheelBtn = null;
 
   function layoutFull() {
-    let y = STACK_TOP;
-    const GAP = 1.15;
-    for (const c of cards) {
-      const top = BOX_Y + 0.55;                       // box top within card-local
-      const bottom = 0.45 - (c.lines - 1) * 0.82 - 0.5;
-      const h = top - bottom;
-      c.group.position.set(0, y - top, 0);            // align this card's top to y
-      c.group.visible = true;
-      c.box.position.set(0, c.baseY, 0);
-      y -= h + GAP;
+    // Time-of-day COLUMNS (Morning / Afternoon / Evening) side by side; present
+    // columns are centered. Keeps each stack short so a busy day stays readable.
+    const order = [0, 1, 2].filter((b) => cards.some((c) => c.bucket === b));
+    const P = order.length || 1;
+    const colX = {};
+    order.forEach((b, i) => { colX[b] = (i - (P - 1) / 2) * COLW; });
+    colHalfWidth = (P - 1) / 2 * COLW + COLW * 0.5;
+
+    let maxDepth = 0;
+    for (const b of order) {
+      if (colHeaders[b]) {
+        colHeaders[b].visible = true;
+        colHeaders[b].position.set(colX[b], STACK_TOP + 1.4, 0);
+      }
+      let y = STACK_TOP;
+      const GAP = 1.05;
+      for (const c of cards.filter((cc) => cc.bucket === b)) {
+        const top = BOX_Y + 0.55;
+        const bottom = 0.45 - (c.lines - 1) * 0.82 - 0.5;
+        const h = top - bottom;
+        c.group.position.set(colX[b], y - top, 0);
+        c.group.visible = true;
+        c.box.position.set(0, c.baseY, 0);
+        y -= h + GAP;
+      }
+      maxDepth = Math.max(maxDepth, STACK_TOP - y);
     }
-    stackBottom = y;
+    stackBottom = STACK_TOP - maxDepth;
   }
   function layoutWheel() {
+    for (const b of Object.keys(colHeaders)) colHeaders[b].visible = false;
     cards.forEach((c, idx) => {
       c.group.position.set(0, 0, 0);
       c.group.visible = idx === current;
@@ -1052,11 +1093,17 @@ export function createDayView(scene, dayIso, opts = {}) {
     if (!camera || !controls) return;
     camera.up.set(0, 1, 0);
     if (mode === "full" && cards.length) {
-      const top = 4.6, bottom = stackBottom;
+      const top = STACK_TOP + 2.7, bottom = stackBottom;
       const cy = (top + bottom) / 2;
-      const h = Math.max(7, top - bottom);
-      const dist = (h / 2) / Math.tan(((camera.fov || 50) * Math.PI / 180) / 2) + 3;
-      if (controls.maxDistance < dist + 5) controls.maxDistance = dist + 40;
+      const contentH = Math.max(7, top - bottom);
+      const contentW = Math.max(10, 2 * (colHalfWidth + 3.5)); // include text width
+      const fovR = (camera.fov || 50) * Math.PI / 180;
+      const aspect = camera.aspect || 1.6;
+      const distH = (contentH / 2) / Math.tan(fovR / 2);
+      const distW = (contentW / 2) / (Math.tan(fovR / 2) * aspect);
+      // Pull back to fit BOTH dimensions, plus a margin so everything shows.
+      const dist = Math.max(distH, distW) + 5;
+      if (controls.maxDistance < dist + 5) controls.maxDistance = dist + 60;
       controls.target.set(0, cy, 0);
       camera.position.set(0, cy, dist);
     } else {
