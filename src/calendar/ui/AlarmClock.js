@@ -19,6 +19,8 @@ export class AlarmClock {
     // alarm draft (24h)
     this._alarmH = new Date().getHours();
     this._alarmM = 0;
+    this._settingPhase = "hour"; // first tap = hour hand, second tap = minute hand
+    this._ampm = this._alarmH >= 12 ? "PM" : "AM";
     // stopwatch
     this._swRunning = false;
     this._swStart = 0;
@@ -140,7 +142,7 @@ export class AlarmClock {
 
     el.querySelector(".ac-x").addEventListener("click", () => this.hide());
     el.querySelectorAll(".ac-tab").forEach((b) => b.addEventListener("click", () => this._setTab(b.dataset.tab)));
-    // Tap the face (Alarm mode) → set minute from angle.
+    // Tap the standstill face (Alarm mode): 1st tap = HOUR hand, 2nd = MINUTE.
     this._svg.addEventListener("click", (e) => {
       if (this._tab !== "alarm") return;
       const r = this._svg.getBoundingClientRect();
@@ -148,7 +150,15 @@ export class AlarmClock {
       const dy = e.clientY - (r.top + r.height / 2);
       let deg = Math.atan2(dx, -dy) * 180 / Math.PI;
       if (deg < 0) deg += 360;
-      this._alarmM = Math.round(deg / 6) % 60;
+      if (this._settingPhase === "hour") {
+        let h12 = Math.round(deg / 30) % 12;
+        if (h12 === 0) h12 = 12;
+        this._alarmH = this._ampm === "PM" ? (h12 % 12) + 12 : h12 % 12;
+        this._settingPhase = "minute";
+      } else {
+        this._alarmM = Math.round(deg / 6) % 60;
+        this._settingPhase = "hour";
+      }
       this._renderControls();
       this._tick();
     });
@@ -171,17 +181,30 @@ export class AlarmClock {
     if (this._tab === "clock") {
       this._subEl.textContent = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
     } else if (this._tab === "alarm") {
-      this._subEl.textContent = "Tap the clock to set minutes, or pick a time.";
+      this._subEl.innerHTML = this._settingPhase === "hour"
+        ? "First tap the clock to set the <b style='color:#22d3ee'>HOUR</b>"
+        : "Now tap to set the <b style='color:#22d3ee'>MINUTE</b>";
       c.innerHTML = `
         <div class="ac-row">
           <input type="time" class="ac-time" value="${pad(this._alarmH)}:${pad(this._alarmM)}"/>
-          <input type="text" class="ac-label" placeholder="Label (optional)" style="min-width:150px"/>
+          <button class="ac-btn ghost ac-ampm" title="AM / PM">${this._ampm}</button>
+        </div>
+        <div class="ac-row">
+          <input type="text" class="ac-label" placeholder="Label (optional)" style="min-width:170px"/>
           <button class="ac-btn ac-set-alarm">Set alarm</button>
         </div>`;
       c.querySelector(".ac-time").addEventListener("input", (e) => {
         const [h, m] = e.target.value.split(":").map(Number);
-        if (Number.isFinite(h)) this._alarmH = h;
+        if (Number.isFinite(h)) { this._alarmH = h; this._ampm = h >= 12 ? "PM" : "AM"; }
         if (Number.isFinite(m)) this._alarmM = m;
+        this._renderControls();
+        this._tick();
+      });
+      c.querySelector(".ac-ampm").addEventListener("click", () => {
+        this._ampm = this._ampm === "AM" ? "PM" : "AM";
+        const h12 = this._alarmH % 12;
+        this._alarmH = this._ampm === "PM" ? h12 + 12 : h12;
+        this._renderControls();
         this._tick();
       });
       c.querySelector(".ac-set-alarm").addEventListener("click", () => this._addAlarm(c.querySelector(".ac-label").value));
@@ -228,16 +251,23 @@ export class AlarmClock {
     d.setHours(this._alarmH, this._alarmM, 0, 0);
     if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1); // next occurrence
     const dateIso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const time = `${pad(this._alarmH)}:${pad(this._alarmM)}`;
+    const labelText = String(label || "").trim();
     try {
       addAlert(createAlert({
-        time: `${pad(this._alarmH)}:${pad(this._alarmM)}`,
+        time,
         date: dateIso,
-        text: String(label || "").trim() || "Alarm",
+        text: labelText || "Alarm",
         category: "reminder",
         kind: "sound",
         priority: 0
       }));
       recomputeSchedule();
+    } catch { /* ignore */ }
+    // Join with Inkling: let it acknowledge the alarm (it also shows in the
+    // Inkling alerts panel since both read the same alerts store).
+    try {
+      this.app?.inklingPanel?.notifyProactive?.(`⏰ Alarm set for ${time}${labelText ? ` — “${labelText}”` : ""}. I'll wake you.`);
     } catch { /* ignore */ }
     this._renderAlarmList();
   }
@@ -300,25 +330,40 @@ export class AlarmClock {
   _tick() {
     if (!this._el) return;
     const now = new Date();
-    // analog hands
-    const sec = now.getSeconds() + now.getMilliseconds() / 1000;
-    const min = now.getMinutes() + sec / 60;
-    const hr = (now.getHours() % 12) + min / 60;
     const set = (id, deg) => { const e = this._svg.querySelector(id); if (e) e.setAttribute("transform", `rotate(${deg} 100 100)`); };
-    set("#ac-h-hour", hr * 30);
-    set("#ac-h-min", min * 6);
-    set("#ac-h-sec", sec * 6);
+    const secEl = this._svg.querySelector("#ac-h-sec");
+    const hourEl = this._svg.querySelector("#ac-h-hour");
+    const minEl = this._svg.querySelector("#ac-h-min");
     const alarmHand = this._svg.querySelector("#ac-h-alarm");
-    if (alarmHand) {
-      alarmHand.setAttribute("opacity", this._tab === "alarm" ? "0.95" : "0");
-      alarmHand.setAttribute("transform", `rotate(${this._alarmM * 6} 100 100)`);
+    if (alarmHand) alarmHand.setAttribute("opacity", "0");
+
+    if (this._tab === "alarm") {
+      // STANDSTILL clock: the hands show the alarm time you're setting; the hand
+      // for the active phase glows cyan.
+      set("#ac-h-hour", (this._alarmH % 12) * 30 + (this._alarmM / 60) * 30);
+      set("#ac-h-min", this._alarmM * 6);
+      if (secEl) secEl.setAttribute("opacity", "0");
+      if (hourEl) { hourEl.setAttribute("stroke", this._settingPhase === "hour" ? "#22d3ee" : "#e6ebff"); hourEl.setAttribute("stroke-width", this._settingPhase === "hour" ? "6" : "5"); }
+      if (minEl) { minEl.setAttribute("stroke", this._settingPhase === "minute" ? "#22d3ee" : "#a5b4fc"); minEl.setAttribute("stroke-width", this._settingPhase === "minute" ? "4.6" : "3.4"); }
+    } else {
+      const sec = now.getSeconds() + now.getMilliseconds() / 1000;
+      const min = now.getMinutes() + sec / 60;
+      const hr = (now.getHours() % 12) + min / 60;
+      set("#ac-h-hour", hr * 30);
+      set("#ac-h-min", min * 6);
+      set("#ac-h-sec", sec * 6);
+      if (secEl) secEl.setAttribute("opacity", "1");
+      if (hourEl) { hourEl.setAttribute("stroke", "#e6ebff"); hourEl.setAttribute("stroke-width", "5"); }
+      if (minEl) { minEl.setAttribute("stroke", "#a5b4fc"); minEl.setAttribute("stroke-width", "3.4"); }
     }
+
     if (this._el.style.display === "none") return;
-    // digital readout per tab
     if (this._tab === "stopwatch") this._digital.textContent = fmtSW(this._swElapsed());
     else if (this._tab === "timer") {
       const left = this._timerRunning ? Math.max(0, this._timerEnd - Date.now()) : this._timerDur;
       this._digital.textContent = fmtTimer(left);
+    } else if (this._tab === "alarm") {
+      this._digital.textContent = `${pad(this._alarmH)}:${pad(this._alarmM)}`; // the alarm being set
     } else this._digital.textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
   }
 
