@@ -8,6 +8,10 @@
    own Day/Night/B&W theme toggle replaces them. */
 .wordweaver-embed__segments { display: none !important; }
 
+/* Hide the floating tool-launcher icons (📅 calendar, ✎ writer, 🪡 wordweaver,
+   ✦ inkling) — the cosmos intro + bottom nav + orb cover navigation now. */
+#inkling-layer-launcher { display: none !important; }
+
 /* Hide the leftover layout chrome (3D-layout dropdown "street signs" + Customize
    + its editor) on the calendar/day view — not needed for now. */
 .wordweaver-embed__layout-label,

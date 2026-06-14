@@ -909,13 +909,24 @@ export class CalendarApp {
 
     const startTab = new URLSearchParams(window.location.search).get("tab");
     const allowedTabs = new Set(["calendar", "writer", "wordweaver", "inkling", "alerts"]);
-    if (startTab === "wall" || !startTab || startTab === "inkling") {
-      queueMicrotask(() => void this._openWordWeaverStartup());
-    } else if (allowedTabs.has(startTab)) {
+    if (allowedTabs.has(startTab)) {
+      // Deep-linked (e.g. the ?tab=wordweaver share link) → go straight there.
       queueMicrotask(() => void this._handleBottomNavTab(startTab, { toggle: false }));
     } else {
-      queueMicrotask(() => void this._openWordWeaverStartup());
+      // Default: land on the cosmos intro and let the user choose where to start.
+      queueMicrotask(() => void this._showCosmosIntro());
     }
+  }
+
+  /** Land on the cosmos backdrop with the entry-portal intro. */
+  async _showCosmosIntro() {
+    this.windowManager?.closeAllPanels();
+    showIdleSurface(); // JWST cosmos backdrop
+    if (!this._cosmosIntro) {
+      const { CosmosIntro } = await import("./ui/CosmosIntro.js");
+      this._cosmosIntro = new CosmosIntro(this);
+    }
+    this._cosmosIntro.show();
   }
 
   /** Default launch: WordWeaver first — Inkling does not auto-open. */
