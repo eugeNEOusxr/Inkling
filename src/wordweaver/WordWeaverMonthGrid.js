@@ -134,13 +134,17 @@ const yearSharedGeometry = {
 
 const sharedMaterial = {
   month: new THREE.MeshPhysicalMaterial({
-    color: 0xffffff,
-    metalness: 0.2,
-    roughness: 0.16,
+    color: 0xf6f5ff, // soft pearl white
+    metalness: 0.18,
+    roughness: 0.14,
     clearcoat: 1.0,
-    clearcoatRoughness: 0.12,
-    emissive: new THREE.Color(0x334455),
-    emissiveIntensity: 0.3
+    clearcoatRoughness: 0.1,
+    iridescence: 0.7, // pearly sheen
+    iridescenceIOR: 1.3,
+    sheen: 0.6,
+    sheenColor: new THREE.Color(0xcfe0ff),
+    emissive: new THREE.Color(0x3a4668),
+    emissiveIntensity: 0.32
   }),
   day: new THREE.MeshPhysicalMaterial({
     color: 0xff8822,
@@ -177,6 +181,10 @@ const _matrix = new THREE.Matrix4();
 const _position = new THREE.Vector3();
 const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3(1, 1, 1);
+// Dedicated temps for per-instance box animation (don't disturb _quat = identity
+// used when (re)building instanced tiers).
+const _animQuat = new THREE.Quaternion();
+const _animEuler = new THREE.Euler();
 
 /** Gentle "breathing" glow so the spheres feel alive (shared by both grids). */
 function pulseSpheres(elapsed) {
@@ -633,6 +641,11 @@ export class WordWeaverYearGrid {
     addInstancedTier(this.root, this._instanced, yearSharedGeometry, "day", dayInstances, "ww-year-grid");
     addInstancedTier(this.root, this._instanced, yearSharedGeometry, "note", noteInstances, "ww-year-grid");
 
+    // Keep the month-box InstancedMesh + base positions so update() can spin/bob
+    // each month box in place (added first, so it's _instanced[0]).
+    this._monthMesh = this._instanced[0] ?? null;
+    this._monthBasePos = monthInstances.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+
     this.root.layers.set(1);
     this.root.traverse((obj) => obj.layers.set(1));
   }
@@ -647,11 +660,12 @@ export class WordWeaverYearGrid {
     const cx = (b.minX + b.maxX) / 2;
     const cy = (b.minY + b.maxY) / 2;
     const span = Math.max(b.width, b.height);
-    controls.maxDistance = 240;
+    controls.maxDistance = 340;
     controls.minDistance = span * 0.15;
     controls.target.set(cx, cy, 0);
-    camera.position.set(cx, cy + span * 0.02, span * 1.08 + 10);
-    camera.far = Math.max(camera.far, span * 2.5 + 48);
+    // Pulled back further so all 12 months sit comfortably in frame.
+    camera.position.set(cx, cy + span * 0.02, span * 1.4 + 16);
+    camera.far = Math.max(camera.far, span * 3 + 64);
     camera.updateProjectionMatrix();
     controls.update();
   }
@@ -662,6 +676,18 @@ export class WordWeaverYearGrid {
    */
   update(_delta, elapsed) {
     pulseSpheres(elapsed);
+    // Spin + gently bob each month box in place (like the day-view boxes).
+    if (this._monthMesh && this._monthBasePos) {
+      for (let i = 0; i < this._monthBasePos.length; i++) {
+        const p = this._monthBasePos[i];
+        _animEuler.set(Math.sin(elapsed * 0.4 + i) * 0.18, elapsed * 0.45 + i * 0.6, 0);
+        _animQuat.setFromEuler(_animEuler);
+        _position.set(p.x, p.y + Math.sin(elapsed * 0.8 + i) * 0.18, p.z);
+        _matrix.compose(_position, _animQuat, _scale);
+        this._monthMesh.setMatrixAt(i, _matrix);
+      }
+      this._monthMesh.instanceMatrix.needsUpdate = true;
+    }
   }
 
   /** Poster planes behind each month that has a configured scene (MONTH_SCENES). */
@@ -1204,38 +1230,52 @@ export function createDayView(scene, dayIso, opts = {}) {
   }
 
   if (typeof document !== "undefined" && cards.length) {
-    // Mode toggle — sits with the calendar's 2D/3D controls (top center).
+    // Day-view controls: a small bar pinned TOP-RIGHT that retracts to a handle.
+    // Click the handle → options slide out to the left; click » → retract right.
     modeBar = document.createElement("div");
     modeBar.id = "ww-day-modebar";
     modeBar.style.cssText =
-      "position:fixed;left:50%;top:72px;transform:translateX(-50%);z-index:10261;display:flex;gap:6px;" +
-      "background:rgba(8,12,22,0.74);backdrop-filter:blur(8px);border:1px solid rgba(99,102,241,0.45);border-radius:999px;" +
-      "padding:5px 6px;box-shadow:0 6px 20px rgba(0,0,0,0.4)";
-    fullBtn = document.createElement("button"); fullBtn.textContent = "📆 Full day";
-    wheelBtn = document.createElement("button"); wheelBtn.textContent = "🎡 Scroll";
-    for (const b of [fullBtn, wheelBtn]) {
-      b.style.cssText = "border:0;border-radius:999px;padding:7px 14px;font:700 12px system-ui;cursor:pointer;background:transparent;color:#94a3b8";
-    }
+      "position:fixed;top:8px;right:12px;z-index:10261;display:flex;align-items:center;gap:5px;" +
+      "background:rgba(8,12,22,0.8);backdrop-filter:blur(8px);border:1px solid rgba(99,102,241,0.45);border-radius:999px;" +
+      "padding:3px 4px;box-shadow:0 5px 16px rgba(0,0,0,0.4)";
+
+    const optionsWrap = document.createElement("div");
+    optionsWrap.style.cssText = "display:none;align-items:center;gap:4px";
+    const smallBtn = "border:0;border-radius:999px;padding:5px 9px;font:700 11px system-ui;cursor:pointer;white-space:nowrap;";
+
+    fullBtn = document.createElement("button"); fullBtn.textContent = "📆 Full"; fullBtn.style.cssText = smallBtn + "background:transparent;color:#94a3b8";
+    wheelBtn = document.createElement("button"); wheelBtn.textContent = "🎡 Scroll"; wheelBtn.style.cssText = smallBtn + "background:transparent;color:#94a3b8";
     fullBtn.addEventListener("click", () => setMode("full"));
     wheelBtn.addEventListener("click", () => setMode("wheel"));
-    modeBar.append(fullBtn, wheelBtn);
+    optionsWrap.append(fullBtn, wheelBtn);
 
-    // Background theme: Day (bright + black text) / Night (dark + gold text) /
-    // B&W (grayscale + black text). Switching rebuilds the day view.
     const divider = document.createElement("div");
-    divider.style.cssText = "width:1px;height:22px;background:rgba(255,255,255,.18);margin:0 3px";
-    modeBar.append(divider);
-    for (const [t, label] of [["day", "☀️ Day"], ["night", "🌙 Night"], ["bw", "⬜ B&W"]]) {
+    divider.style.cssText = "width:1px;height:18px;background:rgba(255,255,255,.18);margin:0 2px";
+    optionsWrap.append(divider);
+    for (const [t, label] of [["day", "☀️"], ["night", "🌙"], ["bw", "⬜"]]) {
       const tb = document.createElement("button");
       tb.dataset.theme = t;
       tb.textContent = label;
-      tb.style.cssText =
-        "border:0;border-radius:999px;padding:7px 12px;font:700 12px system-ui;cursor:pointer;" +
-        `background:${theme === t ? "#312e81" : "transparent"};color:${theme === t ? "#e0e7ff" : "#94a3b8"}`;
+      tb.title = t === "bw" ? "Black & white" : t[0].toUpperCase() + t.slice(1);
+      tb.style.cssText = smallBtn + `background:${theme === t ? "#312e81" : "transparent"};color:${theme === t ? "#e0e7ff" : "#94a3b8"}`;
       tb.addEventListener("click", () => { setDayTheme(t); if (onRebuild) onRebuild(); });
-      modeBar.append(tb);
+      optionsWrap.append(tb);
     }
+
+    const handle = document.createElement("button");
+    handle.style.cssText = "border:0;border-radius:50%;width:28px;height:28px;flex:0 0 auto;background:#312e81;color:#e0e7ff;font:800 15px system-ui;line-height:1;cursor:pointer";
+    let barOpen = false;
+    const setBarOpen = (v) => {
+      barOpen = v;
+      optionsWrap.style.display = v ? "flex" : "none";
+      handle.textContent = v ? "»" : "«";
+      handle.title = v ? "Hide options" : "Day view options";
+    };
+    handle.addEventListener("click", () => setBarOpen(!barOpen));
+
+    modeBar.append(optionsWrap, handle); // options left, handle right → retracts rightward
     document.body.appendChild(modeBar);
+    setBarOpen(false); // start retracted on the right
 
     // Wheel arrows (shown only in scroll mode).
     arrowBar = document.createElement("div");
