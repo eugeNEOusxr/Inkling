@@ -81,14 +81,30 @@ async function findByUsernameFile(needle) {
   return null;
 }
 
-// ── public API: Postgres when DATABASE_URL is set, else files ──────────────
+// ── store mode: decide DB-or-file ONCE and stick to it, so reads + writes never
+//    split across stores (that split made register succeed but login 401). If a
+//    DB op ever errors, we flip the WHOLE store to files (consistent + functional,
+//    just not durable) and log why — instead of silently writing to a place the
+//    next read won't look.
+let _modePromise = null;
+async function storeMode() {
+  if (!_modePromise) {
+    _modePromise = (async () => ((dbEnabled() && (await ensureDb())) ? "db" : "file"))();
+  }
+  return _modePromise;
+}
+function fallToFile(op, err) {
+  console.error(`[db] ${op} failed — switching whole store to files:`, err?.message || err);
+  _modePromise = Promise.resolve("file");
+}
+
 export async function readUser(email) {
-  if (dbEnabled() && (await ensureDb())) {
+  if ((await storeMode()) === "db") {
     try {
-      const r = await query("SELECT data FROM users WHERE email = $1", [email.toLowerCase()]);
+      const r = await query("SELECT data FROM users WHERE email = $1", [String(email).toLowerCase()]);
       return r.rows[0] ? normalizeUser(r.rows[0].data) : null;
     } catch (err) {
-      console.error("[db] readUser failed, using file:", err?.message || err);
+      fallToFile("readUser", err);
     }
   }
   return readUserFile(email);
@@ -96,7 +112,7 @@ export async function readUser(email) {
 
 export async function writeUser(record) {
   record.updatedAt = Date.now();
-  if (dbEnabled() && (await ensureDb())) {
+  if ((await storeMode()) === "db") {
     try {
       const n = normalizeUser(record);
       await query(
@@ -108,7 +124,7 @@ export async function writeUser(record) {
       );
       return;
     } catch (err) {
-      console.error("[db] writeUser failed, using file:", err?.message || err);
+      fallToFile("writeUser", err);
     }
   }
   await writeUserFile(record);
@@ -117,12 +133,12 @@ export async function writeUser(record) {
 export async function findByUsername(username) {
   if (!username) return null;
   const needle = String(username).toLowerCase();
-  if (dbEnabled() && (await ensureDb())) {
+  if ((await storeMode()) === "db") {
     try {
       const r = await query("SELECT data FROM users WHERE LOWER(username) = $1 LIMIT 1", [needle]);
       return r.rows[0] ? normalizeUser(r.rows[0].data) : null;
     } catch (err) {
-      console.error("[db] findByUsername failed, using file:", err?.message || err);
+      fallToFile("findByUsername", err);
     }
   }
   return findByUsernameFile(needle);
