@@ -321,14 +321,25 @@ function createLabelSprite(text, opts = {}) {
   if (ctx) {
     ctx.clearRect(0, 0, w, h);
     ctx.font = opts.fontSize ?? "700 56px system-ui, sans-serif";
-    ctx.fillStyle = opts.fill ?? "#ffffff";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.shadowColor = "rgba(0,0,0,0.85)";
-    ctx.shadowBlur = 8;
+    // Blur softens light text against the cosmos, but HAZES dark text on the
+    // white day boxes — so it's tunable (pass blur: 0 for crisp numbers).
+    const blur = opts.blur ?? 8;
+    if (blur > 0) { ctx.shadowColor = "rgba(0,0,0,0.85)"; ctx.shadowBlur = blur; }
+    // Optional crisp outline (drawn under the fill) to make a digit pop sharply.
+    if (opts.strokeColor && opts.strokeWidth) {
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = opts.strokeColor;
+      ctx.lineWidth = opts.strokeWidth;
+      ctx.strokeText(text, w / 2, h / 2);
+      ctx.shadowBlur = 0;
+    }
+    ctx.fillStyle = opts.fill ?? "#ffffff";
     ctx.fillText(text, w / 2, h / 2);
   }
   const tex = new THREE.CanvasTexture(canvas);
+  tex.anisotropy = 8; // crisper when the plane is viewed at an angle
   tex.needsUpdate = true;
   const mat = new THREE.MeshBasicMaterial({
     map: tex,
@@ -452,12 +463,16 @@ export class WordWeaverMonthGrid {
     // Day number sits on the front of each white day box (black, legible).
     for (const cell of this._layout.cells) {
       const label = createLabelSprite(String(cell.day), {
-        fontSize: "800 52px system-ui, sans-serif",
-        fill: "#0f172a",
-        width: 96,
-        height: 96,
-        planeW: 0.5,
-        planeH: 0.5
+        // Crisp, bold, hi-res black numerals on the white day box (no haze).
+        fontSize: "900 132px system-ui, sans-serif",
+        fill: "#0b1220",
+        width: 256,
+        height: 256,
+        planeW: 0.74,
+        planeH: 0.74,
+        blur: 0,
+        strokeColor: "#0b1220",
+        strokeWidth: 3
       });
       label.mesh.position.set(cell.x, cell.y, RADIUS.day + 0.22);
       this.root.add(label.mesh);
