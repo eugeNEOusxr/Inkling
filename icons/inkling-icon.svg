@@ -1,0 +1,21 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Inkling">
+  <rect x="0" y="0" width="512" height="512" fill="#0a0b12"/>
+  <circle cx="256" cy="256" r="200" fill="#0891b2" opacity="0.15"/>
+  <circle cx="256" cy="256" r="150" fill="#06b6d4" opacity="0.15"/>
+
+  <circle cx="140" cy="150" r="4" fill="#e8b923"/>
+  <circle cx="378" cy="362" r="4" fill="#22d3ee"/>
+  <circle cx="372" cy="150" r="3.2" fill="#fde68a"/>
+  <circle cx="148" cy="366" r="3.2" fill="#22d3ee"/>
+
+  <g transform="rotate(-22 256 256)">
+    <ellipse cx="256" cy="256" rx="182" ry="58" fill="none" stroke="#e8b923" stroke-width="7" opacity="0.9"/>
+  </g>
+
+  <circle cx="256" cy="256" r="118" fill="#0891b2"/>
+  <circle cx="218" cy="212" r="54" fill="#5eead4" opacity="0.55"/>
+  <circle cx="206" cy="200" r="20" fill="#cffafe" opacity="0.85"/>
+  <circle cx="256" cy="256" r="118" fill="none" stroke="#22d3ee" stroke-width="4" opacity="0.6"/>
+
+  <path d="M330 168 Q335 192 358 196 Q335 200 330 224 Q325 200 302 196 Q325 192 330 168 Z" fill="#fde68a"/>
+</svg>
