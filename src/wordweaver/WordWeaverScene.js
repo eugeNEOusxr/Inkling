@@ -911,11 +911,14 @@ export class WordWeaverScene {
           setTimeout(() => this.enterDayViewIso(iso), 200);
         }
       }
-      // "day" level: tap a note card to reveal its ✕ delete badge.
+      // "day" level: tap a note card → ✕ delete badge + X/Y/Z move gizmo. Only
+      // swallow the event when a note was hit, so taps on the gizmo arrows reach
+      // TransformControls (and OrbitControls stays usable on empty taps).
       if (this._navLevel === "day" && this._editor) {
-        event.preventDefault();
-        event.stopPropagation();
-        this._editor.handleDayTap(event);
+        if (this._editor.handleDayTap(event)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
       }
       return;
     }

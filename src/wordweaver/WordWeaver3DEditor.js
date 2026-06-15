@@ -11,7 +11,10 @@
  * (with .items = [{ mesh, event }]), _dayIso, and enterDayViewIso(iso).
  */
 import * as THREE from "three";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { saveNoteToTimeline, deleteEvent } from "./timelineModel.js";
+
+const OFFSETS_KEY = "ww3d-note-offsets"; // per-event {x,y,z} nudges from the gizmo
 
 const STEP_MIN = 30; // time wheel granularity → 12:00 AM … 11:30 PM
 
@@ -109,6 +112,10 @@ export class WordWeaver3DEditor {
     this._time = null; // "HH:MM" chosen, or null → automatic "now" timestamp
     this._selectedId = null;
     this._tmpVec = new THREE.Vector3();
+    this._gizmo = null;       // TransformControls (X/Y/Z move arrows), lazy
+    this._selCard = null;     // the card group the gizmo is attached to
+    this._offsets = this._loadOffsets(); // per-event nudges, survive rebuilds
+    this._saveTimer = null;
     this._build();
   }
 
@@ -234,14 +241,90 @@ export class WordWeaver3DEditor {
 
   // ---- tap-a-note-to-delete ----
 
-  /** Called from the host's day-level pointerdown. @returns {boolean} hit a note */
+  /**
+   * Called from the host's day-level pointerdown. Tapping a note selects it
+   * (✕ to delete + X/Y/Z arrows to move); tapping the SAME note again clears it.
+   * Empty taps do nothing — clearing there would fight the gizmo handles.
+   * @returns {boolean} hit a note (host only swallows the event when true)
+   */
   handleDayTap(event) {
+    // Don't steal pointerdowns aimed at the move gizmo.
+    if (this._gizmo && (this._gizmo.dragging || this._gizmo.axis)) return false;
     const item = this._pickNote(event);
-    if (!item) { this._clearSelection(); return false; }
-    this._selectedId = item.event?.id ?? null;
-    if (this._selectedId == null) { this._clearSelection(); return false; }
+    if (!item) return false;
+    const id = item.event?.id ?? null;
+    if (id == null) return false;
+    if (id === this._selectedId) { this._clearSelection(); return true; }
+
+    this._selectedId = id;
+    this._selCard = item.mesh.parent || item.mesh;
     this._positionDelBadge(item.mesh);
+
+    const tc = this._ensureGizmo();
+    if (tc && this._selCard) {
+      if (!this._selCard.userData._wwBase) this._selCard.userData._wwBase = this._selCard.position.clone();
+      tc.attach(this._selCard);
+    }
     return true;
+  }
+
+  // ---- X/Y/Z move gizmo ----
+
+  _ensureGizmo() {
+    if (this._gizmo) return this._gizmo;
+    const host = this.host;
+    if (!host?.camera || !host?.canvas || !host?.scene) return null;
+    const tc = new TransformControls(host.camera, host.canvas);
+    tc.setMode("translate");
+    tc.setSize(0.8);
+    // OrbitControls must not pan while you're dragging an arrow.
+    tc.addEventListener("dragging-changed", (e) => {
+      if (host.controls) host.controls.enabled = !e.value;
+    });
+    tc.addEventListener("objectChange", () => this._onGizmoChange());
+    host.scene.add(tc);
+    this._gizmo = tc;
+    return tc;
+  }
+
+  _onGizmoChange() {
+    const card = this._selCard;
+    const base = card?.userData?._wwBase;
+    if (!card || base == null || this._selectedId == null) return;
+    this._offsets[this._selectedId] = {
+      x: +(card.position.x - base.x).toFixed(3),
+      y: +(card.position.y - base.y).toFixed(3),
+      z: +(card.position.z - base.z).toFixed(3)
+    };
+    this._saveOffsets();
+  }
+
+  _loadOffsets() {
+    try { return JSON.parse(localStorage.getItem(OFFSETS_KEY) || "{}") || {}; }
+    catch { return {}; }
+  }
+
+  _saveOffsets() {
+    clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => {
+      try { localStorage.setItem(OFFSETS_KEY, JSON.stringify(this._offsets)); } catch { /* ignore */ }
+    }, 250);
+  }
+
+  /** Re-apply saved gizmo nudges to the freshly-built day cards. */
+  _applyOffsets() {
+    const items = this.host?._dayView?.items;
+    if (!items) return;
+    for (const it of items) {
+      const card = it.mesh?.parent;
+      if (!card) continue;
+      if (!card.userData._wwBase) card.userData._wwBase = card.position.clone();
+      const off = this._offsets[it.event?.id];
+      if (off) {
+        const b = card.userData._wwBase;
+        card.position.set(b.x + off.x, b.y + off.y, b.z + off.z);
+      }
+    }
   }
 
   _pickNote(event) {
@@ -284,6 +367,7 @@ export class WordWeaver3DEditor {
     const id = this._selectedId;
     if (id == null) return;
     try { deleteEvent(id); } catch (err) { console.warn("[ww3d-editor] delete failed", err); }
+    if (this._offsets[id]) { delete this._offsets[id]; this._saveOffsets(); }
     this._clearSelection();
     const date = this._dayIso || this.host?._dayIso;
     if (date) this.host?.enterDayViewIso?.(date);
@@ -291,7 +375,9 @@ export class WordWeaver3DEditor {
 
   _clearSelection() {
     this._selectedId = null;
+    this._selCard = null;
     this.delBadge?.classList.add("hidden");
+    this._gizmo?.detach();
   }
 
   /** Keep the ✕ badge stuck to its (gently bobbing) card. Cheap; call per frame. */
@@ -309,6 +395,7 @@ export class WordWeaver3DEditor {
     this._dayIso = dayIso;
     this._clearSelection();
     this.bar.classList.remove("hidden");
+    this._applyOffsets();
   }
 
   hide() {
@@ -318,6 +405,12 @@ export class WordWeaver3DEditor {
   }
 
   dispose() {
+    if (this._gizmo) {
+      this._gizmo.detach();
+      this.host?.scene?.remove(this._gizmo);
+      this._gizmo.dispose?.();
+      this._gizmo = null;
+    }
     this.bar?.remove();
     this.wheel?.remove();
     this.delBadge?.remove();
