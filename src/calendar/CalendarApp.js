@@ -908,7 +908,7 @@ export class CalendarApp {
     this.bottomNav?.show();
 
     const startTab = new URLSearchParams(window.location.search).get("tab");
-    const allowedTabs = new Set(["calendar", "writer", "wordweaver", "inkling", "alerts", "alarm"]);
+    const allowedTabs = new Set(["calendar", "writer", "wordweaver", "inkling", "alerts", "alarm", "connections", "goals"]);
     if (allowedTabs.has(startTab)) {
       // Deep-linked (e.g. the ?tab=wordweaver share link) → go straight there.
       queueMicrotask(() => void this._handleBottomNavTab(startTab, { toggle: false }));
@@ -1002,6 +1002,8 @@ export class CalendarApp {
     this.wordWeaverEmbed?.hide();
     this.alertsPanel?.close();
     this.inklingPanel?.alerts?.hide({ silent: true });
+    this.inklingPanel?._connMap?.hide?.({ silent: true });
+    this.inklingPanel?._goals?.hide?.({ silent: true });
     closeAlertsDropdown();
     this.windowManager?.closeAllPanels();
     document.dispatchEvent(new CustomEvent("inkling:close-all-panels"));
@@ -1108,6 +1110,8 @@ export class CalendarApp {
     this.notebookWriterPanel.close();
     this.threadPanel.close();
     this.inklingPanel.minimize();
+    this.inklingPanel?._connMap?.hide?.({ silent: true });
+    this.inklingPanel?._goals?.hide?.({ silent: true });
     this.wordWeaverEmbed?.exitImmersive();
     this.wordWeaverEmbed?.hide();
     this._weaverGalaxy?.hide();
@@ -1157,6 +1161,17 @@ export class CalendarApp {
         document.body.classList.add("inkling-stage-open");
         this._showStageBackdrop(true);
         await this.openAlarmClock();
+        break;
+      case "connections":
+        document.body.classList.add("inkling-stage-open");
+        this._showStageBackdrop(true);
+        // Full-screen 2D connections web; ✕ tears the nav stage back down.
+        this.inklingPanel?.showConnectionsMap({ onClose: () => this._closeBottomStage() });
+        break;
+      case "goals":
+        document.body.classList.add("inkling-stage-open");
+        this._showStageBackdrop(true);
+        this.inklingPanel?.showGoals({ onClose: () => this._closeBottomStage() });
         break;
       default:
         break;

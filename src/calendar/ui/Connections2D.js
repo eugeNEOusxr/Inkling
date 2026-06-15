@@ -235,7 +235,12 @@ export class Connections2D {
     }
   }
 
-  show() { this._build(); this._render(); this._root.style.display = "flex"; }
-  hide() { if (this._root) this._root.style.display = "none"; }
+  show(opts = {}) { this._build(); this._render(); this._root.style.display = "flex"; this._onClose = opts.onClose || null; }
+  hide(opts = {}) {
+    if (this._root) this._root.style.display = "none";
+    const cb = this._onClose;
+    this._onClose = null;
+    if (!opts.silent) cb?.();
+  }
   toggle() { this._build(); (this._root.style.display === "none" || !this._root.style.display) ? this.show() : this.hide(); }
 }

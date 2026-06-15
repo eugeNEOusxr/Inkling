@@ -138,14 +138,18 @@ export class GoalsPanel {
     return row;
   }
 
-  show() {
+  show(opts = {}) {
     this._build();
     this._render();
     this._panel.style.display = "flex";
+    this._onClose = opts.onClose || null;
   }
 
-  hide() {
+  hide(opts = {}) {
     if (this._panel) this._panel.style.display = "none";
+    const cb = this._onClose;
+    this._onClose = null;
+    if (!opts.silent) cb?.();
   }
 
   toggle() {

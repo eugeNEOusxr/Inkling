@@ -307,13 +307,12 @@ export class InklingPanel {
       b.addEventListener("click", () => { menu.classList.remove("open"); fn(); });
       return b;
     };
+    // Orb = Inkling's own quick actions. Connections-map, Goals, Alerts and
+    // Alarm now live in the bottom nav, so they're dropped here to keep the
+    // orb cluster legible (was 9 cramped icons).
     this._orbItems = [
       mk("💬", "Chat with Inkling", () => this.openWithContext()),
       mk("🔗", "Connections", () => this.showConnections()),
-      mk("🕸", "Connections map", () => this.showConnectionsMap()),
-      mk("🎯", "Goals", () => this.showGoals()),
-      mk("🔔", "Alerts", () => this.alerts?.show()),
-      mk("⏰", "Alarm clock", () => this.app?.openAlarmClock?.()),
       mk("＋", "New event", () => this._orbNewEvent()),
       mk("🎨", "Text style", () => openTextStylePicker()),
       mk("📅", "Go to today", () => this._orbToday())
@@ -395,15 +394,15 @@ export class InklingPanel {
   }
 
   /** Open the Goals surface (capture + review goals). */
-  showGoals() {
+  showGoals(opts = {}) {
     if (!this._goals) this._goals = new GoalsPanel();
-    this._goals.show();
+    this._goals.show(opts);
   }
 
   /** Open the 2D connections node map. */
-  showConnectionsMap() {
+  showConnectionsMap(opts = {}) {
     if (!this._connMap) this._connMap = new Connections2D();
-    this._connMap.show();
+    this._connMap.show(opts);
   }
 
   /** Open Inkling and show the patterns it has spotted + reports it could make. */
