@@ -69,16 +69,27 @@ export async function requireAuthForApp() {
     return false;
   }
 
+  // Validate the token — but ONLY log out + bounce to login if the server
+  // genuinely REJECTS it (401). A network hiccup, cold start, or timeout must
+  // NOT wipe the session and kick the user back to a blank login (that was the
+  // "loads then reverts to login" loop). Stay signed in; sync catches up later.
   try {
-    const user = await fetchMe();
+    const user = await Promise.race([
+      fetchMe(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 6000))
+    ]);
     applyServerUserToClient(user);
-    await pullCloudBundle();
-    return true;
-  } catch {
-    clearSession();
-    window.location.href = "/login.html";
-    return false;
+  } catch (err) {
+    if (err && err.status === 401) {
+      clearSession();
+      window.location.href = "/login.html";
+      return false;
+    }
+    // transient failure → keep the session and enter the app anyway
   }
+  // Pull cloud data in the background; never block (or trap) entry on it.
+  pullCloudBundle().catch(() => {});
+  return true;
 }
 
 export function signOut() {
