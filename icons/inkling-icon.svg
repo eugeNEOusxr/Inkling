@@ -1,21 +1,43 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Inkling">
+  <defs>
+    <clipPath id="drop">
+      <path d="M256 80 C188 175 161 252 161 312 C161 375 205 425 256 425 C307 425 351 375 351 312 C351 252 324 175 256 80 Z"/>
+    </clipPath>
+  </defs>
   <rect x="0" y="0" width="512" height="512" fill="#0a0b12"/>
-  <circle cx="256" cy="256" r="200" fill="#0891b2" opacity="0.15"/>
-  <circle cx="256" cy="256" r="150" fill="#06b6d4" opacity="0.15"/>
+  <circle cx="256" cy="285" r="205" fill="#0e7490" opacity="0.16"/>
+  <circle cx="138" cy="170" r="3" fill="#e8b923" opacity="0.7"/>
+  <circle cx="384" cy="150" r="2.6" fill="#22d3ee" opacity="0.7"/>
+  <circle cx="150" cy="400" r="2.4" fill="#fde68a" opacity="0.6"/>
+  <circle cx="384" cy="392" r="2.6" fill="#22d3ee" opacity="0.6"/>
 
-  <circle cx="140" cy="150" r="4" fill="#e8b923"/>
-  <circle cx="378" cy="362" r="4" fill="#22d3ee"/>
-  <circle cx="372" cy="150" r="3.2" fill="#fde68a"/>
-  <circle cx="148" cy="366" r="3.2" fill="#22d3ee"/>
+  <path d="M256 80 C188 175 161 252 161 312 C161 375 205 425 256 425 C307 425 351 375 351 312 C351 252 324 175 256 80 Z" fill="#07232b"/>
 
-  <g transform="rotate(-22 256 256)">
-    <ellipse cx="256" cy="256" rx="182" ry="58" fill="none" stroke="#e8b923" stroke-width="7" opacity="0.9"/>
+  <g clip-path="url(#drop)">
+    <ellipse cx="200" cy="208" rx="14" ry="34" fill="#67e8f9" opacity="0.28"/>
+    <g stroke="#d4a017" stroke-width="2.2" opacity="0.62" fill="none">
+      <path d="M256 152 L210 230"/>
+      <path d="M210 230 L288 268"/>
+      <path d="M288 268 L300 205"/>
+      <path d="M300 205 L256 152"/>
+      <path d="M210 230 L222 305"/>
+      <path d="M222 305 L252 370"/>
+      <path d="M252 370 L305 330"/>
+      <path d="M305 330 L288 268"/>
+    </g>
+    <circle cx="210" cy="230" r="6" fill="#fbbf24"/>
+    <circle cx="288" cy="268" r="6" fill="#fbbf24"/>
+    <circle cx="305" cy="330" r="5.5" fill="#fbbf24"/>
+    <circle cx="252" cy="370" r="5.5" fill="#fbbf24"/>
+    <circle cx="300" cy="205" r="5" fill="#22d3ee"/>
+    <circle cx="222" cy="305" r="5" fill="#22d3ee"/>
+    <circle cx="290" cy="150" r="2.6" fill="#fde68a"/>
+    <circle cx="195" cy="292" r="2.6" fill="#fde68a"/>
+    <circle cx="322" cy="255" r="2.4" fill="#67e8f9"/>
+    <circle cx="243" cy="398" r="2.2" fill="#fde68a"/>
+    <path d="M256 124 Q261 145 282 150 Q261 155 256 176 Q251 155 230 150 Q251 145 256 124 Z" fill="#fde68a"/>
   </g>
 
-  <circle cx="256" cy="256" r="118" fill="#0891b2"/>
-  <circle cx="218" cy="212" r="54" fill="#5eead4" opacity="0.55"/>
-  <circle cx="206" cy="200" r="20" fill="#cffafe" opacity="0.85"/>
-  <circle cx="256" cy="256" r="118" fill="none" stroke="#22d3ee" stroke-width="4" opacity="0.6"/>
-
-  <path d="M330 168 Q335 192 358 196 Q335 200 330 224 Q325 200 302 196 Q325 192 330 168 Z" fill="#fde68a"/>
+  <path d="M256 80 C188 175 161 252 161 312 C161 375 205 425 256 425 C307 425 351 375 351 312 C351 252 324 175 256 80 Z" fill="none" stroke="#e8b923" stroke-width="5"/>
+  <circle cx="256" cy="80" r="4" fill="#fef3c7"/>
 </svg>
