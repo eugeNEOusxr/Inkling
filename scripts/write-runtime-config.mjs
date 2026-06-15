@@ -12,7 +12,14 @@ const outPaths = [
 
 const apiUrl = (process.env.INKLING_API_URL || process.env.VITE_INKLING_API_URL || "").trim();
 const platform = (process.env.INKLING_PLATFORM || process.env.TAURI_ENV_PLATFORM || "web").trim();
-const buildTag = (process.env.INKLING_BUILD_TAG || "dev").trim();
+// A unique, human-readable build stamp (UTC) so the in-app version readout
+// changes every deploy and users can tell when an update landed.
+function defaultBuildTag() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}.${p(d.getUTCMonth() + 1)}.${p(d.getUTCDate())}.${p(d.getUTCHours())}${p(d.getUTCMinutes())}`;
+}
+const buildTag = (process.env.INKLING_BUILD_TAG || defaultBuildTag()).trim();
 // Web Push: the VAPID public key the browser subscribes with. Safe to ship.
 // Falls back to vapid-public.json (written by scripts/gen-vapid.mjs) so a normal
 // build picks it up without needing the env var set.

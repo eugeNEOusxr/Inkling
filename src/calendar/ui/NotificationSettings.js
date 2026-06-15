@@ -42,11 +42,12 @@ const EVENT_TYPES = [
  * UI is injected dynamically so HTML structure stays unchanged.
  */
 export class NotificationSettings {
-  constructor({ onChange, onTestSound, onRequestBrowserPermission, onPushEnabled }) {
+  constructor({ onChange, onTestSound, onRequestBrowserPermission, onPushEnabled, onCheckUpdates }) {
     this.onChange = onChange ?? (() => {});
     this.onTestSound = onTestSound ?? (() => {});
     this.onRequestBrowserPermission = onRequestBrowserPermission ?? (() => {});
     this.onPushEnabled = onPushEnabled ?? (() => {});
+    this.onCheckUpdates = onCheckUpdates ?? (() => {});
 
     this.el = document.getElementById("notification-settings-panel");
     this.soundSelect = document.getElementById("notify-settings-sound");
@@ -396,16 +397,27 @@ export class NotificationSettings {
       );
     });
 
+    const buildTag = (typeof window !== "undefined" && window.__INKLING_RUNTIME__?.buildTag) || "dev";
     const aboutSection = document.createElement("section");
     aboutSection.className =
       "notification-settings-extra-section notification-settings-extra-section--about";
     aboutSection.innerHTML = `
-      <h4 class="notification-settings-extra-title">About</h4>
+      <h4 class="notification-settings-extra-title">App updates</h4>
+      <p class="notification-settings-extra-help">
+        Inkling updates itself — when a new version is ready you'll see an
+        "Update available" banner. No need to reinstall.
+      </p>
+      <p class="notification-settings-extra-help">Version: <span data-app-version>${buildTag}</span></p>
+      <button type="button" class="btn-ghost notification-update-check" data-check-updates>Check for updates</button>
+      <h4 class="notification-settings-extra-title" style="margin-top:14px;">About</h4>
       <p class="notification-settings-extra-help">
         Idle backdrop: star cluster Pismis 24 (James Webb Space Telescope).
         Image credit: NASA, ESA, CSA, STScI.
       </p>
     `;
+    aboutSection
+      .querySelector("[data-check-updates]")
+      ?.addEventListener("click", () => this.onCheckUpdates());
 
     extras.appendChild(soundByTypeSection);
     extras.appendChild(previewSection);

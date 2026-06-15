@@ -30,6 +30,7 @@ import { NotificationWall } from "./NotificationWall.js";
 import { NotificationDropdown } from "./ui/NotificationDropdown.js";
 import { NotificationSettings } from "./ui/NotificationSettings.js";
 import { InstallPrompt } from "./ui/InstallPrompt.js";
+import { UpdatePrompt } from "./ui/UpdatePrompt.js";
 import { loadNotificationSettings } from "./notifications/notificationSettings.js";
 import { initPushLifecycle } from "./notifications/webPush.js";
 import { scheduleUpload as schedulePushUpload, uploadNow as uploadPushNow } from "./notifications/pushSchedule.js";
@@ -88,6 +89,8 @@ export class CalendarApp {
     this._mobileToolbarEl = null;
     this.nativeRuntime = this._detectNativeRuntime();
     this.installPrompt = null;
+    this.updatePrompt = new UpdatePrompt();
+    this._swRegistration = null;
 
     const saved = loadSavedMonth();
     const now = new Date();
@@ -120,7 +123,8 @@ export class CalendarApp {
       onRequestBrowserPermission: () => this.notificationService.requestPermission(),
       // When web push is turned on, immediately upload the alarm schedule so the
       // server knows what to fire.
-      onPushEnabled: () => uploadPushNow(() => this.state).catch(() => {})
+      onPushEnabled: () => uploadPushNow(() => this.state).catch(() => {}),
+      onCheckUpdates: () => this.checkForUpdates()
     });
 
     this.notificationService = new NotificationService(() => this.state, {
@@ -1783,33 +1787,83 @@ export class CalendarApp {
   }
 
   _registerServiceWorker() {
-    // PWA bootstrap hook: safe registration for offline app shell support.
-    // Remove by deleting this method and the constructor call.
+    // PWA update flow: a new worker installs and WAITS; we show an "Update
+    // available" banner so the installed home-screen app refreshes with one tap
+    // instead of a delete + reinstall. Remove by deleting this method, the
+    // constructor call, and UpdatePrompt.
     if (!("serviceWorker" in navigator)) return;
+
+    // Reload exactly once when the new worker takes control (after SKIP_WAITING).
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
+
+    const promptUpdate = (worker) => {
+      if (!worker) return;
+      this.updatePrompt?.showAvailable(() => {
+        worker.postMessage({ type: "SKIP_WAITING" });
+      });
+    };
+
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("/service-worker.js").then((reg) => {
-        // Pull updates now + every 30 min so a new deploy is noticed without a
-        // manual hard-refresh.
-        reg.update().catch(() => {});
-        setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
-        // When a NEW worker installs AND one already controls the page (i.e. an
-        // update, not a first install), reload once so the user lands on the
-        // fresh UI instead of a stale cached one.
-        let reloaded = false;
+        this._swRegistration = reg;
+
+        // A new version may already be waiting from a previous visit.
+        if (reg.waiting && navigator.serviceWorker.controller) promptUpdate(reg.waiting);
+
+        // A new worker is installing now → prompt once it finishes (update only,
+        // not the very first install where there's no controller yet).
         reg.addEventListener("updatefound", () => {
           const nw = reg.installing;
           if (!nw) return;
           nw.addEventListener("statechange", () => {
-            if (nw.state === "installed" && navigator.serviceWorker.controller && !reloaded) {
-              reloaded = true;
-              window.location.reload();
+            if (nw.state === "installed" && navigator.serviceWorker.controller) {
+              promptUpdate(reg.waiting || nw);
             }
           });
         });
+
+        // Check for a new deploy on launch, whenever the app regains focus
+        // (installed PWAs are frozen in the background), and every 30 min.
+        reg.update().catch(() => {});
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") reg.update().catch(() => {});
+        });
+        setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
       }).catch(() => {
         /* ignore registration failures in unsupported contexts */
       });
     });
+  }
+
+  /**
+   * Manual "Check for updates" (settings button). Reports status via the banner.
+   */
+  async checkForUpdates() {
+    if (!("serviceWorker" in navigator)) {
+      this.updatePrompt?.showStatus("Updates aren't supported in this browser.", 4000);
+      return;
+    }
+    const reg = this._swRegistration || (await navigator.serviceWorker.getRegistration());
+    if (!reg) {
+      this.updatePrompt?.showStatus("Not installed as an app yet.", 4000);
+      return;
+    }
+    this.updatePrompt?.showStatus("Checking for updates…");
+    try {
+      await reg.update();
+    } catch {
+      /* offline / network error — fall through */
+    }
+    if (reg.waiting) {
+      this.updatePrompt?.showAvailable(() => reg.waiting.postMessage({ type: "SKIP_WAITING" }));
+    } else {
+      this.updatePrompt?.showStatus("You're on the latest version.", 4000);
+    }
   }
 
   _mountInstallPrompt() {
@@ -1817,6 +1871,7 @@ export class CalendarApp {
     // Remove by deleting this method and InstallPrompt import.
     this.installPrompt = new InstallPrompt();
     this.installPrompt.mount();
+    this.updatePrompt.mount();
   }
 
   _mountOsShell() {
