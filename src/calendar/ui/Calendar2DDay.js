@@ -23,6 +23,7 @@ import {
   getEventsForMonth,
   todayIsoDate
 } from "../../wordweaver/timelineModel.js";
+import { NoteAddBar } from "../../wordweaver/NoteAddBar.js";
 import { openTextStylePicker, textStyleCss, getTextStyleRaw, getTextAnim, textAnimCss } from "./TextStylePicker.js";
 import { createAlert, addAlert, removeAlertsForEntry, AlertPriority } from "../alerts/alertsModel.js";
 import { recomputeSchedule } from "../alerts/alertsScheduler.js";
@@ -126,6 +127,20 @@ export class Calendar2DDay {
     this._grid = null;
     this._editing = null; // event id being edited, or null for new
     this._nowTimer = null;
+    this._addBar = null;  // shared quick-add note bar (day view only)
+  }
+
+  /** Show the shared add-note bar in day view; hide it elsewhere. */
+  _syncAddBar() {
+    const open = this.root && this.root.style.display !== "none";
+    if (open && this.view === "day") {
+      if (!this._addBar) {
+        this._addBar = new NoteAddBar({ bottomPx: 78, onAdded: () => this.render() });
+      }
+      this._addBar.show(this.iso);
+    } else {
+      this._addBar?.hide();
+    }
   }
 
   // --- lifecycle ---
@@ -150,6 +165,7 @@ export class Calendar2DDay {
   close() {
     if (this.root) this.root.style.display = "none";
     if (this._nowTimer) { clearInterval(this._nowTimer); this._nowTimer = null; }
+    this._addBar?.hide();
   }
 
   setDate(iso) { this.iso = iso; this.render(); }
@@ -461,6 +477,7 @@ export class Calendar2DDay {
 
   render() {
     if (!this.root) return;
+    this._syncAddBar();
     if (this.view === "month") { this._renderMonth(); return; }
     this._renderDay();
   }

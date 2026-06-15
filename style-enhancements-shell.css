@@ -188,7 +188,8 @@ body.inkling-notebook-layout #inkling-fab.inkling-avatar {
     inset 0 2px 6px rgba(255, 255, 255, 0.55),
     inset 0 -8px 14px rgba(30, 27, 75, 0.6);
   cursor: grab;
-  z-index: 11005;
+  /* Above the day-view note bar (11200/11220) so the orb is always reachable. */
+  z-index: 11250;
   /* visible so the alerts badge can sit OUTSIDE the orb's circle without being
      clipped; the sheen ::before self-clips to a circle below. */
   overflow: visible;

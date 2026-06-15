@@ -549,6 +549,7 @@ export class WordWeaverEmbed {
   hide() {
     this._date = null;
     this._cachedModule = null;
+    this._scene?._editor?.hide?.(); // tuck away the 3D add-note bar on tab switch
     document.body.classList.remove("wordweaver-layout-editing");
     this._attachToStage(false);
     this.exitImmersive();

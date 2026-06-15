@@ -2700,7 +2700,8 @@ body.notebook-writer-panel-open .notification-bell-anchor {
 /* Inkling assistant */
 .inkling-fab {
   position: fixed;
-  z-index: 10185;
+  /* Above the day-view note bar (11200/11220) so Inkling is always reachable. */
+  z-index: 11250;
   right: calc(16px + env(safe-area-inset-right, 0px));
   bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   padding: 10px 16px;
@@ -3179,7 +3180,8 @@ body.alerts-panel-open .notification-bell-anchor {
 #inkling-panel,
 .inkling-panel {
   position: fixed;
-  z-index: 10350;
+  /* Above the day-view note bar (11200/11220) so Inkling chat opens over it. */
+  z-index: 11260;
   right: calc(12px + env(safe-area-inset-right, 0px));
   bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   width: min(380px, calc(100vw - var(--calendar-sidebar-w, 220px) - 32px));
