@@ -3378,6 +3378,19 @@ body.inkling-open .inkling-fab {
   backdrop-filter: blur(12px);
 }
 
+/* Today's date, shown beside the month in the top-left chrome. */
+.top-chrome__today {
+  font-size: 12px;
+  font-weight: 600;
+  color: #7dd3fc;
+  white-space: nowrap;
+  opacity: 0.92;
+  flex-shrink: 0;
+}
+.top-chrome__today:empty {
+  display: none;
+}
+
 .top-chrome__nav {
   display: flex;
   align-items: center;

@@ -10,6 +10,12 @@ import { recomputeSchedule } from "../alerts/alertsScheduler.js";
 import { playAlertSound } from "../alerts/alertSounds.js";
 
 const pad = (n) => String(n).padStart(2, "0");
+const isoToday = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const fmtDay = (iso) => {
+  const [y, m, d] = String(iso || "").split("-").map(Number);
+  if (!y) return "";
+  return new Date(y, (m || 1) - 1, d || 1).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+};
 
 export class AlarmClock {
   constructor(app) {
@@ -21,6 +27,7 @@ export class AlarmClock {
     this._alarmM = 0;
     this._settingPhase = "hour"; // first tap = hour hand, second tap = minute hand
     this._ampm = this._alarmH >= 12 ? "PM" : "AM";
+    this._alarmDate = isoToday(); // which DAY the alarm fires on (defaults today)
     // stopwatch
     this._swRunning = false;
     this._swStart = 0;
@@ -184,7 +191,12 @@ export class AlarmClock {
       this._subEl.innerHTML = this._settingPhase === "hour"
         ? "First tap the clock to set the <b style='color:#22d3ee'>HOUR</b>"
         : "Now tap to set the <b style='color:#22d3ee'>MINUTE</b>";
+      if (!this._alarmDate) this._alarmDate = isoToday();
       c.innerHTML = `
+        <div class="ac-row">
+          <label style="font-size:12px;color:#94a3b8">On</label>
+          <input type="date" class="ac-date" value="${this._alarmDate}" min="${isoToday()}"/>
+        </div>
         <div class="ac-row">
           <input type="time" class="ac-time" value="${pad(this._alarmH)}:${pad(this._alarmM)}"/>
           <button class="ac-btn ghost ac-ampm" title="AM / PM">${this._ampm}</button>
@@ -193,6 +205,9 @@ export class AlarmClock {
           <input type="text" class="ac-label" placeholder="Label (optional)" style="min-width:170px"/>
           <button class="ac-btn ac-set-alarm">Set alarm</button>
         </div>`;
+      c.querySelector(".ac-date").addEventListener("input", (e) => {
+        if (e.target.value) this._alarmDate = e.target.value;
+      });
       c.querySelector(".ac-time").addEventListener("input", (e) => {
         const [h, m] = e.target.value.split(":").map(Number);
         if (Number.isFinite(h)) { this._alarmH = h; this._ampm = h >= 12 ? "PM" : "AM"; }
@@ -247,10 +262,16 @@ export class AlarmClock {
 
   _addAlarm(label) {
     const now = new Date();
-    const d = new Date(now);
-    d.setHours(this._alarmH, this._alarmM, 0, 0);
-    if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1); // next occurrence
-    const dateIso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const today = isoToday();
+    let dateIso = this._alarmDate || today;
+    const [Y, Mo, Da] = dateIso.split("-").map(Number);
+    const d = new Date(Y, (Mo || 1) - 1, Da || 1, this._alarmH, this._alarmM, 0, 0);
+    // Only auto-roll to tomorrow when the user left the date on TODAY and the
+    // chosen time has already passed (preserves the old quick-set convenience).
+    if (d.getTime() <= now.getTime() && dateIso === today) {
+      d.setDate(d.getDate() + 1);
+      dateIso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
     const time = `${pad(this._alarmH)}:${pad(this._alarmM)}`;
     const labelText = String(label || "").trim();
     try {
@@ -267,7 +288,7 @@ export class AlarmClock {
     // Join with Inkling: let it acknowledge the alarm (it also shows in the
     // Inkling alerts panel since both read the same alerts store).
     try {
-      this.app?.inklingPanel?.notifyProactive?.(`⏰ Alarm set for ${time}${labelText ? ` — “${labelText}”` : ""}. I'll wake you.`);
+      this.app?.inklingPanel?.notifyProactive?.(`⏰ Alarm set for ${fmtDay(dateIso)} at ${time}${labelText ? ` — “${labelText}”` : ""}. I'll wake you.`);
     } catch { /* ignore */ }
     this._renderAlarmList();
   }
@@ -284,7 +305,8 @@ export class AlarmClock {
     for (const { alert } of rows) {
       const row = document.createElement("div");
       row.className = "ac-item";
-      row.innerHTML = `<span class="t">${alert.time}</span><span class="l">${(alert.text || "Alarm").replace(/[<>&]/g, "")}</span><button class="ac-del" title="Delete">✕</button>`;
+      const dayLabel = alert.date === isoToday() ? "Today" : fmtDay(alert.date);
+      row.innerHTML = `<span class="t">${alert.time}</span><span class="d" style="color:#7dd3fc;font-size:12px;min-width:84px">${dayLabel}</span><span class="l">${(alert.text || "Alarm").replace(/[<>&]/g, "")}</span><button class="ac-del" title="Delete">✕</button>`;
       row.querySelector(".ac-del").addEventListener("click", () => {
         try { dismissAlert(alert.id); recomputeSchedule(); } catch { /* ignore */ }
         this._renderAlarmList();

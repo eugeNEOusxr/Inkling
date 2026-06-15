@@ -38,6 +38,7 @@
         <div class="top-chrome__bar">
           <div class="top-chrome__month-block">
             <span id="calendar-nav-month" class="top-chrome__month">June 2026</span>
+            <span id="app-today-date" class="top-chrome__today" aria-label="Today's date"></span>
           </div>
           <div class="top-chrome__actions">
             <button
@@ -564,6 +565,19 @@
       s.src = "//gc.zgo.at/count.js";
       s.setAttribute("data-goatcounter", "https://eugeneousxr.goatcounter.com/count");
       document.head.appendChild(s);
+    })();
+  </script>
+  <!-- Today's date in the top-left chrome (refreshes on focus so it rolls over at midnight). -->
+  <script>
+    (function () {
+      function setToday() {
+        var el = document.getElementById("app-today-date");
+        if (!el) return;
+        el.textContent = new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+      }
+      setToday();
+      document.addEventListener("visibilitychange", function () { if (!document.hidden) setToday(); });
+      window.addEventListener("focus", setToday);
     })();
   </script>
 </body>
