@@ -88,7 +88,7 @@ export async function pullCloudBundle() {
   const local = collectLocalBundle();
   let remote;
   try {
-    remote = (await apiFetch("/api/sync")).bundle;
+    remote = (await apiFetch("/api/sync", { timeoutMs: 8000 })).bundle;
   } catch {
     return { ok: false, source: "local" };
   }
@@ -111,7 +111,8 @@ export async function pushCloudBundle() {
   const bundle = collectLocalBundle();
   await apiFetch("/api/sync", {
     method: "PUT",
-    body: JSON.stringify({ bundle })
+    body: JSON.stringify({ bundle }),
+    timeoutMs: 8000
   });
   lastPushAt = Date.now();
   return { ok: true, savedAt: bundle.savedAt };

@@ -161,7 +161,13 @@
         setSession({ token: result.token, email: result.email, user: result.user });
         applyServerUserToClient(result.user);
         statusEl.textContent = "Loading your calendar…";
-        await pullCloudBundle();
+        // Don't let a slow/hanging cloud sync trap you on the login page after a
+        // successful sign-in — give it a few seconds, then go in regardless (the
+        // app re-syncs on load anyway).
+        await Promise.race([
+          pullCloudBundle().catch(() => {}),
+          new Promise((r) => setTimeout(r, 4000))
+        ]);
         window.location.href = "/index.html";
       } catch (err) {
         errorEl.textContent = err.message || "Could not sign in.";
