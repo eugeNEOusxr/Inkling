@@ -39,6 +39,12 @@ function injectStyles() {
          (the best part) stay on screen in landscape instead of being cropped. */
       object-position: center bottom;
       display: none;
+      /* Rest zoom gives the gyroscope/pointer parallax room to pan without
+         exposing the image edges. JS overrides this with translate + scale. */
+      transform: scale(1.18);
+      transform-origin: center center;
+      transition: none;
+      will-change: transform;
     }
     .cosmos-backdrop--image-loaded .cosmos-backdrop__photo {
       display: block;
@@ -198,6 +204,104 @@ export class CosmosBackdrop {
     this._imageLoaded = true;
     this.el?.classList.add("cosmos-backdrop--image-loaded");
     this._stop();
+    this._initParallax();
+  }
+
+  /**
+   * Subtle "viewport into the cosmos" parallax: the slightly-zoomed backdrop
+   * pans a little as the phone tilts (gyroscope) or the pointer moves (desktop),
+   * so it reads as a window onto the scene rather than a flat image. Not real 3D.
+   */
+  _initParallax() {
+    if (this._parallaxInit || !this.photoEl) return;
+    // Honour reduced-motion: keep the rest zoom, skip the motion.
+    try {
+      if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    } catch { /* ignore */ }
+    this._parallaxInit = true;
+
+    this._baseScale = 1.18;
+    this._tilt = { x: 0, y: 0 };       // target, normalised -1..1
+    this._tiltCur = { x: 0, y: 0 };    // smoothed current
+    this._parallaxRaf = 0;
+    this._applyParallax();
+
+    // Desktop / no-gyro: pointer position drives the pan.
+    window.addEventListener(
+      "pointermove",
+      (e) => {
+        if (!this.isVisible()) return;
+        const w = window.innerWidth || 1;
+        const h = window.innerHeight || 1;
+        this._tilt.x = (e.clientX / w) * 2 - 1;
+        this._tilt.y = (e.clientY / h) * 2 - 1;
+        this._runParallax();
+      },
+      { passive: true }
+    );
+
+    // Phone gyroscope.
+    const onOrient = (e) => {
+      if (e.gamma == null && e.beta == null) return;
+      const landscape = Math.abs(window.orientation || 0) === 90;
+      // gamma: left-right tilt [-90..90]; beta: front-back [-180..180], with
+      // ~45° treated as the neutral "holding the phone" angle.
+      const g = Math.max(-40, Math.min(40, e.gamma || 0)) / 40;
+      let b = Math.max(-40, Math.min(40, (e.beta || 0) - 45)) / 40;
+      this._tilt.x = landscape ? b : g;
+      this._tilt.y = landscape ? g : b;
+      this._runParallax();
+    };
+
+    const attachGyro = async () => {
+      try {
+        const DOE = window.DeviceOrientationEvent;
+        if (DOE && typeof DOE.requestPermission === "function") {
+          const res = await DOE.requestPermission();
+          if (res !== "granted") return;
+        }
+        window.addEventListener("deviceorientation", onOrient, { passive: true });
+      } catch { /* ignore */ }
+    };
+
+    // iOS 13+ requires a user gesture to grant orientation access; wait for the
+    // first tap. Android/others can attach immediately.
+    const DOE = window.DeviceOrientationEvent;
+    if (DOE && typeof DOE.requestPermission === "function") {
+      const once = () => {
+        window.removeEventListener("pointerdown", once);
+        attachGyro();
+      };
+      window.addEventListener("pointerdown", once, { once: true });
+    } else if (DOE) {
+      attachGyro();
+    }
+  }
+
+  _runParallax() {
+    if (this._parallaxRaf || !this.isVisible()) return;
+    const tick = () => {
+      this._tiltCur.x += (this._tilt.x - this._tiltCur.x) * 0.08;
+      this._tiltCur.y += (this._tilt.y - this._tiltCur.y) * 0.08;
+      this._applyParallax();
+      const settled =
+        Math.abs(this._tilt.x - this._tiltCur.x) < 0.001 &&
+        Math.abs(this._tilt.y - this._tiltCur.y) < 0.001;
+      this._parallaxRaf = settled ? 0 : requestAnimationFrame(tick);
+    };
+    this._parallaxRaf = requestAnimationFrame(tick);
+  }
+
+  _applyParallax() {
+    if (!this.photoEl) return;
+    const S = this._baseScale || 1.18;
+    // Never pan past the zoom overflow, so edges stay covered (0.85 safety).
+    const maxX = ((S - 1) / 2) * 0.85 * (window.innerWidth || 0);
+    const maxY = ((S - 1) / 2) * 0.85 * (window.innerHeight || 0);
+    const tx = -(this._tiltCur?.x || 0) * maxX;
+    const ty = -(this._tiltCur?.y || 0) * maxY;
+    this.photoEl.style.transform =
+      `translate3d(${tx.toFixed(1)}px, ${ty.toFixed(1)}px, 0) scale(${S})`;
   }
 
   _onImageFailed() {
