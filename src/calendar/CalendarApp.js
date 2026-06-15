@@ -31,6 +31,8 @@ import { NotificationDropdown } from "./ui/NotificationDropdown.js";
 import { NotificationSettings } from "./ui/NotificationSettings.js";
 import { InstallPrompt } from "./ui/InstallPrompt.js";
 import { loadNotificationSettings } from "./notifications/notificationSettings.js";
+import { initPushLifecycle } from "./notifications/webPush.js";
+import { scheduleUpload as schedulePushUpload, uploadNow as uploadPushNow } from "./notifications/pushSchedule.js";
 import { bootstrapAppearance } from "../theme/applyAppearance.js";
 import { iconDay, iconHour, iconBell, iconSettings } from "./ui/IconLibrary.js";
 import { WindowManager } from "./ui/WindowManager.js";
@@ -115,7 +117,10 @@ export class CalendarApp {
     this.notificationSettings = new NotificationSettings({
       onChange: () => this._refreshNotificationUi(),
       onTestSound: (themeId) => this.notificationService.testSound(themeId),
-      onRequestBrowserPermission: () => this.notificationService.requestPermission()
+      onRequestBrowserPermission: () => this.notificationService.requestPermission(),
+      // When web push is turned on, immediately upload the alarm schedule so the
+      // server knows what to fire.
+      onPushEnabled: () => uploadPushNow(() => this.state).catch(() => {})
     });
 
     this.notificationService = new NotificationService(() => this.state, {
@@ -128,6 +133,11 @@ export class CalendarApp {
       onNavigate: (target) => this.navigateFromNotification(target)
     });
     this.notificationService.start();
+
+    // Web Push: re-subscribe on SW key rotation and refresh the subscription on
+    // the (ephemeral) backend, then push the current alarm schedule up.
+    initPushLifecycle();
+    schedulePushUpload(() => this.state);
 
     this.notificationWall.onItemClick = (target) => this.navigateFromNotification(target);
     this.notificationWall.onBack = () => this.exitNotificationWall();
@@ -479,6 +489,8 @@ export class CalendarApp {
     persistCalendarState(this.state);
     this.onLocalDataChange();
     this.notificationService?.tick();
+    // Keep the server-side push schedule in sync with edited/added/removed events.
+    schedulePushUpload(() => this.state);
     this.wordWeaverEmbed?.refresh();
   }
 

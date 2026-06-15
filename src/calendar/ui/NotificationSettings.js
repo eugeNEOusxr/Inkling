@@ -11,6 +11,13 @@ import { getDisplayName, getUsername, setUsername } from "./userProfile.js";
 import { iconSettings } from "./IconLibrary.js";
 import { renderAppearancePalettePicker } from "../../theme/appearancePaletteUi.js";
 import { setAppearancePalette } from "../../theme/applyAppearance.js";
+import {
+  isPushSupported,
+  isPushEnabledLocally,
+  enablePush,
+  disablePush,
+  sendTestPush
+} from "../notifications/webPush.js";
 
 const ADDITIONAL_THEMES = [
   { id: "softMarimba", label: "Soft Marimba" },
@@ -35,10 +42,11 @@ const EVENT_TYPES = [
  * UI is injected dynamically so HTML structure stays unchanged.
  */
 export class NotificationSettings {
-  constructor({ onChange, onTestSound, onRequestBrowserPermission }) {
+  constructor({ onChange, onTestSound, onRequestBrowserPermission, onPushEnabled }) {
     this.onChange = onChange ?? (() => {});
     this.onTestSound = onTestSound ?? (() => {});
     this.onRequestBrowserPermission = onRequestBrowserPermission ?? (() => {});
+    this.onPushEnabled = onPushEnabled ?? (() => {});
 
     this.el = document.getElementById("notification-settings-panel");
     this.soundSelect = document.getElementById("notify-settings-sound");
@@ -332,6 +340,62 @@ export class NotificationSettings {
       </p>
     `;
 
+    const pushSection = document.createElement("section");
+    pushSection.className =
+      "notification-settings-extra-section notification-settings-extra-section--push";
+    pushSection.innerHTML = `
+      <h4 class="notification-settings-extra-title">Alarms when the app is closed</h4>
+      <p class="notification-settings-extra-help">
+        Web Push delivers alarms to this device even when Inkling isn't open.
+        Requires being signed in and allowing notifications.
+      </p>
+      <label class="notification-quiet-row">
+        <input type="checkbox" class="notification-push-toggle" data-push-toggle />
+        <span>Send alarms to this device (web push)</span>
+      </label>
+      <button type="button" class="btn-ghost notification-push-test" data-push-test>Send test alarm</button>
+      <p class="notification-settings-extra-help notification-push-status" data-push-status role="status"></p>
+    `;
+
+    this.pushToggle = pushSection.querySelector("[data-push-toggle]");
+    this.pushTestBtn = pushSection.querySelector("[data-push-test]");
+    this.pushStatusEl = pushSection.querySelector("[data-push-status]");
+
+    if (!isPushSupported()) {
+      if (this.pushToggle) this.pushToggle.disabled = true;
+      if (this.pushTestBtn) this.pushTestBtn.disabled = true;
+      this._setPushStatus("Web push isn't supported in this browser. On iPhone, install Inkling to your Home Screen first.");
+    }
+
+    this.pushToggle?.addEventListener("change", async () => {
+      if (this.pushToggle.checked) {
+        this._setPushStatus("Enabling…");
+        const res = await enablePush();
+        if (res.ok) {
+          this._setPushStatus("On — alarms will reach this device when the app is closed.");
+          this.onPushEnabled?.();
+        } else {
+          this.pushToggle.checked = false;
+          this._setPushStatus(this._pushError(res.reason));
+        }
+      } else {
+        await disablePush();
+        this._setPushStatus("Off — alarms only show while the app is open.");
+      }
+    });
+
+    this.pushTestBtn?.addEventListener("click", async () => {
+      if (!isPushEnabledLocally()) {
+        this._setPushStatus("Turn on web push first, then test.");
+        return;
+      }
+      this._setPushStatus("Sending test…");
+      const res = await sendTestPush();
+      this._setPushStatus(
+        res.ok ? "Test sent — you should see a notification shortly." : "Test failed. Re-enable web push and try again."
+      );
+    });
+
     const aboutSection = document.createElement("section");
     aboutSection.className =
       "notification-settings-extra-section notification-settings-extra-section--about";
@@ -346,6 +410,7 @@ export class NotificationSettings {
     extras.appendChild(soundByTypeSection);
     extras.appendChild(previewSection);
     extras.appendChild(quietSection);
+    extras.appendChild(pushSection);
     extras.appendChild(aboutSection);
     extras.insertBefore(themeSection, extras.firstChild);
     extras.insertBefore(appearanceSection, extras.firstChild);
@@ -529,6 +594,10 @@ export class NotificationSettings {
     }
 
     this._appearancePicker?.setSelected(s.appearancePalette ?? "neutral");
+
+    if (this.pushToggle && isPushSupported()) {
+      this.pushToggle.checked = isPushEnabledLocally();
+    }
   }
 
   _setChecked(id, value) {
@@ -538,5 +607,22 @@ export class NotificationSettings {
 
   _showStatus(msg) {
     if (this.statusEl) this.statusEl.textContent = msg;
+  }
+
+  _setPushStatus(msg) {
+    if (this.pushStatusEl) this.pushStatusEl.textContent = msg;
+  }
+
+  _pushError(reason) {
+    switch (reason) {
+      case "signed-out":
+        return "Sign in to enable alarms when the app is closed.";
+      case "denied":
+        return "Notifications are blocked. Allow them in your browser settings.";
+      case "unsupported":
+        return "Web push isn't supported in this browser.";
+      default:
+        return "Couldn't enable web push. Try again.";
+    }
   }
 }

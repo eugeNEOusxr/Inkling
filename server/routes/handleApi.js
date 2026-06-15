@@ -27,6 +27,7 @@ import {
   setCachedRemarks
 } from "../lib/wordweaver/generateRemarks.js";
 import { generateInklingChat } from "../lib/inkling/generateInklingChat.js";
+import { handlePushRoute } from "./pushRoutes.js";
 import crypto from "node:crypto";
 
 function json(res, status, body) {
@@ -78,6 +79,9 @@ function publicUser(user) {
 export async function handleApi(req, res, url) {
   const ip = clientIp(req);
   const rlKey = `${ip}:${url.pathname}`;
+
+  // Web Push alarm routes (subscribe / schedules / test / run). Self-contained.
+  if (await handlePushRoute(req, res, url)) return;
 
   // Diagnostic: reports whether durable Postgres (Neon) is active vs the file
   // fallback. No secrets — just "db" or "file" + whether DATABASE_URL is set.

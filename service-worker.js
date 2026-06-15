@@ -1,5 +1,5 @@
 /* Phase 1 PWA baseline: minimal offline support with safe caching strategy. */
-const CACHE_VERSION = "eugeneousxr-v26";
+const CACHE_VERSION = "eugeneousxr-v27";
 const CACHE_NAME = `${CACHE_VERSION}-core`;
 const CORE_ASSETS = [
   "/",
@@ -61,5 +61,67 @@ self.addEventListener("fetch", (event) => {
           return undefined;
         })
       )
+  );
+});
+
+/* ===================================================================
+ * Web Push alarms — fire even when the app/tab is fully closed.
+ * The backend sends an encrypted push (RFC 8291/8292); the OS wakes this
+ * worker, which shows the notification. No page needs to be open.
+ * =================================================================== */
+
+self.addEventListener("push", (event) => {
+  /** @type {{title?:string,body?:string,tag?:string,url?:string,requireInteraction?:boolean,renotify?:boolean,kind?:string}} */
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: "Inkling", body: event.data ? event.data.text() : "" };
+  }
+
+  const title = data.title || "Inkling alarm";
+  const options = {
+    body: data.body || "",
+    tag: data.tag || `inkling-${data.kind || "alarm"}`,
+    // Alarms should persist until the user acts; reminders can auto-dismiss.
+    requireInteraction: data.requireInteraction ?? data.kind === "alarm",
+    renotify: data.renotify ?? true,
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    data: { url: data.url || "/index.html", kind: data.kind || "alarm" },
+    // 8.4 vibrate where supported (Android) — short alarm pattern.
+    vibrate: data.kind === "alarm" ? [200, 100, 200, 100, 400] : [120]
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || "/index.html";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientsArr) => {
+      // Focus an existing tab if one is already open, else open a new one.
+      for (const client of clientsArr) {
+        if ("focus" in client) {
+          client.focus();
+          if ("navigate" in client) client.navigate(targetUrl).catch(() => {});
+          return undefined;
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+      return undefined;
+    })
+  );
+});
+
+// Re-subscribe transparently if the push service rotates the subscription.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    self.clients.matchAll({ includeUncontrolled: true }).then((clientsArr) => {
+      for (const client of clientsArr) {
+        client.postMessage({ type: "inkling-pushsubscriptionchange" });
+      }
+    })
   );
 });

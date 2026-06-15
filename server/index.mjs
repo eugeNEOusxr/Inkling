@@ -9,6 +9,7 @@ import path from "node:path";
 import { ROOT, DATA_DIR, PORT } from "./lib/config.js";
 import { ensureDataDir } from "./lib/userStore.js";
 import { handleApi } from "./routes/handleApi.js";
+import { startScheduler, getVapidConfig } from "./lib/push/scheduler.js";
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -102,4 +103,10 @@ server.listen(PORT, () => {
   console.log(`  App:      http://localhost:${PORT}/index.html`);
   console.log(`  Accounts: http://localhost:${PORT}/account-settings.html`);
   console.log(`  Email:    ${process.env.EMAIL_PROVIDER || "console"} provider`);
+  if (getVapidConfig()) {
+    startScheduler(Number(process.env.PUSH_SWEEP_MS) || 30000);
+    console.log(`  Push:     VAPID configured — alarm scheduler running`);
+  } else {
+    console.log(`  Push:     VAPID keys not set (set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY)`);
+  }
 });
