@@ -60,6 +60,17 @@ export async function generateInklingChat(payload) {
       messages,
       maxTokens: 1400
     });
+    // Mock provider (no API key) signals "no real LLM" — return an empty reply so
+    // the client falls back to its local intent-router rather than rendering the
+    // mock's JSON. (Never normalize this into a default reply.)
+    try {
+      const probe = JSON.parse(String(raw).trim());
+      if (probe && probe.noLlm) {
+        return { reply: null, action: "none", proposal: null, query: null, source: "mock" };
+      }
+    } catch {
+      /* not JSON — a normal LLM reply; continue */
+    }
     const parsed = splitReplyAndJson(raw);
     const out = normalizeInklingResponse(parsed, ref);
     out.source = "llm";

@@ -54,9 +54,14 @@ function injectStyles() {
     .ww3d-add.ok { background: linear-gradient(180deg, #34d399, #059669); }
 
     .ww3d-timewheel {
-      position: fixed; inset: 0; z-index: 10600;
-      background: rgba(4,8,16,0.92); backdrop-filter: blur(6px);
-      display: flex; flex-direction: column;
+      position: fixed; left: 50%; transform: translateX(-50%);
+      bottom: calc(222px + env(safe-area-inset-bottom, 0px));
+      z-index: 10600;
+      width: min(560px, calc(100vw - 24px)); max-height: 50vh;
+      display: flex; flex-direction: column; overflow: hidden;
+      background: linear-gradient(180deg, rgba(20,28,42,0.97), rgba(10,14,24,0.98));
+      border: 1px solid rgba(78,230,230,0.30); border-radius: 16px;
+      box-shadow: 0 16px 50px rgba(0,0,0,0.6); backdrop-filter: blur(10px);
     }
     .ww3d-timewheel.hidden { display: none !important; }
     .ww3d-wheel-head {
@@ -72,8 +77,8 @@ function injectStyles() {
     }
     .ww3d-wheel-close { width: 38px; padding: 0; }
     .ww3d-wheel-list {
-      flex: 1 1 auto; overflow-y: auto; padding: 8px 14px 40px;
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px;
+      flex: 1 1 auto; overflow-y: auto; padding: 10px 12px 14px;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px;
       align-content: start;
     }
     .ww3d-wheel-item {

@@ -13,6 +13,25 @@ import { runLocalInklingChat } from "./inklingChatLocal.js";
  *   awaitingConfirm?: boolean
  * }} payload
  */
+/**
+ * True when the server reply is actually the mock provider's WordWeaver-remarks
+ * JSON leaking through (no API key configured), e.g. `{"remarks":[],"source":"mock"}`.
+ * @param {any} body
+ */
+function looksLikeMockLeak(body) {
+  if (body?.source === "mock") return true;
+  const r = body?.reply;
+  if (typeof r !== "string") return false;
+  const t = r.trim();
+  if (!(t.startsWith("{") && t.endsWith("}"))) return false;
+  try {
+    const o = JSON.parse(t);
+    return !!o && typeof o === "object" && (o.source === "mock" || "remarks" in o);
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchInklingChat(payload) {
   // Always try the server LLM first — the /api/inkling/chat route is public, so
   // guests get the real AI too (when the server has an API key). Falls back to
@@ -28,7 +47,10 @@ export async function fetchInklingChat(payload) {
         userName: payload.userName ?? ""
       })
     });
-    if (body?.reply != null || body?.action) {
+    // Guard against the no-API-key mock provider leaking its WordWeaver-remarks
+    // JSON ({"remarks":[...],"source":"mock"}) as the chat reply. When that
+    // happens, ignore the server and let the local intent-router answer instead.
+    if ((body?.reply != null || body?.action) && !looksLikeMockLeak(body)) {
       return body;
     }
   } catch (err) {
