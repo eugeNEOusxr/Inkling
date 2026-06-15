@@ -22,6 +22,7 @@ import * as bus from "../utils/EventBus.js";
 import { getCalendarMode } from "./calendarMode.js";
 import { getCalendar2D } from "./Calendar2D.js";
 import { createMonthGrid, createYearGrid, createDayView, representativeDayIso, WordWeaverMonthGrid } from "./WordWeaverMonthGrid.js";
+import { WordWeaver3DEditor } from "./WordWeaver3DEditor.js";
 import { createConnectionsView } from "./WordWeaverConnections.js";
 import { isWordWeaverTabActive } from "../calendar/ui/shellSurfaces.js";
 
@@ -137,6 +138,8 @@ export class WordWeaverScene {
     }
     /** @type {{ group: import("three").Group, items: Array<{ mesh: import("three").Mesh, y: number, event: any }>, dispose: () => void } | null} */
     this._dayView = null;
+    /** Lazy in-scene editor (add-bar + time wheel + tap-to-delete) for the day view. */
+    this._editor = null;
     /** M5 M1: month wall-grid is the active 3D layout; legacy timeline/weave stay mounted but hidden. */
     this._monthGridLayoutActive = true;
     /** @type {import("../inkling-core/timelineNode.js").DaySegment | string | null} */
@@ -908,7 +911,12 @@ export class WordWeaverScene {
           setTimeout(() => this.enterDayViewIso(iso), 200);
         }
       }
-      // "day" level: clicks reserved for timeframe/note interaction (next milestone)
+      // "day" level: tap a note card to reveal its ✕ delete badge.
+      if (this._navLevel === "day" && this._editor) {
+        event.preventDefault();
+        event.stopPropagation();
+        this._editor.handleDayTap(event);
+      }
       return;
     }
     const picked = this._pick(event);
@@ -979,6 +987,7 @@ export class WordWeaverScene {
     this._connView?.dispose(); this._connView = null;
     this._dayView?.dispose();
     this._dayView = null;
+    this._editor?.hide();
     this._navMonthGrid?.dispose();
     if (this._monthGrid?.root) this._monthGrid.root.visible = false;
     this._navMonthGrid = createMonthGrid(this.scene, { year, monthIndex });
@@ -1020,6 +1029,8 @@ export class WordWeaverScene {
     this._ensureBackButton();
     this._updateBackButton();
     this._updateViewButtons();
+    if (!this._editor) this._editor = new WordWeaver3DEditor(this);
+    this._editor.setDay(dayIso);
   }
 
   /** True when the 3D drill-down is on a single day. */
@@ -1109,6 +1120,7 @@ export class WordWeaverScene {
     this._connView?.dispose(); this._connView = null;
     this._dayView?.dispose();
     this._dayView = null;
+    this._editor?.hide();
     this._navMonthGrid?.dispose();
     this._navMonthGrid = null;
     if (this._monthGrid?.root) this._monthGrid.root.visible = true;
@@ -1295,6 +1307,7 @@ export class WordWeaverScene {
       this._yearLayout?.update(delta, t, this.camera);
       this._monthGrid?.update(delta, t);
       this._dayView?.update?.(t);
+      this._editor?.tick();
       this._connView?.update?.(t);
       if (this._monthGridLayoutActive) {
         this._updateGridFlight(delta);
@@ -1345,6 +1358,8 @@ export class WordWeaverScene {
     this._connView = null;
     this._dayView?.dispose();
     this._dayView = null;
+    this._editor?.dispose();
+    this._editor = null;
     this._monthGrid?.dispose();
     this._monthGrid = null;
     this._yearLayout?.dispose();
