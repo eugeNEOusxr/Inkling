@@ -27,10 +27,12 @@ body.inkling-tab-wordweaver #calendar-sidebar {
 body.inkling-tab-wordweaver #wordweaver-embed.wordweaver-embed--stage,
 body.wordweaver-immersive #wordweaver-embed.wordweaver-embed--stage {
   position: fixed !important;
-  left: 8px !important;
-  right: 8px !important;
-  top: calc(52px + env(safe-area-inset-top, 0px)) !important; /* clear the nav only, not the full chrome — was ~132px (1/6 blank) */
-  bottom: calc(var(--inkling-bottom-nav-h, 62px) + 8px + env(safe-area-inset-bottom, 0px)) !important;
+  /* Full-bleed: the 3D canvas fills the entire screen edge-to-edge; the header
+     bar + bottom nav float on top (see overlay rules below). No wasted frame. */
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
   z-index: 10200 !important;
   width: auto !important;
   max-width: none !important;
@@ -53,13 +55,36 @@ body.inkling-tab-inkling:not(.inkling-tab-wordweaver) #wordweaver-embed.wordweav
 .wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__mount,
 body.inkling-tab-wordweaver #wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__mount {
   display: block !important;
-  flex: 1 1 auto !important;
-  min-height: min(48vh, 440px) !important;
+  /* Canvas fills the WHOLE stage (full screen); controls overlay it. */
+  position: absolute !important;
+  inset: 0 !important;
+  flex: none !important;
+  min-height: 0 !important;
   height: auto !important;
   width: 100% !important;
-  position: relative !important;
-  z-index: inherit;
+  z-index: 0 !important;
   visibility: visible !important;
+}
+
+/* Header controls float on top of the full-bleed canvas, with a soft scrim so
+   the 3D shows through behind them and clears the status-bar / notch. */
+.wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__bar {
+  position: relative;
+  z-index: 3;
+  padding-top: calc(6px + env(safe-area-inset-top, 0px));
+  background: linear-gradient(to bottom, rgba(2, 6, 23, 0.78), rgba(2, 6, 23, 0));
+  pointer-events: none; /* lets you drag the 3D in the gaps between buttons */
+}
+.wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__bar > * {
+  pointer-events: auto; /* but the buttons themselves stay tappable */
+}
+
+/* Now the canvas is full-bleed (extends under the bottom nav), lift the floating
+   bottom control cluster (Slide / Fly / Down / orb) above the nav so it stays
+   tappable instead of hiding behind it. */
+.wordweaver-embed.wordweaver-embed--stage .ww-mobile-nav {
+  top: auto !important;
+  bottom: calc(var(--inkling-bottom-nav-h, 62px) + 14px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 .wordweaver-embed.wordweaver-embed--stage .wordweaver-canvas,
@@ -350,11 +375,11 @@ body.inkling-tab-wordweaver #wordweaver-embed .wordweaver-daily-panel {
 @media (max-width: 768px) {
   .wordweaver-embed.wordweaver-embed--stage,
   body.inkling-tab-wordweaver #wordweaver-embed.wordweaver-embed--stage {
-    left: 4px !important;
-    right: 4px !important;
-    /* Clear only a thin nav strip — was the full ~136px chrome (the 1/6 blank). */
-    top: calc(52px + env(safe-area-inset-top, 0px)) !important;
-    bottom: calc(var(--inkling-bottom-nav-h, 62px) + 4px + env(safe-area-inset-bottom, 0px)) !important;
+    /* Full-bleed on mobile too: 3D fills the whole screen; bars float on top. */
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
   }
 
   .wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__bar {
