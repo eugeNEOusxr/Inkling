@@ -87,7 +87,7 @@ async function findByUsernameFile(needle) {
 //    just not durable) and log why — instead of silently writing to a place the
 //    next read won't look.
 let _modePromise = null;
-async function storeMode() {
+export async function storeMode() {
   if (!_modePromise) {
     _modePromise = (async () => ((dbEnabled() && (await ensureDb())) ? "db" : "file"))();
   }

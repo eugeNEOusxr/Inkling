@@ -13,7 +13,8 @@ import {
   findByUsername,
   isValidUsername,
   emailNickname,
-  ensureDataDir
+  ensureDataDir,
+  storeMode
 } from "../lib/userStore.js";
 import { sendMail } from "../lib/email/EmailService.js";
 import { rateLimit, clientIp } from "../lib/rateLimit.js";
@@ -77,6 +78,22 @@ function publicUser(user) {
 export async function handleApi(req, res, url) {
   const ip = clientIp(req);
   const rlKey = `${ip}:${url.pathname}`;
+
+  // Diagnostic: reports whether durable Postgres (Neon) is active vs the file
+  // fallback. No secrets — just "db" or "file" + whether DATABASE_URL is set.
+  if (req.method === "GET" && url.pathname === "/api/health") {
+    let store = "file";
+    try {
+      store = await storeMode();
+    } catch {
+      /* ignore — report file */
+    }
+    return json(res, 200, {
+      ok: true,
+      store,
+      dbConfigured: Boolean(process.env.DATABASE_URL)
+    });
+  }
 
   if (req.method === "POST" && url.pathname === "/api/auth/register") {
     const limited = rateLimit(rlKey, { limit: 10, windowMs: 60_000 });
