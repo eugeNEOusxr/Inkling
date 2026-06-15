@@ -2438,6 +2438,54 @@ body.notification-wall-open #wall-toggle.is-hidden {
   line-height: 1.4;
 }
 
+/* Settings page — collapsible category groups */
+.settings-group {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  margin: 10px 0;
+  background: rgba(148, 163, 184, 0.05);
+  overflow: hidden;
+}
+.settings-group__summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+.settings-group__summary::-webkit-details-marker { display: none; }
+.settings-group__summary::after {
+  content: "▾";
+  font-size: 11px;
+  opacity: 0.6;
+  transition: transform 0.2s ease;
+}
+.settings-group:not([open]) .settings-group__summary::after { transform: rotate(-90deg); }
+.settings-group__body {
+  padding: 4px 14px 14px;
+}
+/* Trim doubled spacing now that sections sit inside group bodies */
+.settings-group__body > .notification-settings-extra-section:last-child { margin-bottom: 0; }
+.settings-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.settings-actions-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #64748b;
+  min-height: 1em;
+}
+
 .notification-sound-by-type-grid {
   display: flex;
   flex-direction: column;

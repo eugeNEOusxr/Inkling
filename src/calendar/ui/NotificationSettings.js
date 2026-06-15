@@ -4,7 +4,8 @@ import {
   saveNotificationSettings
 } from "../notifications/notificationSettings.js";
 import { clearNotificationHistory } from "../notifications/notificationFeed.js";
-import { getSession } from "../../auth/session.js";
+import { getSession, clearSession } from "../../auth/session.js";
+import { apiFetch, collectLocalBundle } from "../../auth/cloudSync.js";
 import { displayNameForUser } from "../../auth/userAccount.js";
 import { getInklingWelcomeMessage } from "../ai/inklingWelcome.js";
 import { getDisplayName, getUsername, setUsername } from "./userProfile.js";
@@ -70,8 +71,180 @@ export class NotificationSettings {
     this._ensureAccountSection();
     this._ensureExtras();
     this._ensurePermissionWarningUi();
+    this._organizeIntoSections();
 
     document.getElementById("btn-top-settings")?.addEventListener("click", () => this.open());
+  }
+
+  /**
+   * Reorganize the flat dialog into a real Settings page: collapsible groups
+   * (Account · Appearance · Notifications & alarms · Privacy & data · About).
+   * Reparents the already-built controls (keeps their listeners) and adds the
+   * account/privacy actions.
+   */
+  _organizeIntoSections() {
+    const container = this._getDialogContainer();
+    if (!container || this._sectionsBuilt) return;
+    const header = container.querySelector(".notification-settings-header");
+
+    const group = (title, id) => {
+      const d = document.createElement("details");
+      d.className = "settings-group";
+      d.id = id;
+      d.open = true;
+      d.innerHTML = `<summary class="settings-group__summary">${title}</summary>`;
+      const body = document.createElement("div");
+      body.className = "settings-group__body";
+      d.appendChild(body);
+      d._body = body;
+      return d;
+    };
+    const move = (el, group) => {
+      if (el && group) group._body.appendChild(el);
+    };
+
+    const gAccount = group("Account &amp; profile", "settings-group-account");
+    const gAppearance = group("Appearance", "settings-group-appearance");
+    const gNotify = group("Notifications &amp; alarms", "settings-group-notify");
+    const gPrivacy = group("Privacy &amp; data", "settings-group-privacy");
+    const gAbout = group("About", "settings-group-about");
+
+    const q = (sel) => container.querySelector(sel);
+
+    // Account
+    move(q(".notification-settings-account"), gAccount);
+    gAccount._body.appendChild(this._buildAccountActions());
+
+    // Appearance
+    move(q(".notification-settings-extra-section--appearance"), gAppearance);
+    move(q(".notification-settings-extra-section--theme"), gAppearance);
+
+    // Notifications & alarms — the static controls + injected sound/quiet/push.
+    move(q('label[for="notify-settings-sound"]'), gNotify);
+    move(q("#notify-settings-sound"), gNotify);
+    move(q('label[for="notify-settings-volume"]'), gNotify);
+    move(q("#notify-settings-volume"), gNotify);
+    move(q("#btn-notify-test-sound"), gNotify);
+    container.querySelectorAll(".notification-toggles").forEach((fs) => move(fs, gNotify));
+    move(q("#btn-notify-settings-browser"), gNotify);
+    move(q(".notification-settings-extra-section--sound-by-type"), gNotify);
+    move(q(".notification-settings-extra-section--sound-preview"), gNotify);
+    move(q(".notification-settings-extra-section--quiet-hours"), gNotify);
+    move(q(".notification-settings-extra-section--push"), gNotify);
+
+    // Privacy & data
+    gPrivacy._body.appendChild(this._buildPrivacyActions());
+    move(q("#btn-notify-clear-history"), gPrivacy);
+
+    // About (version / updates / credits)
+    move(q(".notification-settings-extra-section--about"), gAbout);
+
+    // Drop the leftover empty action row + status, re-add status at the very end.
+    container.querySelectorAll(".action-row").forEach((r) => {
+      if (!r.children.length) r.remove();
+    });
+    const status = q("#notify-settings-status");
+
+    // Remove the now-empty extras wrapper if present.
+    const extras = q(".notification-settings-extra");
+
+    for (const g of [gAccount, gAppearance, gNotify, gPrivacy, gAbout]) {
+      container.insertBefore(g, status || null);
+    }
+    if (extras && !extras.children.length) extras.remove();
+    if (status) container.appendChild(status);
+
+    this._sectionsBuilt = true;
+  }
+
+  /** Email display + Sign out + password reset, appended to the Account group. */
+  _buildAccountActions() {
+    const wrap = document.createElement("div");
+    wrap.className = "settings-account-actions";
+    const session = getSession();
+    const signedIn = Boolean(session?.token);
+    wrap.innerHTML = `
+      <div class="settings-actions-row">
+        <button type="button" class="btn-outline" data-action="change-password" ${signedIn ? "" : "disabled"}>Email me a password reset</button>
+        <button type="button" class="btn-ghost" data-action="sign-out" ${signedIn ? "" : "disabled"}>Sign out</button>
+      </div>
+      <p class="settings-actions-hint">${signedIn ? "" : "Sign in to manage your account."}</p>
+    `;
+    wrap.querySelector('[data-action="sign-out"]')?.addEventListener("click", () => {
+      clearSession();
+      window.location.href = "/login.html";
+    });
+    wrap.querySelector('[data-action="change-password"]')?.addEventListener("click", async (e) => {
+      const email = getSession()?.email;
+      if (!email) return;
+      const hint = wrap.querySelector(".settings-actions-hint");
+      e.target.disabled = true;
+      if (hint) hint.textContent = "Sending…";
+      try {
+        await apiFetch("/api/auth/forgot-password", {
+          method: "POST",
+          body: JSON.stringify({ email }),
+          timeoutMs: 12000
+        });
+        if (hint) hint.textContent = `Reset link sent to ${email}.`;
+      } catch {
+        if (hint) hint.textContent = "Couldn't send right now. Try again later.";
+      } finally {
+        e.target.disabled = false;
+      }
+    });
+    return wrap;
+  }
+
+  /** Export / clear data + analytics opt-out, appended to the Privacy group. */
+  _buildPrivacyActions() {
+    const wrap = document.createElement("div");
+    wrap.className = "settings-privacy-actions";
+    const optedOut = localStorage.getItem("skipgc") === "t";
+    wrap.innerHTML = `
+      <div class="settings-actions-row">
+        <button type="button" class="btn-outline" data-action="export">Export my data</button>
+        <button type="button" class="btn-ghost" data-action="clear-local">Clear local data…</button>
+      </div>
+      <label class="toggle-row"><input type="checkbox" data-action="analytics" ${optedOut ? "" : "checked"} /> Anonymous usage analytics</label>
+      <p class="settings-actions-hint" data-privacy-hint></p>
+    `;
+    const hint = wrap.querySelector("[data-privacy-hint]");
+    wrap.querySelector('[data-action="export"]')?.addEventListener("click", () => {
+      try {
+        const bundle = collectLocalBundle();
+        const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `inkling-data-${new Date().toISOString().slice(0, 10)}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        if (hint) hint.textContent = "Downloaded your data as JSON.";
+      } catch {
+        if (hint) hint.textContent = "Export failed.";
+      }
+    });
+    wrap.querySelector('[data-action="clear-local"]')?.addEventListener("click", () => {
+      if (!confirm("Clear all Inkling data stored on this device (calendar, notes, settings)? Synced accounts keep their cloud copy. This cannot be undone.")) return;
+      try {
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && /^(calendar3d|notebookcalender|inkling)/i.test(k)) keys.push(k);
+        }
+        keys.forEach((k) => localStorage.removeItem(k));
+        window.location.reload();
+      } catch {
+        if (hint) hint.textContent = "Couldn't clear local data.";
+      }
+    });
+    wrap.querySelector('[data-action="analytics"]')?.addEventListener("change", (e) => {
+      if (e.target.checked) localStorage.removeItem("skipgc");
+      else localStorage.setItem("skipgc", "t");
+      if (hint) hint.textContent = e.target.checked ? "Analytics on." : "Analytics off (takes effect on next load).";
+    });
+    return wrap;
   }
 
   _ensureAccountSection() {
@@ -80,13 +253,11 @@ export class NotificationSettings {
 
     const header = container.querySelector(".notification-settings-header");
     const section = document.createElement("section");
-    section.className = "notification-settings-account inkling-welcome-block";
+    section.className = "notification-settings-account";
     section.innerHTML = `
-      <h4 class="notification-settings-extra-title">Account</h4>
       <p class="notification-settings-account-email" data-account-email></p>
-      <label for="inkling-username">Display name (optional)</label>
-      <input type="text" id="inkling-username" class="notification-settings-username" placeholder="Choose a name Inkling can use" autocomplete="nickname" />
-      <div class="inkling-welcome" data-inkling-welcome role="status"></div>
+      <label for="inkling-username">Display name</label>
+      <input type="text" id="inkling-username" class="notification-settings-username" placeholder="What should Inkling call you?" autocomplete="nickname" />
     `;
 
     if (header?.nextSibling) {
