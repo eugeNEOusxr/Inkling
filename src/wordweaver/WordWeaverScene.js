@@ -1215,42 +1215,77 @@ export class WordWeaverScene {
     return btn;
   }
 
-  /** Year / Month / Day buttons to jump straight to a 3D view level. */
+  /** Compact view-switch dropdown (Today / Day / Month / Year) to free header room. */
   _ensureViewButtons() {
     if (this._viewBtns) return this._viewBtns;
-    const wrap = document.createElement("div");
-    wrap.className = "ww-view-buttons";
-    Object.assign(wrap.style, {
-      position: "absolute", left: "12px", top: "64px", zIndex: "30",
-      display: "none", borderRadius: "10px", overflow: "hidden",
-      border: "1px solid rgba(120,200,255,0.45)", background: "rgba(8,14,28,0.85)",
-      font: "700 12px system-ui, sans-serif", boxShadow: "0 4px 14px rgba(0,0,0,0.4)"
-    });
     const todayIso = () => {
       const n = new Date();
       return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
     };
-    const mk = (label, level, onClick) => {
-      const b = document.createElement("button");
-      b.type = "button"; b.textContent = label; b.dataset.level = level;
-      Object.assign(b.style, {
-        padding: "8px 13px", border: "0", background: "transparent",
-        color: "#cbd5e1", cursor: "pointer", font: "inherit"
-      });
-      b.addEventListener("click", (e) => { e.stopPropagation(); onClick(); });
-      wrap.appendChild(b);
-      return b;
-    };
-    mk("Year", "year", () => this.enterYearView());
-    mk("Month", "month", () => this.enterMonthView(this._navMonthIndex ?? new Date().getMonth()));
-    mk("Day", "day", () => {
-      const iso = this._dayIso ?? todayIso();
+    const goDay = (iso) => {
       this.enterMonthView(Number(iso.split("-")[1]) - 1); // month underneath so Back works
       this.enterDayViewIso(iso);
+    };
+
+    const wrap = document.createElement("div");
+    wrap.className = "ww-view-dd";
+    Object.assign(wrap.style, {
+      position: "absolute", left: "12px", top: "64px", zIndex: "40",
+      display: "none", font: "700 12px system-ui, sans-serif"
     });
-    mk("🔗 Links", "connections", () => this.enterConnectionsView(this._dayIso ?? todayIso()));
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    Object.assign(toggle.style, {
+      display: "flex", alignItems: "center", gap: "6px", padding: "9px 13px",
+      borderRadius: "10px", border: "1px solid rgba(120,200,255,0.45)",
+      background: "rgba(8,14,28,0.9)", color: "#e0e7ff", cursor: "pointer",
+      font: "inherit", boxShadow: "0 4px 14px rgba(0,0,0,0.4)"
+    });
+    toggle.innerHTML = `<span class="ww-view-dd-label">Year</span><span style="opacity:.6">▾</span>`;
+
+    const menu = document.createElement("div");
+    Object.assign(menu.style, {
+      position: "absolute", left: "0", top: "calc(100% + 6px)", minWidth: "150px",
+      display: "none", flexDirection: "column", borderRadius: "10px", overflow: "hidden",
+      border: "1px solid rgba(120,200,255,0.45)", background: "rgba(8,14,28,0.97)",
+      boxShadow: "0 10px 28px rgba(0,0,0,0.55)"
+    });
+
+    // Week is added to the menu once the 3D week view is built (stage 3).
+    const items = [
+      ["Today", "day", () => goDay(todayIso())],
+      ["Day", "day", () => goDay(this._dayIso ?? todayIso())],
+      ["Month", "month", () => this.enterMonthView(this._navMonthIndex ?? new Date().getMonth())],
+      ["Year", "year", () => this.enterYearView()],
+      ["🔗 Links", "connections", () => this.enterConnectionsView(this._dayIso ?? todayIso())]
+    ];
+    this._viewMenuItems = [];
+    for (const [label, level, fn] of items) {
+      const b = document.createElement("button");
+      b.type = "button"; b.dataset.level = level; b.textContent = label;
+      Object.assign(b.style, {
+        padding: "11px 14px", border: "0", borderBottom: "1px solid rgba(255,255,255,0.06)",
+        background: "transparent", color: "#cbd5e1", textAlign: "left", cursor: "pointer", font: "inherit"
+      });
+      b.addEventListener("click", (e) => { e.stopPropagation(); menu.style.display = "none"; fn(); });
+      menu.appendChild(b);
+      this._viewMenuItems.push(b);
+    }
+
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      menu.style.display = menu.style.display === "flex" ? "none" : "flex";
+    });
+    document.addEventListener("pointerdown", (e) => {
+      if (!wrap.contains(e.target)) menu.style.display = "none";
+    });
+
+    wrap.appendChild(toggle);
+    wrap.appendChild(menu);
     (this.container || document.body).appendChild(wrap);
     this._viewBtns = wrap;
+    this._viewToggleLabel = toggle.querySelector(".ww-view-dd-label");
     return wrap;
   }
 
@@ -1258,8 +1293,10 @@ export class WordWeaverScene {
     const wrap = this._viewBtns;
     if (!wrap) return;
     const is3d = getCalendarMode() === "3d" && isWordWeaverTabActive();
-    wrap.style.display = is3d ? "flex" : "none";
-    for (const b of wrap.children) {
+    wrap.style.display = is3d ? "block" : "none";
+    const labels = { year: "Year", month: "Month", day: "Day", connections: "Links" };
+    if (this._viewToggleLabel) this._viewToggleLabel.textContent = labels[this._navLevel] ?? "View";
+    for (const b of this._viewMenuItems ?? []) {
       const active = b.dataset.level === this._navLevel;
       b.style.background = active ? "#312e81" : "transparent";
       b.style.color = active ? "#e0e7ff" : "#cbd5e1";
