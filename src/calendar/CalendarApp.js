@@ -1105,6 +1105,11 @@ export class CalendarApp {
    * @param {{ toggle: boolean }} meta
    */
   async _handleBottomNavTab(tab, meta) {
+    // Dismiss the "where would you like to start" cosmos intro — the bottom nav
+    // now floats above it, so tapping a tab must close the intro or the surface
+    // would open hidden behind it.
+    this._cosmosIntro?.hide();
+
     if (meta.toggle) {
       this._closeBottomStage();
       return;
