@@ -17,7 +17,8 @@ import {
   isPushEnabledLocally,
   enablePush,
   disablePush,
-  sendTestPush
+  sendTestPush,
+  showLocalNotification
 } from "../notifications/webPush.js";
 
 const ADDITIONAL_THEMES = [
@@ -525,13 +526,35 @@ export class NotificationSettings {
         <input type="checkbox" class="notification-push-toggle" data-push-toggle />
         <span>Send alarms to this device (web push)</span>
       </label>
-      <button type="button" class="btn-ghost notification-push-test" data-push-test>Send test alarm</button>
+      <div class="settings-actions-row">
+        <button type="button" class="btn-outline notification-banner-test" data-banner-test>Test notification banner</button>
+        <button type="button" class="btn-ghost notification-push-test" data-push-test>Send test alarm (closed-app)</button>
+      </div>
       <p class="notification-settings-extra-help notification-push-status" data-push-status role="status"></p>
     `;
 
     this.pushToggle = pushSection.querySelector("[data-push-toggle]");
     this.pushTestBtn = pushSection.querySelector("[data-push-test]");
+    this.bannerTestBtn = pushSection.querySelector("[data-banner-test]");
     this.pushStatusEl = pushSection.querySelector("[data-push-status]");
+
+    this.bannerTestBtn?.addEventListener("click", async () => {
+      this._setPushStatus("Requesting permission…");
+      const res = await showLocalNotification("Inkling", {
+        body: "🔔 This is how your alarms and reminders will appear.",
+        kind: "reminder",
+        requestPermission: true
+      });
+      if (res.ok) {
+        this._setPushStatus("Sent — check your notification shade. If nothing appears, allow notifications for Inkling in your phone's app settings.");
+      } else if (res.reason === "denied") {
+        this._setPushStatus("Notifications are blocked. Enable them for Inkling in your phone/browser settings, then retry.");
+      } else if (res.reason === "unsupported") {
+        this._setPushStatus("This browser can't show notifications. On iPhone, install Inkling to your Home Screen first.");
+      } else {
+        this._setPushStatus("Permission not granted yet — tap again and choose Allow.");
+      }
+    });
 
     if (!isPushSupported()) {
       if (this.pushToggle) this.pushToggle.disabled = true;

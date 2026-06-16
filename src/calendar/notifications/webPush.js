@@ -22,6 +22,52 @@ function vapidPublicKey() {
   return (typeof window !== "undefined" && window.__INKLING_VAPID__) || "";
 }
 
+/**
+ * Show a REAL OS notification (the heads-up banner + entry in the pull-down
+ * notification shade). On Android the `new Notification()` constructor is a
+ * no-op for installed PWAs — only the service worker's showNotification works —
+ * so always go through the SW registration, falling back to the constructor
+ * only on desktop where the SW isn't ready.
+ * @param {string} title
+ * @param {{body?:string, kind?:string, url?:string, requireInteraction?:boolean, requestPermission?:boolean}} [opts]
+ * @returns {Promise<{ok:boolean, reason?:string}>}
+ */
+export async function showLocalNotification(title, opts = {}) {
+  if (!("Notification" in window)) return { ok: false, reason: "unsupported" };
+  let permission = Notification.permission;
+  if (permission === "default" && opts.requestPermission) {
+    permission = await Notification.requestPermission();
+  }
+  if (permission !== "granted") return { ok: false, reason: permission === "denied" ? "denied" : "default" };
+
+  const options = {
+    body: opts.body || "",
+    tag: `inkling-${opts.kind || "alarm"}`,
+    renotify: true,
+    requireInteraction: opts.requireInteraction ?? opts.kind === "alarm",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    vibrate: opts.kind === "alarm" ? [200, 100, 200, 100, 400] : [120],
+    data: { url: opts.url || "/index.html", kind: opts.kind || "alarm" }
+  };
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, options);
+      return { ok: true };
+    }
+  } catch {
+    /* fall through to constructor */
+  }
+  try {
+    new Notification(title, options);
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "error" };
+  }
+}
+
 /** Web Push needs SW + PushManager + Notification, an account, and a VAPID key. */
 export function isPushSupported() {
   return (

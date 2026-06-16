@@ -7,6 +7,7 @@ import {
   loadNotificationHistory
 } from "./notificationFeed.js";
 import { loadNotificationSettings } from "./notificationSettings.js";
+import { showLocalNotification } from "./webPush.js";
 
 const FIRED_KEY = "calendar3d-fired-alerts-v2";
 const DROPDOWN_UI_KEY = "calendar3d-dropdown-ui-v1";
@@ -292,23 +293,14 @@ export class NotificationService {
   }
 
   _browserNotify(title, message, kind) {
-    if (!("Notification" in window)) return;
-    if (Notification.permission !== "granted") return;
+    if (Notification?.permission !== "granted") return;
+    // Only raise an OS banner when the app isn't in the foreground (the in-app
+    // toast covers the visible case) — same as other apps.
     if (document.visibilityState === "visible") return;
-
-    try {
-      const n = new Notification(title, {
-        body: message,
-        tag: `calendar3d-${kind}`,
-        silent: true
-      });
-      n.onclick = () => {
-        window.focus();
-        n.close();
-      };
-    } catch {
-      /* ignore */
-    }
+    // Use the service worker's showNotification: on Android installed PWAs the
+    // `new Notification()` constructor is a silent no-op, so this is what makes
+    // the heads-up banner + notification-shade entry actually appear.
+    showLocalNotification(title, { body: message, kind }).catch(() => {});
   }
 
   _typeLabel(kind) {
