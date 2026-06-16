@@ -138,8 +138,11 @@ export class Calendar2DDay {
         this._addBar = new NoteAddBar({ bottomPx: 78, onAdded: () => this.render() });
       }
       // Day view targets the open day; month view (no specific day) defaults to today.
-      const target = this.view === "day" ? this.iso : todayIsoDate();
-      this._addBar.show(target);
+      if (this.view === "day") {
+        this._addBar.show(this.iso);
+      } else {
+        this._addBar.show(todayIsoDate(), { placeholder: "Add a note for today…" });
+      }
     } else {
       this._addBar?.hide();
     }

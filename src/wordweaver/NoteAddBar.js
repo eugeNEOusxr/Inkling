@@ -211,8 +211,15 @@ export class NoteAddBar {
   }
 
   /** Show the bar for a given day. */
-  show(dateIso) {
+  /**
+   * @param {string} dateIso
+   * @param {{ placeholder?: string }} [opts]
+   */
+  show(dateIso, opts = {}) {
     if (dateIso) this._dayIso = dateIso;
+    if (this.textInput) {
+      this.textInput.placeholder = opts.placeholder || "Add a note to this day…";
+    }
     this.bar.classList.remove("hidden");
   }
 
