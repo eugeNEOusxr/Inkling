@@ -33,15 +33,17 @@ function dayDiffFromToday(iso) {
   const today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
   return Math.round((a - today) / 86400000);
 }
-/** "Today" / "Tomorrow" / "Yesterday" / weekday (±6d) / "Mon D". */
+/** "M/D/YY <Today|Tomorrow|Yesterday|Weekday>" — date first, relative word after. */
 function relativeDayLabel(iso) {
-  const diff = dayDiffFromToday(iso);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Tomorrow";
-  if (diff === -1) return "Yesterday";
   const dt = isoToDate(iso);
-  if (Math.abs(diff) <= 6) return dt.toLocaleDateString(undefined, { weekday: "long" });
-  return dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const md = `${dt.getMonth() + 1}/${dt.getDate()}/${String(dt.getFullYear()).slice(-2)}`;
+  const diff = dayDiffFromToday(iso);
+  let rel;
+  if (diff === 0) rel = "Today";
+  else if (diff === 1) rel = "Tomorrow";
+  else if (diff === -1) rel = "Yesterday";
+  else rel = dt.toLocaleDateString(undefined, { weekday: "long" });
+  return `${md} ${rel}`;
 }
 
 function injectStyles() {
@@ -71,7 +73,7 @@ function injectStyles() {
       color: #e0fbff; font: 700 16px system-ui; cursor: pointer; line-height: 1;
     }
     .nab-date-label {
-      flex: 0 0 auto; min-width: 132px; height: 32px; padding: 0 14px;
+      flex: 0 0 auto; min-width: 168px; height: 32px; padding: 0 14px;
       border-radius: 9px; border: 1px solid rgba(125,211,252,0.4);
       background: rgba(34,211,238,0.16); color: #e0fffe;
       font: 700 13px system-ui; cursor: pointer; white-space: nowrap;

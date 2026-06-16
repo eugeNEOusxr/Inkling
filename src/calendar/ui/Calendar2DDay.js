@@ -539,8 +539,11 @@ export class Calendar2DDay {
       for (let d = 0; d < 7; d++) {
         const cellIndex = w * 7 + d;
         const dObj = new Date(y, monthIdx, cellIndex - monOffset + 1); // overflows into adjacent months
-        const iso = `${dObj.getFullYear()}-${pad(dObj.getMonth() + 1)}-${pad(dObj.getDate())}`;
         const inMonth = dObj.getMonth() === monthIdx;
+        // Weeks are bounded to THIS month — week 1 starts on the 1st, the last
+        // week ends on the last day (shortened), no prev/next-month padding.
+        if (!inMonth) continue;
+        const iso = `${dObj.getFullYear()}-${pad(dObj.getMonth() + 1)}-${pad(dObj.getDate())}`;
         const isToday = iso === todayIso;
 
         const row = document.createElement("div");
