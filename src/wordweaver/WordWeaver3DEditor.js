@@ -226,6 +226,17 @@ export class WordWeaver3DEditor {
     this._applyOffsets();
   }
 
+  /**
+   * Show ONLY the quick-add note bar (e.g. at month level, with no day focused),
+   * targeting the given day (today by default). Doesn't set _dayIso, so day-level
+   * note selection/stepping stays inert.
+   */
+  showAddForToday(iso) {
+    this._clearSelection();
+    this._addBar?.show(iso);
+    this._applyOffsets();
+  }
+
   hide() {
     this._clearSelection();
     this._addBar?.hide();

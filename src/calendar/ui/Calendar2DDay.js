@@ -130,14 +130,16 @@ export class Calendar2DDay {
     this._addBar = null;  // shared quick-add note bar (day view only)
   }
 
-  /** Show the shared add-note bar in day view; hide it elsewhere. */
+  /** Show the shared add-note bar in day + month views (not year). */
   _syncAddBar() {
     const open = this.root && this.root.style.display !== "none";
-    if (open && this.view === "day") {
+    if (open && (this.view === "day" || this.view === "month")) {
       if (!this._addBar) {
         this._addBar = new NoteAddBar({ bottomPx: 78, onAdded: () => this.render() });
       }
-      this._addBar.show(this.iso);
+      // Day view targets the open day; month view (no specific day) defaults to today.
+      const target = this.view === "day" ? this.iso : todayIsoDate();
+      this._addBar.show(target);
     } else {
       this._addBar?.hide();
     }

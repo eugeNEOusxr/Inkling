@@ -990,12 +990,17 @@ export class WordWeaverScene {
     this._connView?.dispose(); this._connView = null;
     this._dayView?.dispose();
     this._dayView = null;
-    this._editor?.hide();
     this._navMonthGrid?.dispose();
     if (this._monthGrid?.root) this._monthGrid.root.visible = false;
     this._navMonthGrid = createMonthGrid(this.scene, { year, monthIndex });
     this._navMonthIndex = monthIndex;
     this._navLevel = "month";
+    // Add-note is available at month level too (defaults to today). Year stays clean.
+    if (!this._editor) this._editor = new WordWeaver3DEditor(this);
+    const _t = new Date();
+    this._editor.showAddForToday(
+      `${_t.getFullYear()}-${String(_t.getMonth() + 1).padStart(2, "0")}-${String(_t.getDate()).padStart(2, "0")}`
+    );
     this.controls.minDistance = 2;
     this.controls.maxDistance = 120;
     this.camera.far = Math.max(this.camera.far, 200);
