@@ -121,7 +121,7 @@ export class Calendar2DDay {
   constructor() {
     this.iso = todayIsoDate();
     this.slot = 30;
-    this.view = "day"; // "day" | "month"
+    this.view = "day"; // "day" | "week" | "month"
     this.theme = (() => { try { return localStorage.getItem("cal2d-theme") || "dark"; } catch { return "dark"; } })();
     this.root = null;
     this._grid = null;
@@ -130,10 +130,10 @@ export class Calendar2DDay {
     this._addBar = null;  // shared quick-add note bar (day view only)
   }
 
-  /** Show the shared add-note bar in day + month views (not year). */
+  /** Show the shared add-note bar in day + week + month views. */
   _syncAddBar() {
     const open = this.root && this.root.style.display !== "none";
-    if (open && (this.view === "day" || this.view === "month")) {
+    if (open && (this.view === "day" || this.view === "week" || this.view === "month")) {
       if (!this._addBar) {
         // After adding, jump to that day's view so you land where the note went.
         this._addBar = new NoteAddBar({
@@ -165,8 +165,9 @@ export class Calendar2DDay {
   setView(view) {
     this.view = view;
     this._scrolled = false;
-    if (this._dayBtn) this._setViewBtnActive(this._dayBtn, view === "day");
-    if (this._monthBtn) this._setViewBtnActive(this._monthBtn, view === "month");
+    if (this._viewToggle) {
+      this._viewToggle.textContent = ({ day: "Day", week: "Week", month: "Month" }[view] || "View") + " ▾";
+    }
     for (const el of this._zoomEls ?? []) el.style.display = view === "day" ? "" : "none";
     this.render();
   }
@@ -297,13 +298,38 @@ export class Calendar2DDay {
     zoomLabel.style.cssText = `font-size:12px;color:${P.weekday}`;
     this._zoomEls = [zoomLabel, slotSel];
 
-    // Today / Month view toggle ("Today" replaces the old Day button → jumps to
-    // today + day view).
-    const dayBtn = this._navBtn("Today", () => { this.iso = todayIsoDate(); this.setView("day"); });
-    const monthBtn = this._navBtn("Month", () => this.setView("month"));
-    for (const b of [dayBtn, monthBtn]) { b.style.width = "auto"; b.style.padding = "0 12px"; b.style.fontSize = "13px"; }
-    this._dayBtn = dayBtn;
-    this._monthBtn = monthBtn;
+    // View dropdown: Today · Day · Week · Month (frees header room).
+    const viewDd = document.createElement("div");
+    viewDd.style.cssText = "position:relative;display:inline-block";
+    const viewToggle = this._navBtn("Day ▾", () => {});
+    viewToggle.style.width = "auto"; viewToggle.style.padding = "0 12px"; viewToggle.style.fontSize = "13px";
+    const viewMenu = document.createElement("div");
+    viewMenu.style.cssText =
+      `position:absolute;left:0;top:calc(100% + 4px);min-width:128px;display:none;flex-direction:column;` +
+      `z-index:20;border-radius:10px;overflow:hidden;border:1px solid ${P.legendBorder};background:${P.cellIn};` +
+      `box-shadow:0 10px 26px rgba(0,0,0,0.45)`;
+    const ddItems = [
+      ["Today", () => { this.iso = todayIsoDate(); this.setView("day"); }],
+      ["Day", () => this.setView("day")],
+      ["Week", () => this.setView("week")],
+      ["Month", () => this.setView("month")]
+    ];
+    for (const [label, fn] of ddItems) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = label;
+      b.style.cssText =
+        `padding:11px 13px;border:0;border-bottom:1px solid ${P.legendBorder};background:transparent;` +
+        `color:${P.num};text-align:left;cursor:pointer;font:600 13px system-ui`;
+      b.addEventListener("click", (e) => { e.stopPropagation(); viewMenu.style.display = "none"; fn(); });
+      viewMenu.appendChild(b);
+    }
+    viewToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      viewMenu.style.display = viewMenu.style.display === "flex" ? "none" : "flex";
+    });
+    document.addEventListener("pointerdown", (e) => { if (!viewDd.contains(e.target)) viewMenu.style.display = "none"; });
+    viewDd.append(viewToggle, viewMenu);
+    this._viewToggle = viewToggle;
 
     // Jot-a-note button (the "paint/✎" affordance) — opens the editor for a new
     // entry, defaulting to now (today) or 9:00.
@@ -331,7 +357,7 @@ export class Calendar2DDay {
     // narrow screens instead of being cut off.
     const row2 = document.createElement("div");
     row2.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%";
-    row2.append(dayBtn, monthBtn, themeBtn, zoomLabel, slotSel, noteBtn, paintBtn, close);
+    row2.append(viewDd, themeBtn, zoomLabel, slotSel, noteBtn, paintBtn, close);
     head.append(row1, row2);
 
     // Scrollable grid
@@ -482,12 +508,106 @@ export class Calendar2DDay {
     if (this._scroll) this._scroll.scrollTop = 0;
   }
 
+  /** Whole month as weekly sections, stacked vertically (Mon→Sun + notes). */
+  _renderWeek() {
+    if (this._scroll) this._scroll.style.overflow = "auto";
+    const P = this._pal();
+    const [y, m] = this.iso.split("-").map(Number);
+    this._title.textContent = `${MONTHS[m - 1]} ${y} · Weeks`;
+    this._grid.style.height = "auto";
+    this._grid.textContent = "";
+
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "padding:12px 14px 96px;display:flex;flex-direction:column;gap:16px";
+
+    const todayIso = todayIsoDate();
+    const monthIdx = m - 1;
+    const first = new Date(y, monthIdx, 1);
+    const monOffset = first.getDay() === 0 ? 6 : first.getDay() - 1; // Monday-based
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const weekCount = Math.ceil((monOffset + daysInMonth) / 7);
+    const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+    for (let w = 0; w < weekCount; w++) {
+      const sec = document.createElement("div");
+      sec.style.cssText = `border:1px solid ${P.legendBorder};border-radius:12px;overflow:hidden;background:${P.cellIn}`;
+      const head = document.createElement("div");
+      head.textContent = `Week ${w + 1}`;
+      head.style.cssText = `padding:9px 12px;font:800 13px system-ui;color:${P.num};background:${P.legendBg};border-bottom:1px solid ${P.legendBorder}`;
+      sec.appendChild(head);
+
+      for (let d = 0; d < 7; d++) {
+        const cellIndex = w * 7 + d;
+        const dObj = new Date(y, monthIdx, cellIndex - monOffset + 1); // overflows into adjacent months
+        const iso = `${dObj.getFullYear()}-${pad(dObj.getMonth() + 1)}-${pad(dObj.getDate())}`;
+        const inMonth = dObj.getMonth() === monthIdx;
+        const isToday = iso === todayIso;
+
+        const row = document.createElement("div");
+        row.style.cssText =
+          `display:flex;gap:10px;padding:8px 12px;border-bottom:1px solid ${P.legendBorder};cursor:pointer;` +
+          (isToday ? "outline:2px solid #818cf8;outline-offset:-2px;" : "");
+        row.addEventListener("click", () => { this.iso = iso; this.setView("day"); });
+
+        const dayCol = document.createElement("div");
+        dayCol.style.cssText = `flex:0 0 46px;text-align:center;color:${inMonth ? P.num : P.numDim}`;
+        const wl = document.createElement("div");
+        wl.textContent = WD[d];
+        wl.style.cssText = "font:700 11px system-ui";
+        const dn = document.createElement("div");
+        dn.textContent = String(dObj.getDate());
+        dn.style.cssText = "font:800 16px system-ui";
+        dayCol.append(wl, dn);
+        row.appendChild(dayCol);
+
+        const notesCol = document.createElement("div");
+        notesCol.style.cssText = "flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px;justify-content:center";
+        let evs = [];
+        try { evs = getEventsForDate(iso); } catch { /* ignore */ }
+        if (!evs.length) {
+          const empty = document.createElement("div");
+          empty.textContent = inMonth ? "No notes" : "";
+          empty.style.cssText = `font:500 12px system-ui;color:${P.numDim}`;
+          notesCol.appendChild(empty);
+        } else {
+          for (const rec of evs.slice(0, 5)) {
+            const full = getEventById(rec.id);
+            const note = document.createElement("div");
+            note.style.cssText = "display:flex;align-items:center;gap:6px;min-width:0";
+            const dot = document.createElement("span");
+            dot.style.cssText = `flex:0 0 auto;width:8px;height:8px;border-radius:50%;background:${getCategoryColor(rec.category || full?.category)}`;
+            const time = document.createElement("span");
+            time.textContent = full?.startTime ? clockLabel(minutesOf(full.startTime)) : "";
+            time.style.cssText = `flex:0 0 auto;font:500 11px system-ui;color:${P.numDim}`;
+            const txt = document.createElement("span");
+            txt.textContent = full?.title || rec.title || "(note)";
+            txt.style.cssText = `flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:500 12px system-ui;color:${P.num}`;
+            note.append(dot, time, txt);
+            notesCol.appendChild(note);
+          }
+          if (evs.length > 5) {
+            const more = document.createElement("div");
+            more.textContent = `+${evs.length - 5} more`;
+            more.style.cssText = `font:600 10px system-ui;color:${P.numDim}`;
+            notesCol.appendChild(more);
+          }
+        }
+        row.appendChild(notesCol);
+        sec.appendChild(row);
+      }
+      wrap.appendChild(sec);
+    }
+    this._grid.appendChild(wrap);
+    if (this._scroll) this._scroll.scrollTop = 0;
+  }
+
   // --- render the grid + events ---
 
   render() {
     if (!this.root) return;
     this._syncAddBar();
     if (this.view === "month") { this._renderMonth(); return; }
+    if (this.view === "week") { this._renderWeek(); return; }
     this._renderDay();
   }
 
