@@ -1273,12 +1273,21 @@ export class WordWeaverScene {
       this._viewMenuItems.push(b);
     }
 
+    const setMenuOpen = (open) => {
+      menu.style.display = open ? "flex" : "none";
+      // The "← Back" button overlaps the menu/day view — tuck it away while the
+      // navigation menu is open, restore it (for the current level) when closed.
+      if (this._backBtn) {
+        if (open) this._backBtn.style.display = "none";
+        else this._updateBackButton();
+      }
+    };
     toggle.addEventListener("click", (e) => {
       e.stopPropagation();
-      menu.style.display = menu.style.display === "flex" ? "none" : "flex";
+      setMenuOpen(menu.style.display !== "flex");
     });
     document.addEventListener("pointerdown", (e) => {
-      if (!wrap.contains(e.target)) menu.style.display = "none";
+      if (!wrap.contains(e.target) && menu.style.display === "flex") setMenuOpen(false);
     });
 
     wrap.appendChild(toggle);

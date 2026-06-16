@@ -247,7 +247,9 @@ body.inkling-notebook-layout.inkling-open #inkling-fab.inkling-avatar {
 #inkling-orb-menu {
   position: fixed;
   inset: 0;
-  z-index: 11006;
+  /* Above the quick-add note bar (11200) + the orb (11250) so the fanned-out
+     action icons overlap everything instead of hiding behind the note bar. */
+  z-index: 11300;
   display: none;
   pointer-events: none;
 }

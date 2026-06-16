@@ -69,14 +69,38 @@ export function computeMonthGridLayout(year, monthIndex, opts = {}) {
   /** @type {MonthGridDayCell[]} */
   const cells = [];
 
-  for (let day = 1; day <= daysInMonth; day++) {
-    const cellIndex = monOffset + day - 1;
+  const isoOf = (dObj) =>
+    `${dObj.getFullYear()}-${String(dObj.getMonth() + 1).padStart(2, "0")}-${String(dObj.getDate()).padStart(2, "0")}`;
+  const placeCell = (cellIndex, dObj, inMonth) => {
     const col = cellIndex % COL_COUNT;
     const row = Math.floor(cellIndex / COL_COUNT);
-    const x = (col - 3) * COL_SPACING;
-    const y = -row * rowStride;
-    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    cells.push({ iso, day, col, row, x, y });
+    cells.push({
+      iso: isoOf(dObj),
+      day: dObj.getDate(),
+      col,
+      row,
+      x: (col - 3) * COL_SPACING,
+      y: -row * rowStride,
+      inMonth
+    });
+  };
+
+  // Leading days from the previous month + trailing days from the next month
+  // fill the grid so weekday columns line up (opt-in: month view only, not the
+  // 12-up year panel).
+  if (opts.includeAdjacent) {
+    for (let i = 0; i < monOffset; i++) {
+      placeCell(i, new Date(year, monthIndex, 1 - (monOffset - i)), false);
+    }
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    placeCell(monOffset + day - 1, new Date(year, monthIndex, day), true);
+  }
+  if (opts.includeAdjacent) {
+    const total = weekCount * COL_COUNT;
+    for (let i = monOffset + daysInMonth; i < total; i++) {
+      placeCell(i, new Date(year, monthIndex, daysInMonth + (i - (monOffset + daysInMonth) + 1)), false);
+    }
   }
 
   const gridHeight = (weekCount - 1) * rowStride + ROW_STEP;

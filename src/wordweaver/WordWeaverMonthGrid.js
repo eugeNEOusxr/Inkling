@@ -387,7 +387,7 @@ export class WordWeaverMonthGrid {
 
   build() {
     this.disposeContent();
-    this._layout = computeMonthGridLayout(this.year, this.monthIndex);
+    this._layout = computeMonthGridLayout(this.year, this.monthIndex, { includeAdjacent: true });
     const topology = getYearTopology(this.year);
 
     /** @type {Array<{ x: number, y: number, z: number }>} */
@@ -403,6 +403,9 @@ export class WordWeaverMonthGrid {
 
     for (const cell of this._layout.cells) {
       dayInstances.push({ x: cell.x, y: cell.y, z: 0.08, iso: cell.iso, day: cell.day });
+      // Adjacent-month days (prev/next) fill the grid for weekday context only —
+      // their notes belong to those months, so don't draw notes here.
+      if (cell.inMonth === false) continue;
       const count = topology.dayCounts[cell.iso] ?? 0;
       if (count <= 0) continue;
 
@@ -461,17 +464,20 @@ export class WordWeaverMonthGrid {
     this._labels.push(monthLabel);
 
     // Day number sits on the front of each white day box (black, legible).
+    // Adjacent-month days (prev/next) are greyed so the current month stands out.
     for (const cell of this._layout.cells) {
+      const adj = cell.inMonth === false;
+      const numColor = adj ? "#94a3b8" : "#0b1220";
       const label = createLabelSprite(String(cell.day), {
-        // Crisp, bold, hi-res black numerals on the white day box (no haze).
+        // Crisp, bold, hi-res numerals on the white day box (no haze).
         fontSize: "900 132px system-ui, sans-serif",
-        fill: "#0b1220",
+        fill: numColor,
         width: 256,
         height: 256,
         planeW: 0.74,
         planeH: 0.74,
         blur: 0,
-        strokeColor: "#0b1220",
+        strokeColor: numColor,
         strokeWidth: 3
       });
       label.mesh.position.set(cell.x, cell.y, RADIUS.day + 0.22);
