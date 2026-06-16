@@ -14,6 +14,36 @@ import { saveNoteToTimeline } from "./timelineModel.js";
 
 const STEP_MIN = 30;
 
+const pad2 = (n) => String(n).padStart(2, "0");
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+function isoToDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+function dateToIso(dt) {
+  return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
+}
+/** Days between iso and today (local), negative = past. */
+function dayDiffFromToday(iso) {
+  const a = isoToDate(iso);
+  const n = new Date();
+  const today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  return Math.round((a - today) / 86400000);
+}
+/** "Today" / "Tomorrow" / "Yesterday" / weekday (±6d) / "Mon D". */
+function relativeDayLabel(iso) {
+  const diff = dayDiffFromToday(iso);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff === -1) return "Yesterday";
+  const dt = isoToDate(iso);
+  if (Math.abs(diff) <= 6) return dt.toLocaleDateString(undefined, { weekday: "long" });
+  return dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 function injectStyles() {
   if (document.getElementById("note-addbar-styles")) return;
   const s = document.createElement("style");
@@ -22,7 +52,7 @@ function injectStyles() {
     .nab-bar {
       position: fixed; left: 50%; transform: translateX(-50%);
       bottom: calc(var(--nab-bottom, 158px) + env(safe-area-inset-bottom, 0px));
-      z-index: 11200; display: flex; align-items: center; gap: 8px;
+      z-index: 11200; display: flex; flex-direction: column; align-items: stretch; gap: 8px;
       width: min(560px, calc(100vw - 24px));
       padding: 8px; border-radius: 16px;
       background: linear-gradient(180deg, rgba(20,28,42,0.92), rgba(10,14,24,0.96));
@@ -31,6 +61,21 @@ function injectStyles() {
       backdrop-filter: blur(10px);
     }
     .nab-bar.hidden { display: none !important; }
+    .nab-row { display: flex; align-items: center; gap: 8px; }
+    .nab-date {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .nab-date-arrow {
+      flex: 0 0 auto; width: 34px; height: 32px; border-radius: 9px;
+      border: 1px solid rgba(125,211,252,0.35); background: rgba(14,116,144,0.25);
+      color: #e0fbff; font: 700 16px system-ui; cursor: pointer; line-height: 1;
+    }
+    .nab-date-label {
+      flex: 0 0 auto; min-width: 132px; height: 32px; padding: 0 14px;
+      border-radius: 9px; border: 1px solid rgba(125,211,252,0.4);
+      background: rgba(34,211,238,0.16); color: #e0fffe;
+      font: 700 13px system-ui; cursor: pointer; white-space: nowrap;
+    }
     .nab-time {
       flex: 0 0 auto; min-width: 92px; height: 40px; padding: 0 12px;
       border-radius: 11px; border: 1px solid rgba(125,211,252,0.4);
@@ -109,19 +154,30 @@ export class NoteAddBar {
     bar.className = "nab-bar hidden";
     bar.style.setProperty("--nab-bottom", `${this._bottomPx}px`);
     bar.innerHTML = `
-      <button class="nab-time" type="button" title="Pick a time">🕐 Now</button>
-      <input class="nab-text" type="text" placeholder="Add a note to this day…" maxlength="240" />
-      <button class="nab-add" type="button" aria-label="Add note">＋</button>`;
+      <div class="nab-date">
+        <button class="nab-date-arrow nab-date-prev" type="button" aria-label="Previous day">‹</button>
+        <button class="nab-date-label" type="button" title="Tap to reset to today">Today</button>
+        <button class="nab-date-arrow nab-date-next" type="button" aria-label="Next day">›</button>
+      </div>
+      <div class="nab-row">
+        <button class="nab-time" type="button" title="Pick a time">🕐 Now</button>
+        <input class="nab-text" type="text" placeholder="Add a note…" maxlength="240" />
+        <button class="nab-add" type="button" aria-label="Add note">＋</button>
+      </div>`;
     document.body.appendChild(bar);
     this.bar = bar;
     this.timeBtn = bar.querySelector(".nab-time");
     this.textInput = bar.querySelector(".nab-text");
     this.addBtn = bar.querySelector(".nab-add");
+    this.dateLabel = bar.querySelector(".nab-date-label");
     this.timeBtn.addEventListener("click", () => this._openWheel());
     this.addBtn.addEventListener("click", () => this._commitAdd());
     this.textInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); this._commitAdd(); }
     });
+    bar.querySelector(".nab-date-prev").addEventListener("click", () => this._shiftDay(-1));
+    bar.querySelector(".nab-date-next").addEventListener("click", () => this._shiftDay(1));
+    this.dateLabel.addEventListener("click", () => { this._dayIso = todayIso(); this._updateDateLabel(); });
 
     const wheel = document.createElement("div");
     wheel.className = "nab-wheel hidden";
@@ -191,6 +247,21 @@ export class NoteAddBar {
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   }
 
+  /** Step the target day by ±1 and refresh the label. */
+  _shiftDay(delta) {
+    const base = this._dayIso ? isoToDate(this._dayIso) : new Date();
+    base.setDate(base.getDate() + delta);
+    this._dayIso = dateToIso(base);
+    this._updateDateLabel();
+  }
+
+  _updateDateLabel() {
+    if (!this.dateLabel) return;
+    const iso = this._dayIso || todayIso();
+    this.dateLabel.textContent = relativeDayLabel(iso);
+    this.dateLabel.title = `${iso} — tap to reset to today`;
+  }
+
   _commitAdd() {
     const text = (this.textInput.value || "").trim();
     if (!text) { this.textInput.focus(); return; }
@@ -210,16 +281,18 @@ export class NoteAddBar {
     this._onAdded?.(date);
   }
 
-  /** Show the bar for a given day. */
   /**
+   * Show the bar, defaulting its day target to dateIso (the open day, or today).
+   * The user can re-pick the day with the ‹ › stepper before adding.
    * @param {string} dateIso
    * @param {{ placeholder?: string }} [opts]
    */
   show(dateIso, opts = {}) {
-    if (dateIso) this._dayIso = dateIso;
+    this._dayIso = dateIso || this._dayIso || todayIso();
     if (this.textInput) {
-      this.textInput.placeholder = opts.placeholder || "Add a note to this day…";
+      this.textInput.placeholder = opts.placeholder || "Add a note…";
     }
+    this._updateDateLabel();
     this.bar.classList.remove("hidden");
   }
 

@@ -1128,12 +1128,18 @@ export class WordWeaverScene {
     this._connView?.dispose(); this._connView = null;
     this._dayView?.dispose();
     this._dayView = null;
-    this._editor?.hide();
     this._navMonthGrid?.dispose();
     this._navMonthGrid = null;
     if (this._monthGrid?.root) this._monthGrid.root.visible = true;
     this._monthGrid?.frameCamera(this.camera, this.controls);
     this._navLevel = "year";
+    // Quick-add note bar is available at every level now (defaults to today; the
+    // bar's own ‹ › day stepper lets you retarget any day).
+    if (!this._editor) this._editor = new WordWeaver3DEditor(this);
+    const _t = new Date();
+    this._editor.showAddForToday(
+      `${_t.getFullYear()}-${String(_t.getMonth() + 1).padStart(2, "0")}-${String(_t.getDate()).padStart(2, "0")}`
+    );
     this._updateBackButton();
     this._updateViewButtons();
   }

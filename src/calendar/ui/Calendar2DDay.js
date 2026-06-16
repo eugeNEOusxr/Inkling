@@ -144,12 +144,9 @@ export class Calendar2DDay {
           }
         });
       }
-      // Day view targets the open day; month view (no specific day) defaults to today.
-      if (this.view === "day") {
-        this._addBar.show(this.iso);
-      } else {
-        this._addBar.show(todayIsoDate(), { placeholder: "Add a note for today…" });
-      }
+      // Day view targets the open day; month view defaults to today. Either way
+      // the bar's ‹ › day stepper lets you retarget any day before adding.
+      this._addBar.show(this.view === "day" ? this.iso : todayIsoDate());
     } else {
       this._addBar?.hide();
     }

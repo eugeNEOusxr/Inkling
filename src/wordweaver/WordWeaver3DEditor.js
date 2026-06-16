@@ -233,7 +233,7 @@ export class WordWeaver3DEditor {
    */
   showAddForToday(iso) {
     this._clearSelection();
-    this._addBar?.show(iso, { placeholder: "Add a note for today…" });
+    this._addBar?.show(iso);
     this._applyOffsets();
   }
 
