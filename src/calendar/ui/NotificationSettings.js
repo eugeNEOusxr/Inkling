@@ -12,6 +12,7 @@ import { getDisplayName, getUsername, setUsername } from "./userProfile.js";
 import { iconSettings } from "./IconLibrary.js";
 import { renderAppearancePalettePicker } from "../../theme/appearancePaletteUi.js";
 import { setAppearancePalette } from "../../theme/applyAppearance.js";
+import { getMonthPhoto, setMonthPhotoFromFile, removeMonthPhoto } from "../../wordweaver/monthPhotos.js";
 import {
   isPushSupported,
   isPushEnabledLocally,
@@ -119,6 +120,7 @@ export class NotificationSettings {
     // Appearance
     move(q(".notification-settings-extra-section--appearance"), gAppearance);
     move(q(".notification-settings-extra-section--theme"), gAppearance);
+    move(q(".notification-settings-extra-section--monthphoto"), gAppearance);
 
     // Notifications & alarms — the static controls + injected sound/quiet/push.
     move(q('label[for="notify-settings-sound"]'), gNotify);
@@ -195,6 +197,64 @@ export class NotificationSettings {
       }
     });
     return wrap;
+  }
+
+  /** Per-month backdrop photo uploader (Appearance group). */
+  _buildMonthPhotoSection() {
+    const MONTHS = ["January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"];
+    const section = document.createElement("section");
+    section.className = "notification-settings-extra-section notification-settings-extra-section--monthphoto";
+    section.innerHTML = `
+      <h4 class="notification-settings-extra-title">Month backdrop photo</h4>
+      <p class="notification-settings-extra-help">Replace a month's picture with your own. It's reused across the year, month, week, and day views for that month.</p>
+      <div class="settings-actions-row" style="align-items:center;">
+        <select data-mp-month aria-label="Month"></select>
+        <img data-mp-thumb alt="" style="width:54px;height:36px;object-fit:cover;border-radius:6px;border:1px solid rgba(148,163,184,0.3);display:none;" />
+      </div>
+      <div class="settings-actions-row">
+        <button type="button" class="btn-outline" data-mp-upload>Upload photo</button>
+        <button type="button" class="btn-ghost" data-mp-reset>Use default</button>
+      </div>
+      <input type="file" accept="image/*" data-mp-file hidden />
+      <p class="settings-actions-hint" data-mp-status></p>
+    `;
+    const monthSel = section.querySelector("[data-mp-month]");
+    for (let i = 0; i < 12; i++) {
+      const o = document.createElement("option");
+      o.value = String(i);
+      o.textContent = MONTHS[i];
+      monthSel.appendChild(o);
+    }
+    monthSel.value = String(new Date().getMonth());
+    const fileInput = section.querySelector("[data-mp-file]");
+    const thumb = section.querySelector("[data-mp-thumb]");
+    const status = section.querySelector("[data-mp-status]");
+    const sync = () => {
+      const mi = Number(monthSel.value);
+      const url = getMonthPhoto(mi);
+      if (url) { thumb.src = url; thumb.style.display = ""; } else { thumb.removeAttribute("src"); thumb.style.display = "none"; }
+      status.textContent = url ? "Custom photo set." : "Using the default picture.";
+    };
+    monthSel.addEventListener("change", sync);
+    section.querySelector("[data-mp-upload]").addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+      status.textContent = "Saving…";
+      const res = await setMonthPhotoFromFile(Number(monthSel.value), file);
+      if (res.ok) sync();
+      else status.textContent = res.reason === "too-large"
+        ? "That image is too large to store. Try a smaller photo."
+        : "Couldn't use that image.";
+    });
+    section.querySelector("[data-mp-reset]").addEventListener("click", () => {
+      removeMonthPhoto(Number(monthSel.value));
+      sync();
+    });
+    sync();
+    return section;
   }
 
   /** Export / clear data + analytics opt-out, appended to the Privacy group. */
@@ -618,6 +678,7 @@ export class NotificationSettings {
     extras.appendChild(quietSection);
     extras.appendChild(pushSection);
     extras.appendChild(aboutSection);
+    extras.insertBefore(this._buildMonthPhotoSection(), extras.firstChild);
     extras.insertBefore(themeSection, extras.firstChild);
     extras.insertBefore(appearanceSection, extras.firstChild);
 

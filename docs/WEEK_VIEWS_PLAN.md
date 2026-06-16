@@ -15,8 +15,13 @@ Agreed design (June 2026). Build in stages, deploy each.
 
 ## Backdrop / pictures
 - Backdrop derives from the **month** (year view), so Day + Week + Month all share
-  it and never disagree (e.g. June → tropical June). Per-month user-uploadable
-  image = optional future override (one upload skins that month everywhere).
+  it and never disagree (e.g. June → tropical June).
+- ✅ DONE: per-month photo upload override. Settings → Appearance → "Month backdrop
+  photo": pick a month, upload, downscaled to ≤1280 JPEG in localStorage
+  (`inkling-month-photo-v1-<mi>`), "Use default" to revert. `monthSceneUrl`
+  resolves the override → applies to year tile + month + day (+ week when built);
+  fires `inkling:appearance-change` to refresh live. Day squares stay legible
+  (white boxes + muted/scrim backdrop). Module: src/wordweaver/monthPhotos.js.
 
 ## Week view — shows the WHOLE MONTH organized by week
 Both layouts: Week 1 starts on the day the month begins; 4 week-rows, or 5 when
@@ -24,9 +29,10 @@ the month needs it; each day shows its notes; week runs Mon→Sun.
 
 - **2D Week** = vertical. Week sections stacked top-to-bottom (Week 1 with its
   Mon→Sun days + notes beneath, then Week 2 …). Scroll down through the month.
-- **3D Week** = horizontal. 4–5 week **rows**; each row = "Month · Week N" label +
-  animated box, then Mon→Sun laid out **horizontally** with each day's notes
-  stacked **vertically beneath** it. Pan across days, down through weeks.
+- **3D Week** = weeks as **COLUMNS** (latest preference; was "rows"): Week 1, Week 2…
+  side by side, each column = "Month · Week N" label + animated box + that week's
+  Mon→Sun days with notes; the month photo sits as the backdrop behind. (Confirm
+  column orientation before building.)
 
 ## Stages
 1. **Dropdown switcher** (2D + 3D) wired to existing views (Today/Day/Month/Year).

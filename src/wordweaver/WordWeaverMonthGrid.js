@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { getYearTopology, getEventsForDate, classifyText, CategoryColors } from "./timelineModel.js";
 import { createReal3DText, preloadReal3DFont } from "./Real3DText.js";
 import { getTextStyle, text3dParams, getTextColor, getTextScale, getTextFont } from "../calendar/ui/TextStylePicker.js";
+import { getMonthPhoto } from "./monthPhotos.js";
 import {
   computeMonthGridLayout,
   computeYearGridLayout,
@@ -55,6 +56,10 @@ export const MONTH_SCENES = {
  * @returns {string | null}
  */
 function monthSceneUrl(monthIndex, segment) {
+  // A user-uploaded photo (per month) overrides the default everywhere this
+  // month's backdrop is drawn — year tile, month, week, and day views.
+  const override = getMonthPhoto(monthIndex);
+  if (override) return override;
   const scene = MONTH_SCENES[monthIndex];
   if (!scene) return null;
   return segment === "night" ? scene.night : scene.day;
