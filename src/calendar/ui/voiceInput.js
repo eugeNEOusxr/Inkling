@@ -29,6 +29,14 @@ export class VoiceDictation {
     this.active = false;
     this._base = "";
     this._final = "";
+    // Auto-stop after this much silence (no speech) — feels like a natural pause.
+    this._silenceMs = opts.silenceMs ?? 2800;
+    this._silenceTimer = null;
+  }
+
+  _armSilenceTimer() {
+    clearTimeout(this._silenceTimer);
+    this._silenceTimer = setTimeout(() => this.stop(), this._silenceMs);
   }
 
   get supported() {
@@ -56,6 +64,7 @@ export class VoiceDictation {
     this._final = "";
 
     rec.onresult = (event) => {
+      this._armSilenceTimer(); // speech detected → reset the silence countdown
       let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
@@ -85,6 +94,7 @@ export class VoiceDictation {
     this.onStateChange("recording");
     try {
       rec.start();
+      this._armSilenceTimer(); // stop if they never start talking
     } catch {
       this._cleanup("idle");
     }
@@ -99,6 +109,8 @@ export class VoiceDictation {
   }
 
   _cleanup(state, detail) {
+    clearTimeout(this._silenceTimer);
+    this._silenceTimer = null;
     this.active = false;
     this.rec = null;
     this.onStateChange(state || "idle", detail);

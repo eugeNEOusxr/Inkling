@@ -15,6 +15,51 @@
        before the module scripts, or apiBase() falls back to this origin and login
        POSTs to github.io/api → 404. Classic script = runs before deferred modules. -->
   <script src="/inkling-config.js"></script>
+  <!-- On-screen error reporter: surfaces JS errors as a visible banner so issues
+       on phones (esp. iOS, where there's no console without a Mac) can be seen and
+       screenshotted. Inline + first so it catches early module-load failures. -->
+  <script>
+    (function () {
+      function show(msg) {
+        try {
+          var box = document.getElementById("inkling-error-box");
+          if (!box) {
+            box = document.createElement("div");
+            box.id = "inkling-error-box";
+            box.setAttribute("role", "alert");
+            box.style.cssText =
+              "position:fixed;left:0;right:0;top:0;z-index:2147483647;max-height:45vh;overflow:auto;" +
+              "background:#7f1d1d;color:#fff;font:12px/1.4 -apple-system,system-ui,sans-serif;" +
+              "padding:10px 34px 10px 12px;white-space:pre-wrap;word-break:break-word;box-shadow:0 2px 12px rgba(0,0,0,.4)";
+            var x = document.createElement("button");
+            x.textContent = "✕";
+            x.setAttribute("aria-label", "Dismiss");
+            x.style.cssText =
+              "position:absolute;top:6px;right:8px;background:transparent;border:0;color:#fff;font-size:16px;cursor:pointer";
+            x.onclick = function () { box.remove(); };
+            box.appendChild(x);
+            var title = document.createElement("div");
+            title.textContent = "⚠ Something failed to load — please screenshot this:";
+            title.style.fontWeight = "700";
+            box.appendChild(title);
+            (document.body || document.documentElement).appendChild(box);
+          }
+          var line = document.createElement("div");
+          line.textContent = msg;
+          box.appendChild(line);
+        } catch (e) { /* nothing more we can do */ }
+      }
+      window.addEventListener("error", function (e) {
+        var m = e && e.message ? e.message : "Script error";
+        if (e && e.filename) m += "  @ " + e.filename + ":" + (e.lineno || "?");
+        show(m);
+      });
+      window.addEventListener("unhandledrejection", function (e) {
+        var r = e && e.reason;
+        show("Promise: " + (r && r.message ? r.message : String(r)));
+      });
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -541,6 +586,9 @@
     </form>
   </aside>
 
+  <!-- Import-map polyfill so the app loads on Safari/iOS < 16.4 (and other older
+       browsers) that don't support native import maps. Must precede the map. -->
+  <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js" crossorigin="anonymous"></script>
   <script type="importmap">
     {
       "imports": {
