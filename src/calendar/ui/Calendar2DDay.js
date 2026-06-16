@@ -135,7 +135,14 @@ export class Calendar2DDay {
     const open = this.root && this.root.style.display !== "none";
     if (open && (this.view === "day" || this.view === "month")) {
       if (!this._addBar) {
-        this._addBar = new NoteAddBar({ bottomPx: 78, onAdded: () => this.render() });
+        // After adding, jump to that day's view so you land where the note went.
+        this._addBar = new NoteAddBar({
+          bottomPx: 78,
+          onAdded: (date) => {
+            if (date) this.iso = date;
+            this.setView("day");
+          }
+        });
       }
       // Day view targets the open day; month view (no specific day) defaults to today.
       if (this.view === "day") {

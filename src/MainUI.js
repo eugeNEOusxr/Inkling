@@ -1,7 +1,6 @@
 /**
- * WordWeaver overlay chrome — Week / Month view links + first-load boot.
+ * WordWeaver overlay chrome — ⋯ overflow toggle + first-load boot.
  */
-import { openPanel } from "./calendar/ui/AppLauncher.js";
 import { bootWordWeaverFirst } from "./App.js";
 import "./calendar/views/WeekView.js";
 import "./calendar/views/MonthView.js";
@@ -11,39 +10,11 @@ import "./calendar/views/MonthView.js";
  */
 export function mountWordWeaverMainUI() {
   const bar = document.querySelector(".wordweaver-embed__bar");
-  if (!bar || bar.querySelector(".ww-view-links")) return;
+  if (!bar || bar.querySelector(".ww-options-toggle")) return;
 
-  const nav = document.createElement("div");
-  nav.className = "ww-view-links";
-  nav.setAttribute("role", "group");
-  nav.setAttribute("aria-label", "Calendar views");
-
-  const weekBtn = document.createElement("button");
-  weekBtn.type = "button";
-  weekBtn.className = "ww-view-links__btn";
-  weekBtn.textContent = "Week View";
-  weekBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openPanel("weekView");
-  });
-
-  const monthBtn = document.createElement("button");
-  monthBtn.type = "button";
-  monthBtn.className = "ww-view-links__btn";
-  monthBtn.textContent = "Month View";
-  monthBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openPanel("monthView");
-  });
-
-  nav.append(weekBtn, monthBtn);
-
-  const layoutLabel = bar.querySelector(".wordweaver-embed__layout-label");
-  if (layoutLabel?.parentElement === bar) {
-    bar.insertBefore(nav, layoutLabel);
-  } else {
-    bar.appendChild(nav);
-  }
+  // (Week View / Month View buttons removed — those panels weren't wired in the
+  // 3D calendar and did nothing. Navigation is handled by the Year/Month/Day
+  // buttons and tapping nodes.)
 
   // ⋯ overflow toggle — phone-only (shown via CSS). Reveals the controls that are
   // hidden on mobile (Week/Month view, style picker, Customize) so the trimmed bar

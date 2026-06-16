@@ -79,14 +79,11 @@ body.inkling-tab-wordweaver #wordweaver-embed.wordweaver-embed--stage .wordweave
   pointer-events: auto; /* but the buttons themselves stay tappable */
 }
 
-/* Center the Today / ‹ › date nav so it no longer sits on top of the 🎨 paint +
-   2D Mode toolbar (top-left) — those are now reachable. */
+/* The ‹ Today › date nav did nothing in the 3D calendar (navigation is via the
+   Year/Month/Day buttons + tapping nodes), so hide it here to declutter and free
+   the top-left for the 🎨 paint + 2D Mode toolbar. */
 .wordweaver-embed.wordweaver-embed--stage .wordweaver-embed__date-nav {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  top: calc(8px + env(safe-area-inset-top, 0px));
-  z-index: 4;
+  display: none !important;
 }
 
 /* Now the canvas is full-bleed (extends under the bottom nav), lift the floating
