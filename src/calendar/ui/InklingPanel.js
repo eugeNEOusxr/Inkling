@@ -14,6 +14,7 @@ import { analyzePatterns, patternInsights, dataNudge, reportSuggestions, CONNECT
 import { GoalsPanel } from "./GoalsPanel.js";
 import { Connections2D } from "./Connections2D.js";
 import { createEvent } from "../../wordweaver/timelineModel.js";
+import { VoiceDictation, isVoiceInputSupported } from "./voiceInput.js";
 
 const CHECKIN_HTML =
   "✦ Hey — been a little while. <b>What are you up to right now?</b><br>" +
@@ -61,6 +62,16 @@ export class InklingPanel {
     document.getElementById("inkling-attach")?.addEventListener("click", () => {
       document.getElementById("inkling-file")?.click();
     });
+
+    // Voice-to-text: a mic in the composer dictates speech into the input.
+    this._voice = new VoiceDictation({ onStateChange: (state) => this._setMicState(state) });
+    this._micBtn = document.getElementById("inkling-mic");
+    if (this._micBtn && isVoiceInputSupported()) {
+      this._micBtn.classList.remove("hidden");
+      this._micBtn.addEventListener("click", () => {
+        if (this.inputEl) this._voice.toggle(this.inputEl);
+      });
+    }
 
     document.getElementById("inkling-file")?.addEventListener("change", (e) => {
       const file = e.target.files?.[0];
@@ -312,11 +323,16 @@ export class InklingPanel {
     // orb cluster legible (was 9 cramped icons).
     this._orbItems = [
       mk("💬", "Chat with Inkling", () => this.openWithContext()),
+      mk("🎤", "Voice message", () => this.openWithVoice()),
       mk("🔗", "Connections", () => this.showConnections()),
       mk("＋", "New event", () => this._orbNewEvent()),
       mk("🎨", "Text style", () => openTextStylePicker()),
       mk("📅", "Go to today", () => this._orbToday())
     ];
+    if (!isVoiceInputSupported()) {
+      // Drop the voice action where the browser can't do speech-to-text.
+      this._orbItems = this._orbItems.filter((b) => b.dataset.label !== "Voice message");
+    }
     for (const b of this._orbItems) menu.appendChild(b);
     document.body.appendChild(menu);
     this._orbMenu = menu;
@@ -391,6 +407,27 @@ export class InklingPanel {
   openWithContext() {
     this.expand();
     try { this._postContextPrompt(); } catch { /* ignore */ }
+  }
+
+  /** Orb "🎤 Voice message" → open the chat and start dictating into the input. */
+  openWithVoice() {
+    this.expand();
+    // Let the panel mount/animate, then begin listening. The orb tap is the user
+    // gesture; mic permission (once granted) carries through.
+    setTimeout(() => {
+      if (this.inputEl && this._voice?.supported) this._voice.start(this.inputEl);
+      this.inputEl?.focus();
+    }, 320);
+  }
+
+  /** Reflect dictation state on the mic buttons (composer + visual pulse). */
+  _setMicState(state) {
+    const recording = state === "recording";
+    this._micBtn?.classList.toggle("is-recording", recording);
+    this._micBtn?.setAttribute("aria-pressed", String(recording));
+    if (state === "error" && this.messagesEl) {
+      this._appendBubble("system", "🎤 Microphone access is blocked. Allow it in your browser/app settings to use voice.");
+    }
   }
 
   /** Open the Goals surface (capture + review goals). */
