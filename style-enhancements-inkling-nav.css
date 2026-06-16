@@ -14,7 +14,10 @@ body.inkling-notebook-layout {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 10300;
+  /* Float above the full-screen tab surfaces (Alerts/Alarm/Connections/Goals,
+     ~z11080) so the nav is visible and tappable in EVERY view — switch tabs
+     from anywhere without closing first. */
+  z-index: 11100;
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
