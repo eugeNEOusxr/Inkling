@@ -653,6 +653,24 @@ export function getTimeUntil(alertTime, now = Date.now()) {
 }
 
 /**
+ * Human "how long ago" label for a past time so fired alerts show their age
+ * (e.g. "8 hours ago") instead of a misleading "now".
+ * @param {number} pastTime epoch ms
+ * @param {number} [now]
+ * @returns {string}
+ */
+export function getTimeAgo(pastTime, now = Date.now()) {
+  const diff = now - pastTime;
+  if (diff < 60000) return "just now";
+  const m = Math.floor(diff / 60000);
+  if (m < 60) return `${m} minute${m === 1 ? "" : "s"} ago`;
+  const h = Math.floor(diff / 3600000);
+  if (h < 24) return `${h} hour${h === 1 ? "" : "s"} ago`;
+  const d = Math.floor(diff / 86400000);
+  return `${d} day${d === 1 ? "" : "s"} ago`;
+}
+
+/**
  * @param {AlertRecord} alert
  * @param {number} [now]
  * @returns {number | null}

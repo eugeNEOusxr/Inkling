@@ -76,7 +76,17 @@ export function snoozeDropdownItem(feedId, duration) {
  */
 export function formatCountdown(triggerAt, now = Date.now()) {
   const diff = triggerAt - now;
-  if (diff <= 0) return "Now";
+  if (diff <= 0) {
+    // Past: show how long ago it fired so the user can decide to clear it.
+    const past = now - triggerAt;
+    if (past < 60000) return "Now";
+    const mins = Math.floor(past / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  }
   const totalSec = Math.floor(diff / 1000);
   if (totalSec < 60) return `in ${totalSec}s`;
   const mins = Math.floor(totalSec / 60);

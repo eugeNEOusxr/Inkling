@@ -15,6 +15,7 @@ import {
   getAlertsAwaitingReview,
   getResolvedAlerts,
   getTimeUntil,
+  getTimeAgo,
   dismissAlert,
   snoozeAlert,
   setAlertStatus,
@@ -78,7 +79,9 @@ export function colorizeAlertWords(escaped) {
 }
 
 function relLabel(triggerAt, now = Date.now()) {
-  if (triggerAt <= now) return "now";
+  // Past alerts show how long ago they fired (e.g. "8 hours ago") so the user
+  // can decide whether to clear them — not a misleading "now".
+  if (triggerAt <= now) return getTimeAgo(triggerAt, now);
   const raw = getTimeUntil(triggerAt, now);
   if (raw === "now" || raw === "less than a minute") return "soon";
   return `in ${raw}`;
