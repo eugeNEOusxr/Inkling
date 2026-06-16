@@ -2371,6 +2371,15 @@ body.notification-wall-open #wall-toggle.is-hidden {
   overflow-y: auto;
 }
 
+/* The dialog also has .panel-card, whose `overflow: hidden` (loaded later) was
+   clipping the Settings content so you couldn't scroll to Notifications. The id
+   raises specificity so scrolling wins on both desktop and mobile. */
+#notification-settings-panel .notification-settings-dialog {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .notification-settings-header {
   display: flex;
   align-items: center;
