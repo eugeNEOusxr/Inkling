@@ -7,12 +7,17 @@ const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = process.env.FLASHCARD_MODEL || "claude-haiku-4-5";
 
 const SYSTEM =
-  "You write study flashcards. Given a topic, a section, and key terms, produce a focused deck. " +
-  "Respond with ONLY a JSON object — no prose, no code fences. Shape: " +
-  '{"cards":[{"q":"<question>","a":"<answer>"}]}. ' +
-  "Rules: 6–12 cards. q is a clear question that tests understanding or recall of the section; " +
-  "a is a correct, concise answer (1–3 sentences, plain text, no markdown). Cover the listed terms. " +
-  "Vary question types (define, apply, compare, give an example).";
+  "You write study flashcards that build real mastery — not just definition recall. Given a topic, a section, " +
+  "and key terms, produce a focused deck. Respond with ONLY a JSON object — no prose, no code fences. Shape: " +
+  '{"cards":[{"q":"<question>","a":"<answer>","type":"problem"|"concept"}]}. ' +
+  "Rules:\n" +
+  "- 8–12 cards. At least HALF must be type \"problem\": concrete, solve-it questions with specific numbers or " +
+  "cases (e.g. \"Find the domain of f(x)=sqrt(x-3)\", \"Factor x^2-5x+6\", \"Evaluate f(2) for f(x)=3x^2-1\"). " +
+  "VARY the numbers and cases across problems so the learner practices the method, not one memorized instance.\n" +
+  "- The rest are type \"concept\": define, compare, or give-an-example questions that test understanding.\n" +
+  "- Answers (a): for problems, show the key step(s) and the final answer (concise). For concepts, a correct " +
+  "1–3 sentence answer. Plain text only — NO markdown, NO LaTeX; write math plainly (x^2, sqrt(x), <=, pi).\n" +
+  "- Cover the listed terms; prefer application over restatement.";
 
 export async function generateFlashcardsLLM({ topic, section, terms } = {}) {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -54,7 +59,11 @@ function parseJson(s) {
 function normalize(raw) {
   const obj = parseJson(raw);
   const cards = (Array.isArray(obj?.cards) ? obj.cards : [])
-    .map((c) => ({ q: String(c?.q || "").trim().slice(0, 400), a: String(c?.a || "").trim().slice(0, 800) }))
+    .map((c) => ({
+      q: String(c?.q || "").trim().slice(0, 400),
+      a: String(c?.a || "").trim().slice(0, 800),
+      type: c?.type === "problem" ? "problem" : "concept"
+    }))
     .filter((c) => c.q && c.a)
     .slice(0, 14);
   if (!cards.length) return null;

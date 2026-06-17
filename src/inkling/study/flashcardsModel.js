@@ -68,7 +68,7 @@ export async function generateFlashcards({ topic, section = "", terms = [], mapI
     section: section || "",
     mapId, branchId,
     createdAt: Date.now(),
-    cards: data.cards.map((c) => ({ id: uid("card"), q: c.q, a: c.a, status: 0 }))
+    cards: data.cards.map((c) => ({ id: uid("card"), q: c.q, a: c.a, type: c.type || "concept", status: 0 }))
   };
   saveFlashcardSet(set);
   return { ok: true, set };

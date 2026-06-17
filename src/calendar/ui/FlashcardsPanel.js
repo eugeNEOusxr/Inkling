@@ -155,7 +155,8 @@ export class FlashcardsPanel {
       return;
     }
     const card = set.cards[this._idx];
-    this._counter.textContent = `Card ${this._idx + 1} of ${set.cards.length}`;
+    const kind = card.type === "problem" ? " · 🧮 Problem" : " · 💡 Concept";
+    this._counter.textContent = `Card ${this._idx + 1} of ${set.cards.length}${kind}`;
     this._cardEl.textContent = this._flipped ? card.a : card.q;
     this._cardEl.style.background = this._flipped ? "rgba(57,217,138,0.08)" : "rgba(240,171,252,0.07)";
   }
