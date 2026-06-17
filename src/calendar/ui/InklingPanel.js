@@ -595,9 +595,27 @@ export class InklingPanel {
   showWelcomeIfNeeded() {
     if (this._welcomed) return;
     this._welcomed = true;
+    const KEY = "inkling-welcome-v1";
+    let meta = {};
+    try { meta = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { /* ignore */ }
+    const today = new Date().toISOString().slice(0, 10);
     const email = document.getElementById("auth-account-label")?.textContent?.trim() || "";
-    const html = escapeHtml(getInklingWelcomeMessage(getDisplayName(email))).replace(/\n/g, "<br>");
-    this._appendBubble("inkling", html);
+    const who = getDisplayName(email);
+
+    if (!meta.firstSeen) {
+      // First visit ever — full orientation, and point them to the orb for next time.
+      const html = escapeHtml(getInklingWelcomeMessage(who)).replace(/\n/g, "<br>") +
+        `<br><br>✦ Tap the <b>Inkling</b> orb (the ✦ icon) anytime to find me again.`;
+      this._appendBubble("inkling", html);
+    } else if (meta.lastDay !== today) {
+      // Returning on a new day — a short, warm hello (no wall of text).
+      this._appendBubble("inkling", escapeHtml(`Welcome back${who ? `, ${who}` : ""}. What's on your mind?`));
+    }
+    // Same-day reopen → stay quiet; the cosmic backdrop is the welcome, not a
+    // repeated chat message (no nagging for frequent openers).
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ firstSeen: meta.firstSeen || today, lastDay: today }));
+    } catch { /* ignore */ }
   }
 
   _appendBubble(role, html, extraClass = "") {
