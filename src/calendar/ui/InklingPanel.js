@@ -16,7 +16,7 @@ import { Connections2D } from "./Connections2D.js";
 import { InklingMindPanel } from "./InklingMindPanel.js";
 import { createEvent } from "../../wordweaver/timelineModel.js";
 import { VoiceDictation, isVoiceInputSupported } from "./voiceInput.js";
-import { appendTurn, ingestText, mindInsights, connectConcepts, extractConcepts, ingestCalendar, enrichFromServer } from "../../inkling/mind/index.js";
+import { appendTurn, ingestText, mindInsights, mindGraph, connectConcepts, extractConcepts, ingestCalendar, enrichFromServer } from "../../inkling/mind/index.js";
 
 const CHECKIN_HTML =
   "✦ Hey — been a little while. <b>What are you up to right now?</b><br>" +
@@ -760,17 +760,21 @@ export class InklingPanel {
       "inkling-msg--proactive"
     );
     try {
+      const mindSummary = await this._buildMindSummary();
       const res = await fetchInklingChat({
         message: text,
         history: this._chatHistory(),
         referenceDate:
           this.app?._getTodayDate?.() ?? new Date().toISOString().slice(0, 10),
         userName: getDisplayName(),
-        awaitingConfirm: Boolean(this._pending)
+        awaitingConfirm: Boolean(this._pending),
+        mindSummary
       });
       typing?.remove();
       const reply = res?.reply || "I’m here — what would you like to do?";
       this._appendBubble("inkling", this._formatReply(reply));
+      // Record any connections Inkling proposed into the Mind.
+      if (Array.isArray(res?.links) && res.links.length) this._applyChatLinks(res.links);
     } catch (err) {
       typing?.remove();
       console.warn("[Inkling] LLM turn failed", err);
@@ -779,6 +783,50 @@ export class InklingPanel {
         escapeHtml("I couldn’t reach the server just now — try again in a moment.")
       );
     }
+  }
+
+  /** Compact snapshot of the Mind (top concepts + recent links) for the chat prompt. */
+  async _buildMindSummary() {
+    try {
+      const g = await mindGraph();
+      if (!g.nodes.length) return "";
+      const byId = new Map(g.nodes.map((n) => [n.id, n.label]));
+      const top = [...g.nodes].sort((a, b) => (b.importance || 0) - (a.importance || 0)).slice(0, 18).map((n) => n.label);
+      const links = g.edges
+        .filter((e) => e.rel !== "CONTRADICTS")
+        .slice(-12)
+        .map((e) => { const a = byId.get(e.from), b = byId.get(e.to); return a && b ? `${a}—${b}` : null; })
+        .filter(Boolean);
+      return `Concepts: ${top.join(", ")}.` + (links.length ? ` Existing links: ${links.join("; ")}.` : "");
+    } catch { return ""; }
+  }
+
+  /** Record connections Inkling proposed in chat into the Mind + show a chip. */
+  async _applyChatLinks(links) {
+    const made = [];
+    for (const pair of links.slice(0, 8)) {
+      const a = String(pair?.[0] || "").trim(), b = String(pair?.[1] || "").trim();
+      if (!a || !b) continue;
+      try { await connectConcepts(a, b); made.push([a, b]); } catch { /* ignore */ }
+    }
+    if (!made.length || !this.messagesEl) return;
+    const chip = document.createElement("div");
+    chip.className = "inkling-mind-chip";
+    chip.style.cssText =
+      "display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-2px 0 12px;padding:6px 10px;" +
+      "border-radius:14px;background:rgba(160,107,255,0.10);border:1px solid rgba(160,107,255,0.32);" +
+      "font:600 11px system-ui;color:#c9b6ff;max-width:100%";
+    const span = document.createElement("span");
+    span.textContent = `✦ Connected in your Mind: ${made.map(([a, b]) => `${a} ↔ ${b}`).join(", ")}`;
+    chip.appendChild(span);
+    const view = document.createElement("button");
+    view.type = "button"; view.textContent = "🧠 View";
+    view.style.cssText = "background:rgba(160,107,255,0.24);color:#e9deff;border:0;border-radius:999px;padding:3px 11px;font:700 11px system-ui;cursor:pointer";
+    const labels = [...new Set(made.flat())];
+    view.addEventListener("click", () => { this.minimize(); this.showMind({ focus: labels }); });
+    chip.appendChild(view);
+    this.messagesEl.appendChild(chip);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }
 
   /** Light markdown → HTML for LLM replies (bold + line breaks), safely escaped. */
