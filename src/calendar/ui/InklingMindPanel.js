@@ -21,6 +21,9 @@ export class InklingMindPanel {
     this._pos = new Map();
     this._nodes = [];
     this._edges = [];
+    // View transform for zoom/pan.
+    this._scale = 1; this._ox = 0; this._oy = 0;
+    this._pointers = new Map(); this._pinchBase = null;
   }
 
   _build() {
@@ -66,6 +69,53 @@ export class InklingMindPanel {
     this._panel = panel;
     this._canvas = canvas;
     this._insights = insights;
+    this._bindGestures(canvas);
+  }
+
+  /** Wheel zoom, drag to pan, pinch to zoom, double-click to reset. */
+  _bindGestures(canvas) {
+    canvas.style.touchAction = "none";
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      this._zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? 1.12 : 0.89);
+    }, { passive: false });
+    canvas.addEventListener("dblclick", () => { this._scale = 1; this._ox = 0; this._oy = 0; });
+    canvas.addEventListener("pointerdown", (e) => {
+      canvas.setPointerCapture?.(e.pointerId);
+      this._pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      this._pinchBase = null;
+    });
+    canvas.addEventListener("pointermove", (e) => {
+      if (!this._pointers.has(e.pointerId)) return;
+      const prev = this._pointers.get(e.pointerId);
+      this._pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+      const pts = [...this._pointers.values()];
+      if (pts.length >= 2) {
+        const [a, b] = pts;
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        if (this._pinchBase && this._pinchBase.dist > 0) this._zoomAt(mid.x, mid.y, dist / this._pinchBase.dist);
+        this._pinchBase = { dist, mid };
+      } else {
+        this._ox += e.offsetX - prev.x;
+        this._oy += e.offsetY - prev.y;
+      }
+    });
+    const release = (e) => {
+      this._pointers.delete(e.pointerId);
+      if (this._pointers.size < 2) this._pinchBase = null;
+    };
+    canvas.addEventListener("pointerup", release);
+    canvas.addEventListener("pointercancel", release);
+  }
+
+  /** Scale around a screen point (CSS px), keeping that point fixed. */
+  _zoomAt(cx, cy, factor) {
+    const s = Math.max(0.3, Math.min(4, this._scale * factor));
+    const f = s / this._scale;
+    this._ox = cx - (cx - this._ox) * f;
+    this._oy = cy - (cy - this._oy) * f;
+    this._scale = s;
   }
 
   _sizeCanvas() {
@@ -139,6 +189,9 @@ export class InklingMindPanel {
     const ctx = this._canvas.getContext("2d");
     const pos = this._pos;
     ctx.clearRect(0, 0, this._W, this._H);
+    ctx.save();
+    ctx.translate(this._ox, this._oy);
+    ctx.scale(this._scale, this._scale);
     for (const e of this._edges) {
       const a = pos.get(e.from), b = pos.get(e.to); if (!a || !b) continue;
       if (e.rel === "CONTRADICTS") { ctx.strokeStyle = "#ff5c6c"; ctx.lineWidth = 1.4; ctx.setLineDash([5, 4]); }
@@ -157,12 +210,14 @@ export class InklingMindPanel {
         ctx.fillText(n.label, p.x, p.y - rad - 3);
       }
     }
+    ctx.restore();
   }
 
   async show(opts = {}) {
     this._build();
     this._panel.style.display = "flex";
     this._onClose = opts.onClose || null;
+    this._scale = 1; this._ox = 0; this._oy = 0; // reset zoom/pan each open
     this._sizeCanvas();
     await this._render();
     if (!this._running) { this._running = true; this._tick(); }

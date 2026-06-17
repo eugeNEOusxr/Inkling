@@ -51,9 +51,35 @@ async function persist() {
 export async function ingestText(t) {
   await ensureReady();
   if (!t?.content) return null;
-  ingestTurn(_mind, { sessionId: t.sessionId, speaker: t.speaker, text: t.content, ts: t.ts });
+  const delta = ingestTurn(_mind, { sessionId: t.sessionId, speaker: t.speaker, text: t.content, ts: t.ts });
   await persist();
-  return _mind;
+  return delta; // { ids, addedNodes, addedEdges }
+}
+
+/**
+ * Connect the calendar to memory: weave the user's note/event text into the
+ * graph. Only recognized concepts become nodes (extractConcepts is the filter),
+ * so generic events are ignored — no flooding from the starter seed.
+ * @returns {Promise<{count:number, added:string[]}>}
+ */
+export async function ingestCalendar(limit = 200) {
+  await ensureReady();
+  let notes = [];
+  try {
+    const tl = await import("../../wordweaver/timelineModel.js");
+    notes = tl.loadUserNotes?.() || [];
+  } catch { return { count: 0, added: [] }; }
+  const recent = notes.slice(-limit);
+  const added = new Set();
+  for (const n of recent) {
+    const text = (n?.text || "").trim();
+    if (!text) continue;
+    const ts = Date.parse(`${n.date || ""}T${n.time || "00:00"}`) || Date.now();
+    const d = ingestTurn(_mind, { sessionId: "calendar", speaker: "calendar", text, ts });
+    d.addedNodes.forEach((l) => added.add(l));
+  }
+  await persist();
+  return { count: recent.length, added: [...added] };
 }
 
 /** Manually connect two concepts (Inkling's "connect X and Y") + persist. */

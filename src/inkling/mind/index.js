@@ -13,7 +13,7 @@ export { appendTurn, recentTurns, conversationCount, currentSessionId } from "./
 export { putNode, putEdge, getNode, allNodes, nodesByLayer, nodesByState, neighbors, NODE_STATE } from "./graph.js";
 export { clearMind, isMindSupported } from "./db.js";
 export { extractConcepts } from "./extract.js";
-export { ingestText, mindInsights, mindGraph, resetMindStore, connectConcepts } from "./mindStore.js";
+export { ingestText, mindInsights, mindGraph, resetMindStore, connectConcepts, ingestCalendar } from "./mindStore.js";
 
 if (typeof window !== "undefined" && !window.__inklingMind) {
   window.__inklingMind = { db, conversations, graph, cognition, mindStore };

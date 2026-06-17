@@ -74,11 +74,25 @@ export function ingestTurn(mind, turn) {
   mind.maxTs = Math.max(mind.maxTs, ts);
 
   const concepts = extractConcepts(turn.text);
-  const ids = concepts.map((c) => upsertNode(mind, c, turn.sessionId, ts).id);
+  const addedNodes = [];
+  const ids = concepts.map((c) => {
+    const existed = mind.nodes.has(conceptId(c.label));
+    const n = upsertNode(mind, c, turn.sessionId, ts);
+    if (!existed) addedNodes.push(n.label);
+    return n.id;
+  });
 
   // Co-occurrence edges: every pair mentioned together this turn.
-  for (let i = 0; i < ids.length; i++)
-    for (let j = i + 1; j < ids.length; j++) upsertEdge(mind, ids[i], ids[j], "RELATED_TO");
+  const addedEdges = [];
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      if (ids[i] === ids[j]) continue;
+      const [x, y] = [ids[i], ids[j]].sort();
+      const isNew = !mind.edges.has(`e_${x}_RELATED_TO_${y}`);
+      upsertEdge(mind, ids[i], ids[j], "RELATED_TO");
+      if (isNew) addedEdges.push([concepts[i].label, concepts[j].label]);
+    }
+  }
 
   // Explicit contradiction (stance conflict captured in synthetic data).
   if (turn.contradicts?.length === 2) {
@@ -90,7 +104,7 @@ export function ingestTurn(mind, turn) {
   }
 
   recomputeImportance(mind);
-  return ids;
+  return { ids, addedNodes, addedEdges };
 }
 
 /** Manually link two concepts — used when the user says "connect X and Y". */

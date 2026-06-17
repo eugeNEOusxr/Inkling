@@ -5,7 +5,7 @@
 window.__INKLING_RUNTIME__ = {
   apiUrl: "https://inkling-15yf.onrender.com",
   platform: "web",
-  buildTag: "2026.06.17.0625",
+  buildTag: "2026.06.17.0647",
   vapidPublicKey: "BK-g6ww90AY1bCtGq3wHlHdTQQJqugV7tD2bKoqv1sVPMOFUdLCbf0_JQTtU6zST0S9jHYLHhZUEGwVVkMxiCWA",
   nativeShell: false
 };

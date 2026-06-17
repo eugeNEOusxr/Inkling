@@ -16,7 +16,7 @@ import { Connections2D } from "./Connections2D.js";
 import { InklingMindPanel } from "./InklingMindPanel.js";
 import { createEvent } from "../../wordweaver/timelineModel.js";
 import { VoiceDictation, isVoiceInputSupported } from "./voiceInput.js";
-import { appendTurn, ingestText, mindInsights, connectConcepts, extractConcepts } from "../../inkling/mind/index.js";
+import { appendTurn, ingestText, mindInsights, connectConcepts, extractConcepts, ingestCalendar } from "../../inkling/mind/index.js";
 
 const CHECKIN_HTML =
   "✦ Hey — been a little while. <b>What are you up to right now?</b><br>" +
@@ -97,6 +97,10 @@ export class InklingPanel {
     // Seed the welcome message first so it can never be buried by a proactive
     // digest or alert bubble that fires before the user opens the panel.
     this.showWelcomeIfNeeded();
+    // Warm the Mind store now (rebuild graph from prior history) so a turn typed
+    // this session ingests cleanly and reports an accurate "what's new" delta —
+    // otherwise the first message's rebuild would absorb it and the chip vanishes.
+    void mindInsights().catch(() => {});
     this._startCron();
 
     // Gentle in-app check-in: if the user's been away a while, Inkling asks what
@@ -462,6 +466,14 @@ export class InklingPanel {
         "inkling-msg--proactive");
       return true;
     }
+    // Calendar ↔ memory: explain the link and actually weave the calendar in.
+    if (/\b(calendar|schedule|alerts?|alarms?)\b/i.test(text) &&
+        /\b(connect|link|tie|relate|related|combine|together|hook (it )?up)\b/i.test(text) &&
+        /\b(mind|memory|graph|notes?|each other|them|these)\b/i.test(text)) {
+      await this._postCalendarLink();
+      return true;
+    }
+
     const asksAboutMind =
       /\b(mind ?map)\b/i.test(text) ||
       /\bwhat (do |have )?you('ve)? ?(notice|noticed|see|seen|learn|learned|know|found)\b.*\bme\b/i.test(text) ||
@@ -489,6 +501,23 @@ export class InklingPanel {
     } catch { /* ignore */ }
     this._appendBubble("inkling",
       escapeHtml('Tap 🧠 Mind in the bottom bar for the full map. Want me to link two ideas? Just say “connect X and Y”.'),
+      "inkling-msg--proactive");
+  }
+
+  /** Calendar ↔ memory: explain the link, then weave recent calendar into the graph. */
+  async _postCalendarLink() {
+    this._appendBubble("inkling",
+      escapeHtml("Your calendar and your Mind are the same memory seen two ways: when you add notes, events or alerts, I weave their topics into the graph — and you can link them to anything else. Let me pull your recent calendar in now…"),
+      "inkling-msg--proactive");
+    try {
+      const r = await ingestCalendar();
+      const msg = r.added?.length
+        ? `Done — pulled ${r.count} item${r.count === 1 ? "" : "s"} from your calendar and added ${this._humanList(r.added.slice(0, 5))}${r.added.length > 5 ? ` +${r.added.length - 5} more` : ""} to your Mind.`
+        : `I checked ${r.count} calendar item${r.count === 1 ? "" : "s"}. As you log notes with real topics, the overlaps with our chats will show up in your Mind.`;
+      this._appendBubble("inkling", escapeHtml(msg), "inkling-msg--proactive");
+    } catch { /* ignore */ }
+    this._appendBubble("inkling",
+      escapeHtml('Open 🧠 Mind to see it — or say “connect X and Y” to draw a link yourself.'),
       "inkling-msg--proactive");
   }
 
@@ -651,12 +680,13 @@ export class InklingPanel {
 
     if (!meta.firstSeen) {
       // First visit ever — full orientation, and point them to the orb for next time.
+      // Marked proactive so this boilerplate greeting isn't captured into the graph.
       const html = escapeHtml(getInklingWelcomeMessage(who)).replace(/\n/g, "<br>") +
         `<br><br>✦ Tap the <b>Inkling</b> orb (the ✦ icon) anytime to find me again.`;
-      this._appendBubble("inkling", html);
+      this._appendBubble("inkling", html, "inkling-msg--proactive");
     } else if (meta.lastDay !== today) {
       // Returning on a new day — a short, warm hello (no wall of text).
-      this._appendBubble("inkling", escapeHtml(`Welcome back${who ? `, ${who}` : ""}. What's on your mind?`));
+      this._appendBubble("inkling", escapeHtml(`Welcome back${who ? `, ${who}` : ""}. What's on your mind?`), "inkling-msg--proactive");
     }
     // Same-day reopen → stay quiet; the cosmic backdrop is the welcome, not a
     // repeated chat message (no nagging for frequent openers).
@@ -702,9 +732,8 @@ export class InklingPanel {
     if ((role === "user" || role === "inkling") && !extraClass.includes("inkling-msg--proactive")) {
       const content = div.textContent || "";
       appendTurn({ speaker: role, content, source: "text" })
-        .then((rec) => {
-          if (rec) return ingestText({ sessionId: rec.sessionId, speaker: role, content, ts: rec.ts });
-        })
+        .then((rec) => (rec ? ingestText({ sessionId: rec.sessionId, speaker: role, content, ts: rec.ts }) : null))
+        .then((delta) => { if (delta) this._showMindChip(delta, role, content); })
         .catch(() => {});
     }
     return div;
@@ -857,6 +886,72 @@ export class InklingPanel {
     if (a.length <= 1) return a[0] || "";
     if (a.length === 2) return `${a[0]} and ${a[1]}`;
     return `${a.slice(0, -1).join(", ")}, and ${a[a.length - 1]}`;
+  }
+
+  /**
+   * Passive proof that a turn became graph structure: a small chip under the
+   * message naming what was mapped/linked, with one-tap View + (for your own
+   * messages) an optional "Save as note" — no nagging yes/no prompt.
+   */
+  _showMindChip(delta, role, srcText) {
+    if (!this.messagesEl || !delta) return;
+    const added = delta.addedNodes || [];
+    const linked = delta.addedEdges || [];
+    if (!added.length && !linked.length) return; // only when the Mind actually grew
+
+    const chip = document.createElement("div");
+    chip.className = "inkling-mind-chip";
+    chip.style.cssText =
+      "display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-2px 0 12px;padding:6px 10px;" +
+      "border-radius:14px;background:rgba(88,166,255,0.10);border:1px solid rgba(88,166,255,0.30);" +
+      "font:600 11px system-ui;color:#9ecbff;max-width:100%";
+
+    const cap = (arr, n) => arr.length > n ? `${arr.slice(0, n).join(", ")} +${arr.length - n} more` : arr.join(", ");
+    let txt = "";
+    if (added.length) txt = `🧠 Mapped to your Mind: ${cap(added, 4)}`;
+    else if (linked.length) txt = `🔗 Linked ${linked.slice(0, 2).map(([a, b]) => `${a} ↔ ${b}`).join(", ")}`;
+    if (added.length && linked.length) txt += ` · ${linked.length} link${linked.length > 1 ? "s" : ""}`;
+    const span = document.createElement("span");
+    span.textContent = txt;
+    chip.appendChild(span);
+
+    const view = document.createElement("button");
+    view.type = "button"; view.textContent = "View";
+    view.style.cssText = "background:rgba(88,166,255,0.22);color:#cfe5ff;border:0;border-radius:999px;padding:3px 11px;font:700 11px system-ui;cursor:pointer";
+    view.addEventListener("click", () => this.showMind());
+    chip.appendChild(view);
+
+    if (role === "user") {
+      const note = document.createElement("button");
+      note.type = "button"; note.textContent = "📌 Note";
+      note.title = "Also save this to today's calendar";
+      note.style.cssText = "background:transparent;color:#9ecbff;border:1px solid rgba(88,166,255,0.35);border-radius:999px;padding:3px 11px;font:600 11px system-ui;cursor:pointer";
+      note.addEventListener("click", () => {
+        const ok = this._saveTodayNote(srcText);
+        note.textContent = ok ? "Noted ✓" : "Couldn't save";
+        note.disabled = true; note.style.opacity = "0.7"; note.style.cursor = "default";
+      });
+      chip.appendChild(note);
+    }
+
+    this.messagesEl.appendChild(chip);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+  }
+
+  /** Save a message to today's calendar (only when the user taps 📌 Note). */
+  _saveTodayNote(text) {
+    try {
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      const iso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      createEvent({
+        title: text.slice(0, 80), text,
+        startTime: now.toISOString(),
+        endTime: new Date(now.getTime() + 30 * 60000).toISOString(),
+        category: "personal", date: iso
+      });
+      return true;
+    } catch { return false; }
   }
 
   /**
