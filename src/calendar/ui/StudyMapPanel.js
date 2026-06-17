@@ -5,6 +5,7 @@
  * leaves are your study nudges.
  */
 import { loadStudyMaps, getStudyMap, generateStudyMap, deleteStudyMap, cycleMastery, mapProgress, MASTERY, MASTERY_COLOR } from "../../inkling/study/studyMapModel.js";
+import { findSetFor, generateFlashcards } from "../../inkling/study/flashcardsModel.js";
 
 function esc(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
@@ -128,8 +129,27 @@ export class StudyMapPanel {
 
     for (const br of map.branches) {
       const sec = document.createElement("div");
-      sec.style.cssText = "font:800 12px system-ui;color:#cbd5e1;margin:12px 0 7px";
-      sec.textContent = br.label;
+      sec.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;margin:14px 0 7px";
+      const lab = document.createElement("div");
+      lab.style.cssText = "font:800 12px system-ui;color:#cbd5e1";
+      lab.textContent = br.label;
+      const cards = document.createElement("button");
+      cards.type = "button";
+      cards.textContent = findSetFor(map.id, br.id) ? "📇 Cards" : "📇 Make cards";
+      cards.style.cssText = "flex:0 0 auto;background:rgba(240,171,252,0.12);color:#f0abfc;border:1px solid rgba(240,171,252,0.4);border-radius:999px;padding:4px 10px;font:700 11px system-ui;cursor:pointer";
+      cards.addEventListener("click", async () => {
+        const existing = findSetFor(map.id, br.id);
+        if (existing) { document.dispatchEvent(new CustomEvent("inkling:open-flashcards", { detail: { setId: existing.id } })); return; }
+        cards.textContent = "Making…"; cards.disabled = true;
+        const r = await generateFlashcards({
+          topic: map.topic, section: br.label,
+          terms: br.leaves.map((l) => l.label), mapId: map.id, branchId: br.id
+        });
+        cards.disabled = false;
+        if (r.ok) { document.dispatchEvent(new CustomEvent("inkling:open-flashcards", { detail: { setId: r.set.id } })); }
+        else { cards.textContent = r.reason === "signin" ? "Sign in" : r.reason === "capped" ? "Limit hit" : "Retry"; setTimeout(() => { cards.textContent = "📇 Make cards"; }, 2000); }
+      });
+      sec.append(lab, cards);
       this._body.appendChild(sec);
       const wrap = document.createElement("div");
       wrap.style.cssText = "display:flex;flex-wrap:wrap;gap:7px";

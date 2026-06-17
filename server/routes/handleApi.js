@@ -29,6 +29,7 @@ import {
 import { generateInklingChat } from "../lib/inkling/generateInklingChat.js";
 import { extractConceptsLLM } from "../lib/inkling/extractConcepts.js";
 import { generateStudyMapLLM } from "../lib/inkling/studyMap.js";
+import { generateFlashcardsLLM } from "../lib/inkling/flashcards.js";
 import { allowAiUse } from "../lib/inkling/usageCap.js";
 import { handlePushRoute } from "./pushRoutes.js";
 import crypto from "node:crypto";
@@ -309,6 +310,28 @@ export async function handleApi(req, res, url) {
       return json(res, 200, result || { source: "none" });
     } catch (err) {
       console.warn("[inkling/studymap] route error:", err?.message || err);
+      return json(res, 200, { source: "error" });
+    }
+  }
+
+  // Flashcards: Haiku turns a topic/section into a Q&A deck. Signed-in + capped.
+  if (req.method === "POST" && url.pathname === "/api/inkling/flashcards") {
+    const limited = rateLimit(rlKey, { limit: 15, windowMs: 60_000 });
+    if (!limited.ok) return json(res, 429, { error: "Too many requests." });
+    const aiEmail = verifyToken(getBearer(req));
+    if (!aiEmail) return json(res, 200, { source: "guest" });
+    if (!allowAiUse(aiEmail, "flashcards")) return json(res, 200, { source: "capped" });
+    const body = await readBody(req);
+    if (!body) return json(res, 400, { error: "Invalid JSON" });
+    try {
+      const result = await generateFlashcardsLLM({
+        topic: String(body.topic || ""),
+        section: body.section ? String(body.section) : "",
+        terms: Array.isArray(body.terms) ? body.terms : []
+      });
+      return json(res, 200, result || { source: "none" });
+    } catch (err) {
+      console.warn("[inkling/flashcards] route error:", err?.message || err);
       return json(res, 200, { source: "error" });
     }
   }

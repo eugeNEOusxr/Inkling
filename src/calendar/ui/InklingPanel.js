@@ -15,6 +15,7 @@ import { GoalsPanel } from "./GoalsPanel.js";
 import { Connections2D } from "./Connections2D.js";
 import { InklingMindPanel } from "./InklingMindPanel.js";
 import { StudyMapPanel } from "./StudyMapPanel.js";
+import { FlashcardsPanel } from "./FlashcardsPanel.js";
 import { createEvent } from "../../wordweaver/timelineModel.js";
 import { VoiceDictation, isVoiceInputSupported } from "./voiceInput.js";
 import { appendTurn, ingestText, mindInsights, mindGraph, connectConcepts, extractConcepts, ingestCalendar, enrichFromServer } from "../../inkling/mind/index.js";
@@ -102,6 +103,11 @@ export class InklingPanel {
     // this session ingests cleanly and reports an accurate "what's new" delta —
     // otherwise the first message's rebuild would absorb it and the chip vanishes.
     void mindInsights().catch(() => {});
+    // Study Map sections jump into a generated deck via this event.
+    document.addEventListener("inkling:open-flashcards", (e) => {
+      this.minimize();
+      this.showFlashcards(e.detail?.setId);
+    });
     this._startCron();
 
     // Gentle in-app check-in: if the user's been away a while, Inkling asks what
@@ -333,6 +339,7 @@ export class InklingPanel {
       mk("🎤", "Voice message", () => this.openWithVoice()),
       mk("🧠", "Mind", () => { this.minimize(); this.showMind(); }),
       mk("📚", "Study", () => { this.minimize(); this.showStudy(); }),
+      mk("📇", "Flashcards", () => { this.minimize(); this.showFlashcards(); }),
       mk("🔔", "Alarm", () => this.app?.openAlarmClock?.()),
       mk("🔗", "Connections", () => this.showConnections()),
       mk("＋", "New event", () => this._orbNewEvent()),
@@ -456,6 +463,12 @@ export class InklingPanel {
   showStudy() {
     if (!this._studyPanel) this._studyPanel = new StudyMapPanel();
     this._studyPanel.show();
+  }
+
+  /** Open the Flashcards surface (optionally jump straight to a deck). */
+  showFlashcards(setId) {
+    if (!this._flashcards) this._flashcards = new FlashcardsPanel();
+    this._flashcards.show(setId);
   }
 
   /**
