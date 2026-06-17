@@ -68,6 +68,8 @@ const LEXICON = [
   { label: "Physics", type: "subject", match: ["physics"] },
   { label: "Chemistry", type: "subject", match: ["chemistry", "chem class", "chem"] },
   { label: "Biology", type: "subject", match: ["biology", "bio class"] },
+  { label: "Mathematics", type: "subject", match: ["mathematics", "maths", "math"] },
+  { label: "Science", type: "subject", match: ["science", "sciences"] },
   { label: "Functions", type: "concept", match: ["function", "functions", "domain and range"] },
   { label: "Trigonometry", type: "concept", match: ["trigonometry", "trig", "sine", "cosine", "tangent"] },
   { label: "Logarithms", type: "concept", match: ["logarithm", "logarithms", "log function"] },

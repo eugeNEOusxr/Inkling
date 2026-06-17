@@ -16,7 +16,7 @@ import { Connections2D } from "./Connections2D.js";
 import { InklingMindPanel } from "./InklingMindPanel.js";
 import { createEvent } from "../../wordweaver/timelineModel.js";
 import { VoiceDictation, isVoiceInputSupported } from "./voiceInput.js";
-import { appendTurn, ingestText, mindInsights, connectConcepts } from "../../inkling/mind/index.js";
+import { appendTurn, ingestText, mindInsights, connectConcepts, extractConcepts } from "../../inkling/mind/index.js";
 
 const CHECKIN_HTML =
   "✦ Hey — been a little while. <b>What are you up to right now?</b><br>" +
@@ -831,46 +831,32 @@ export class InklingPanel {
     setTimeout(() => n.remove(), 14000);
   }
 
-  _offerSaveAsNote(text) {
-    this._appendBubble("inkling", "Nice. Want me to save that as today's note?", "inkling-msg--proactive");
-    if (!this.messagesEl) return;
-    const wrap = document.createElement("div");
-    wrap.className = "inkling-title-ideas";
-    wrap.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 10px";
-    const yes = document.createElement("button");
-    yes.textContent = "💾 Save as today's note";
-    yes.style.cssText = "background:#059669;color:#fff;border:0;border-radius:999px;padding:6px 12px;font:700 12px system-ui;cursor:pointer";
-    yes.addEventListener("click", () => {
-      const ok = this._saveTodayNote(text);
-      wrap.remove();
+  /**
+   * Reply to one of Inkling's check-ins. Instead of offering to save it as a
+   * calendar note (the old behavior), let it flow as conversation and confirm
+   * what got woven into the Mind graph — so it's clear the thread is remembered
+   * and can be picked up later, not filed away.
+   */
+  _ackCheckInReply(text) {
+    let concepts = [];
+    try { concepts = [...new Set(extractConcepts(text).map((c) => c.label))]; } catch { /* ignore */ }
+    if (concepts.length) {
       this._appendBubble("inkling",
-        ok ? "Saved to today ✓ — it'll show up in your calendar + connections." : "Hmm, couldn't save that one.",
+        escapeHtml(`Love that — I've woven ${this._humanList(concepts)} into your Mind, so we can pick this thread back up anytime. What's pulling your focus most right now?`),
         "inkling-msg--proactive");
-    });
-    const no = document.createElement("button");
-    no.textContent = "No thanks";
-    no.style.cssText = "background:#1e293b;color:#cbd5e1;border:0;border-radius:999px;padding:6px 12px;font:600 12px system-ui;cursor:pointer";
-    no.addEventListener("click", () => { wrap.remove(); this._appendBubble("inkling", "No worries.", "inkling-msg--proactive"); });
-    wrap.append(yes, no);
-    this.messagesEl.appendChild(wrap);
-    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+    } else {
+      this._appendBubble("inkling",
+        escapeHtml("Thanks for sharing that — I'm keeping it in mind. What's on your plate today?"),
+        "inkling-msg--proactive");
+    }
   }
 
-  _saveTodayNote(text) {
-    try {
-      const now = new Date();
-      const pad = (n) => String(n).padStart(2, "0");
-      const iso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-      createEvent({
-        title: text.slice(0, 80),
-        text,
-        startTime: now.toISOString(),
-        endTime: new Date(now.getTime() + 30 * 60000).toISOString(),
-        category: "personal",
-        date: iso
-      });
-      return true;
-    } catch { return false; }
+  /** "a", "a and b", or "a, b, and c". */
+  _humanList(arr) {
+    const a = arr.map((s) => `“${s}”`);
+    if (a.length <= 1) return a[0] || "";
+    if (a.length === 2) return `${a[0]} and ${a[1]}`;
+    return `${a.slice(0, -1).join(", ")}, and ${a[a.length - 1]}`;
   }
 
   /**
@@ -962,7 +948,7 @@ export class InklingPanel {
         this._appendBubble("inkling", "Got it — I won't check in like that anymore. Flip it back on whenever you like.", "inkling-msg--proactive");
         return;
       }
-      this._offerSaveAsNote(text);
+      this._ackCheckInReply(text);
       return;
     }
 
