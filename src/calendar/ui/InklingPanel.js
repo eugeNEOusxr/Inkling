@@ -330,7 +330,8 @@ export class InklingPanel {
     this._orbItems = [
       mk("💬", "Chat with Inkling", () => this.openWithContext()),
       mk("🎤", "Voice message", () => this.openWithVoice()),
-      mk("🧠", "Mind", () => this.showMind()),
+      mk("🧠", "Mind", () => { this.minimize(); this.showMind(); }),
+      mk("🔔", "Alarm", () => this.app?.openAlarmClock?.()),
       mk("🔗", "Connections", () => this.showConnections()),
       mk("＋", "New event", () => this._orbNewEvent()),
       mk("🎨", "Text style", () => openTextStylePicker()),
@@ -916,9 +917,11 @@ export class InklingPanel {
     chip.appendChild(span);
 
     const view = document.createElement("button");
-    view.type = "button"; view.textContent = "View";
+    view.type = "button"; view.textContent = "🧠 View";
     view.style.cssText = "background:rgba(88,166,255,0.22);color:#cfe5ff;border:0;border-radius:999px;padding:3px 11px;font:700 11px system-ui;cursor:pointer";
-    view.addEventListener("click", () => this.showMind());
+    // Minimize the chat first so the Mind panel (which sits below the chat) is
+    // actually visible — otherwise tapping View looks like it does nothing.
+    view.addEventListener("click", () => { this.minimize(); this.showMind(); });
     chip.appendChild(view);
 
     if (role === "user") {
@@ -930,6 +933,16 @@ export class InklingPanel {
         const ok = this._saveTodayNote(srcText);
         note.textContent = ok ? "Noted ✓" : "Couldn't save";
         note.disabled = true; note.style.opacity = "0.7"; note.style.cursor = "default";
+        if (ok) {
+          // Connect the note to the day: one tap opens it in the Schedule.
+          const open = document.createElement("button");
+          open.type = "button"; open.textContent = "📅 View in Schedule";
+          open.style.cssText = "background:rgba(88,166,255,0.22);color:#cfe5ff;border:0;border-radius:999px;padding:3px 11px;font:700 11px system-ui;cursor:pointer";
+          const now = new Date(); const pad = (n) => String(n).padStart(2, "0");
+          const iso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+          open.addEventListener("click", () => this.app?.navigateToWordWeaverDate?.(iso));
+          chip.appendChild(open);
+        }
       });
       chip.appendChild(note);
     }

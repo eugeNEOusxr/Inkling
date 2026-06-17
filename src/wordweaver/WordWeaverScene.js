@@ -319,6 +319,7 @@ export class WordWeaverScene {
     if (!is3d) {
       if (this._monthGrid?.root) this._monthGrid.root.visible = false;
       if (this._viewBtns) this._viewBtns.style.display = "none";
+      if (this._monthStepper) this._monthStepper.style.display = "none";
       this._flightForward = 0;
       this._flightStrafe = 0;
       this._flightLift = 0;
