@@ -22,7 +22,8 @@ const SYSTEM =
 export async function extractConceptsLLM(text) {
   const key = process.env.ANTHROPIC_API_KEY;
   const clean = String(text || "").trim();
-  if (!key || clean.length < 3) return null;
+  if (!key) return null; // no key → route reports source:"none"
+  if (clean.length < 3) return { concepts: [], relations: [], source: "haiku" };
   try {
     const res = await fetch(ANTHROPIC_URL, {
       method: "POST",
@@ -38,12 +39,18 @@ export async function extractConceptsLLM(text) {
         messages: [{ role: "user", content: clean.slice(0, 4000) }]
       })
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Key present but the API rejected us — surface the status so we can tell
+      // a bad key (401) from a model-access issue (403/404) without leaking it.
+      let detail = "";
+      try { const e = await res.json(); detail = e?.error?.type || e?.error?.message || ""; } catch { /* ignore */ }
+      return { concepts: [], relations: [], source: "error", status: res.status, detail: String(detail).slice(0, 120), model: MODEL };
+    }
     const data = await res.json();
     const raw = (data?.content || []).filter((b) => b?.type === "text").map((b) => b.text).join("");
     return normalize(parseJson(raw));
-  } catch {
-    return null;
+  } catch (err) {
+    return { concepts: [], relations: [], source: "error", detail: String(err?.message || err).slice(0, 120) };
   }
 }
 
