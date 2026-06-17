@@ -295,7 +295,10 @@ export class NotificationSettings {
           if (k && /^(calendar3d|notebookcalender|inkling)/i.test(k)) keys.push(k);
         }
         keys.forEach((k) => localStorage.removeItem(k));
-        window.location.reload();
+        import("../../inkling/mind/index.js")
+          .then((m) => m.clearMind())
+          .catch(() => {})
+          .finally(() => window.location.reload());
       } catch {
         if (hint) hint.textContent = "Couldn't clear local data.";
       }

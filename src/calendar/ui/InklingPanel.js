@@ -15,6 +15,7 @@ import { GoalsPanel } from "./GoalsPanel.js";
 import { Connections2D } from "./Connections2D.js";
 import { createEvent } from "../../wordweaver/timelineModel.js";
 import { VoiceDictation, isVoiceInputSupported } from "./voiceInput.js";
+import { appendTurn } from "../../inkling/mind/index.js";
 
 const CHECKIN_HTML =
   "✦ Hey — been a little while. <b>What are you up to right now?</b><br>" +
@@ -621,6 +622,12 @@ export class InklingPanel {
     }
     this.messagesEl.appendChild(div);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+
+    // Layer 0 capture: persist real dialogue turns (user + Inkling replies, not
+    // system chrome or proactive nudges) to the local-first Mind store.
+    if ((role === "user" || role === "inkling") && !extraClass.includes("inkling-msg--proactive")) {
+      appendTurn({ speaker: role, content: div.textContent || "", source: "text" }).catch(() => {});
+    }
     return div;
   }
 

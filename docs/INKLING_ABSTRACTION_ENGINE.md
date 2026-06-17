@@ -242,3 +242,26 @@ WordWeaver connections (graph-viz seed) · voice-to-text (shipped) · web push
 - Conversation retention window before summarize-and-archive.
 - Graph scale: IndexedDB now; when (if) a real graph DB is warranted.
 - Cost ceiling + batching for any cloud LLM steps.
+
+---
+
+## 12. Concrete build stages
+
+Each stage is independently shippable and adds one tier of capability. Status
+tracked here.
+
+| # | Stage | Deliverable | Key files | Acceptance |
+|---|---|---|---|---|
+| **1** | **Local-first data layer (L0 + graph core)** | IndexedDB DB + stores; conversation capture from chat; node/edge CRUD with Open/Closed/Emergent state | `src/inkling/mind/db.js`, `conversations.js`, `graph.js`; hook in `InklingPanel` | A chat turn persists; reload → still there; can put/get a node + edge |
+| 2 | Fact extraction (L1) + confidence | Atomic facts from conversations (local heuristic first), `confidence`, provenance → `evidence` | `mind/extract.js`, `facts.js` | New turns produce facts linked to their conversation |
+| 3 | Concept clustering (L2) | Cluster facts → Concept nodes (Open) via lexical fingerprint; `ABSTRACTS` + `EVIDENCED_BY` edges | `mind/cluster.js` | Repeated facts form a named concept node |
+| 4 | Confidence sweep + decay + frontier | Promote Open→Closed, prune/decay; open-node frontier → clarifying questions in chat | `mind/scoring.js`, `frontier.js` | Recurring concept goes Closed; stale Open pruned; Inkling asks a clarifying Q |
+| 5 | Abstractions (L3) + relationship engine | Lift concepts → Abstraction nodes; typed edges (co-occurrence, temporal, CONTRADICTS) | `mind/abstract.js`, `relate.js` | Related concepts roll into an abstraction; edges appear |
+| 6 | Emergent-node generation | System proposes latent-theme nodes (Emergent, Open) | `mind/emergent.js` | An unstated theme surfaces as an Emergent node |
+| 7 | Models (L5) → World View (L6) + digest | Synthesize models + worldview; weekly digest via web push | `mind/models.js`, `worldview.js` | Weekly digest shows emerging models |
+| 8 | Graph viz + recall | WordWeaver/`Connections2D` render the graph; recall queries ("what's emerging?") | reuse `Connections2D`, `mind/recall.js` | Graph is browsable; recall answers from the graph |
+| 9 | Local embedding/LLM tier + E2E sync | On-device embeddings/LLM for clustering+naming; encrypted multi-device sync | `mind/embed.js`, sync layer | Clustering works offline; sync round-trips ciphertext |
+
+Processing tiers per stage: local heuristic first (ships now), on-device
+embedding/LLM and opt-in cloud added in stage 9. Everything before stage 9 must
+work with no network and no LLM key.
