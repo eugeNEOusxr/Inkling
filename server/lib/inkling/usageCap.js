@@ -7,7 +7,8 @@ const counts = new Map(); // email -> { day, chat, extract }
 
 const CAPS = {
   chat: Number(process.env.AI_DAILY_CHAT_CAP || 120),
-  extract: Number(process.env.AI_DAILY_EXTRACT_CAP || 300)
+  extract: Number(process.env.AI_DAILY_EXTRACT_CAP || 300),
+  studymap: Number(process.env.AI_DAILY_STUDYMAP_CAP || 25)
 };
 
 /**

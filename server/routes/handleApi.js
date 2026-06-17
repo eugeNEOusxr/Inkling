@@ -28,6 +28,7 @@ import {
 } from "../lib/wordweaver/generateRemarks.js";
 import { generateInklingChat } from "../lib/inkling/generateInklingChat.js";
 import { extractConceptsLLM } from "../lib/inkling/extractConcepts.js";
+import { generateStudyMapLLM } from "../lib/inkling/studyMap.js";
 import { allowAiUse } from "../lib/inkling/usageCap.js";
 import { handlePushRoute } from "./pushRoutes.js";
 import crypto from "node:crypto";
@@ -291,6 +292,24 @@ export async function handleApi(req, res, url) {
     } catch (err) {
       console.warn("[inkling/extract] route error:", err?.message || err);
       return json(res, 200, { concepts: [], relations: [], source: "error" });
+    }
+  }
+
+  // Study Map: Haiku turns a topic into a learning hierarchy. Signed-in + capped.
+  if (req.method === "POST" && url.pathname === "/api/inkling/studymap") {
+    const limited = rateLimit(rlKey, { limit: 12, windowMs: 60_000 });
+    if (!limited.ok) return json(res, 429, { error: "Too many requests." });
+    const aiEmail = verifyToken(getBearer(req));
+    if (!aiEmail) return json(res, 200, { source: "guest" });
+    if (!allowAiUse(aiEmail, "studymap")) return json(res, 200, { source: "capped" });
+    const body = await readBody(req);
+    if (!body) return json(res, 400, { error: "Invalid JSON" });
+    try {
+      const result = await generateStudyMapLLM(String(body.topic || ""));
+      return json(res, 200, result || { source: "none" });
+    } catch (err) {
+      console.warn("[inkling/studymap] route error:", err?.message || err);
+      return json(res, 200, { source: "error" });
     }
   }
 

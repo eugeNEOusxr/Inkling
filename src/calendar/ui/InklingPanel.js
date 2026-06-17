@@ -14,6 +14,7 @@ import { analyzePatterns, patternInsights, dataNudge, reportSuggestions, CONNECT
 import { GoalsPanel } from "./GoalsPanel.js";
 import { Connections2D } from "./Connections2D.js";
 import { InklingMindPanel } from "./InklingMindPanel.js";
+import { StudyMapPanel } from "./StudyMapPanel.js";
 import { createEvent } from "../../wordweaver/timelineModel.js";
 import { VoiceDictation, isVoiceInputSupported } from "./voiceInput.js";
 import { appendTurn, ingestText, mindInsights, mindGraph, connectConcepts, extractConcepts, ingestCalendar, enrichFromServer } from "../../inkling/mind/index.js";
@@ -331,6 +332,7 @@ export class InklingPanel {
       mk("💬", "Chat with Inkling", () => this.openWithContext()),
       mk("🎤", "Voice message", () => this.openWithVoice()),
       mk("🧠", "Mind", () => { this.minimize(); this.showMind(); }),
+      mk("📚", "Study", () => { this.minimize(); this.showStudy(); }),
       mk("🔔", "Alarm", () => this.app?.openAlarmClock?.()),
       mk("🔗", "Connections", () => this.showConnections()),
       mk("＋", "New event", () => this._orbNewEvent()),
@@ -448,6 +450,12 @@ export class InklingPanel {
   showMind(opts = {}) {
     if (!this._mindPanel) this._mindPanel = new InklingMindPanel();
     this._mindPanel.show(opts);
+  }
+
+  /** Open the Study Maps surface — Haiku-built study paths with mastery tracking. */
+  showStudy() {
+    if (!this._studyPanel) this._studyPanel = new StudyMapPanel();
+    this._studyPanel.show();
   }
 
   /**
