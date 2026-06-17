@@ -13,6 +13,7 @@ import { InklingAlerts, colorizeAlertWords } from "./InklingAlertsPanel.js";
 import { analyzePatterns, patternInsights, dataNudge, reportSuggestions, CONNECTIONS_PROMPT, checkInQuestions, followUpSuggestions, recentRemarks } from "../ai/patternBrain.js";
 import { GoalsPanel } from "./GoalsPanel.js";
 import { Connections2D } from "./Connections2D.js";
+import { InklingMindPanel } from "./InklingMindPanel.js";
 import { createEvent } from "../../wordweaver/timelineModel.js";
 import { VoiceDictation, isVoiceInputSupported } from "./voiceInput.js";
 import { appendTurn, ingestText } from "../../inkling/mind/index.js";
@@ -325,6 +326,7 @@ export class InklingPanel {
     this._orbItems = [
       mk("💬", "Chat with Inkling", () => this.openWithContext()),
       mk("🎤", "Voice message", () => this.openWithVoice()),
+      mk("🧠", "Mind", () => this.showMind()),
       mk("🔗", "Connections", () => this.showConnections()),
       mk("＋", "New event", () => this._orbNewEvent()),
       mk("🎨", "Text style", () => openTextStylePicker()),
@@ -435,6 +437,12 @@ export class InklingPanel {
   showGoals(opts = {}) {
     if (!this._goals) this._goals = new GoalsPanel();
     this._goals.show(opts);
+  }
+
+  /** Open the Mind surface — the live knowledge graph WordWeaver has built. */
+  showMind(opts = {}) {
+    if (!this._mindPanel) this._mindPanel = new InklingMindPanel();
+    this._mindPanel.show(opts);
   }
 
   /** Open the 2D connections node map. */
