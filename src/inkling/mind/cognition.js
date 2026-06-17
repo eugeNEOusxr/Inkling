@@ -107,6 +107,35 @@ export function ingestTurn(mind, turn) {
   return { ids, addedNodes, addedEdges };
 }
 
+/**
+ * Add a Goal as a first-class node (its own "goal" type → distinct color),
+ * linked to whatever concepts appear in its text.
+ */
+export function addGoalNode(mind, label, opts = {}) {
+  const text = (label || "").trim();
+  if (!text) return null;
+  const ts = Date.now();
+  const id = "g_" + text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48);
+  let n = mind.nodes.get(id);
+  if (!n) {
+    n = {
+      id, layer: 5, type: "goal", label: text, state: "closed", confidence: 1, importance: 0,
+      props: { frequency: 1, sessions: ["goals"], stances: [], firstTs: ts, lastTs: ts,
+        category: opts.category, horizon: opts.horizon, status: opts.status || "active" }
+    };
+    mind.nodes.set(id, n);
+  } else {
+    n.props.status = opts.status || n.props.status;
+    n.props.lastTs = ts;
+  }
+  for (const c of extractConcepts(text)) {
+    const cn = upsertNode(mind, c, "goals", ts);
+    upsertEdge(mind, id, cn.id, "RELATED_TO");
+  }
+  recomputeImportance(mind);
+  return n;
+}
+
 /** Manually link two concepts — used when the user says "connect X and Y". */
 export function linkConcepts(mind, aLabel, bLabel, rel = "RELATED_TO") {
   const ts = Date.now();

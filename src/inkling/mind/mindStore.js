@@ -7,7 +7,7 @@
  * arrive. This is WordWeaver wired into the running app: every real chat turn
  * grows the on-device knowledge graph. No network, no LLM key.
  */
-import { createMind, ingestTurn, insights, snapshot, linkConcepts } from "./cognition.js";
+import { createMind, ingestTurn, insights, snapshot, linkConcepts, addGoalNode } from "./cognition.js";
 import { recentTurns } from "./conversations.js";
 import { putMany } from "./db.js";
 
@@ -80,6 +80,29 @@ export async function ingestCalendar(limit = 200) {
   }
   await persist();
   return { count: recent.length, added: [...added] };
+}
+
+/** Weave your goals into the graph as distinct goal nodes. */
+export async function ingestGoals() {
+  await ensureReady();
+  let goals = [];
+  try {
+    const gm = await import("../../calendar/goals/goalsModel.js");
+    goals = gm.loadGoals?.() || [];
+  } catch { return { count: 0 }; }
+  for (const g of goals) {
+    if (g?.text) addGoalNode(_mind, g.text, { category: g.category, horizon: g.horizon, status: g.status });
+  }
+  await persist();
+  return { count: goals.length };
+}
+
+/** Pull in everything outside chat — calendar notes + goals — then return the graph. */
+export async function syncSources() {
+  await ensureReady();
+  try { await ingestCalendar(); } catch { /* ignore */ }
+  try { await ingestGoals(); } catch { /* ignore */ }
+  return snapshot(_mind);
 }
 
 /** Manually connect two concepts (Inkling's "connect X and Y") + persist. */

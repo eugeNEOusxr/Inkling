@@ -4,9 +4,12 @@
  * plus Inkling's plain-language read on it. Reads the real persisted graph via
  * the Mind store; grows as you chat. No network, no LLM key.
  */
-import { mindGraph, mindInsights } from "../../inkling/mind/index.js";
+import { mindGraph, mindInsights, syncSources } from "../../inkling/mind/index.js";
 
 const STATE_COLOR = { open: "#f5a623", closed: "#39d98a", emergent: "#a06bff" };
+const GOAL_COLOR = "#f0c64b";
+const nodeColor = (n) => (n.type === "goal" ? GOAL_COLOR : (STATE_COLOR[n.state] || STATE_COLOR.open));
+const shortLabel = (s) => (s && s.length > 18 ? s.slice(0, 17) + "…" : s || "");
 
 function esc(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -56,10 +59,12 @@ export class InklingMindPanel {
 
     const legend = document.createElement("div");
     legend.style.cssText = "display:flex;gap:13px;padding:8px 15px;border-bottom:1px solid rgba(255,255,255,0.08);color:#8b949e;font-size:11px";
+    const dot = (c) => `<i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${c};margin-right:5px"></i>`;
     legend.innerHTML =
-      `<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${STATE_COLOR.closed};margin-right:5px"></i>Known</span>` +
-      `<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${STATE_COLOR.open};margin-right:5px"></i>Forming</span>` +
-      `<span><i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff5c6c;margin-right:5px"></i>Tension</span>`;
+      `<span>${dot(STATE_COLOR.closed)}Known</span>` +
+      `<span>${dot(STATE_COLOR.open)}Forming</span>` +
+      `<span>${dot(GOAL_COLOR)}Goal</span>` +
+      `<span>${dot("#ff5c6c")}Tension</span>`;
 
     const insights = document.createElement("div");
     insights.style.cssText = "flex:1;overflow:auto;padding:13px 15px";
@@ -148,8 +153,74 @@ export class InklingMindPanel {
         ins.lines.map((l) =>
           `<div style="background:#0d1117;border:1px solid #30363d;border-radius:9px;padding:9px 11px;margin-bottom:8px;font:600 13px system-ui;line-height:1.45">${esc(l)}</div>`
         ).join("") +
-        `<div style="color:#8b949e;font-size:11px;margin-top:10px">${this._nodes.length} concepts · ${this._edges.length} connections</div>`;
+        `<div style="color:#8b949e;font-size:11px;margin:10px 0 4px">${this._nodes.length} concepts · ${this._edges.length} connections</div>`;
+      this._renderClusterList();
     }
+  }
+
+  /** A clickable index of everything in the graph, grouped by cluster. */
+  _renderClusterList() {
+    const head = document.createElement("div");
+    head.style.cssText = "font:800 11px system-ui;letter-spacing:.06em;text-transform:uppercase;color:#8b949e;margin:14px 0 8px";
+    head.textContent = "Everything in your Mind · tap to find it";
+    this._insights.appendChild(head);
+
+    const clusters = this._clusters();
+    clusters.forEach((ids, i) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.06)";
+      if (clusters.length > 1) {
+        const tag = document.createElement("span");
+        tag.textContent = `Cluster ${i + 1}`;
+        tag.style.cssText = "font:700 10px system-ui;color:#6b7280;margin-right:2px";
+        row.appendChild(tag);
+      }
+      const byImp = ids.map((id) => this._nodes.find((n) => n.id === id)).filter(Boolean)
+        .sort((a, b) => (b.importance || 0) - (a.importance || 0));
+      for (const n of byImp) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.textContent = n.label;
+        chip.style.cssText =
+          `background:rgba(255,255,255,0.04);border:1px solid ${nodeColor(n)};color:#e6edf3;` +
+          "border-radius:999px;padding:4px 10px;font:600 12px system-ui;cursor:pointer;max-width:100%;text-align:left";
+        chip.addEventListener("click", () => this._focusNode(n.id));
+        row.appendChild(chip);
+      }
+      this._insights.appendChild(row);
+    });
+  }
+
+  /** Connected components (ignoring tension edges), biggest first. */
+  _clusters() {
+    const adj = new Map();
+    this._nodes.forEach((n) => adj.set(n.id, []));
+    for (const e of this._edges) {
+      if (e.rel === "CONTRADICTS") continue;
+      if (adj.has(e.from) && adj.has(e.to)) { adj.get(e.from).push(e.to); adj.get(e.to).push(e.from); }
+    }
+    const seen = new Set(); const comps = [];
+    for (const n of this._nodes) {
+      if (seen.has(n.id)) continue;
+      const stack = [n.id]; const comp = []; seen.add(n.id);
+      while (stack.length) {
+        const id = stack.pop(); comp.push(id);
+        for (const nb of adj.get(id) || []) if (!seen.has(nb)) { seen.add(nb); stack.push(nb); }
+      }
+      comps.push(comp);
+    }
+    return comps.sort((a, b) => b.length - a.length);
+  }
+
+  /** Center + zoom the graph on a node and pulse it (from the list). */
+  _focusNode(id) {
+    const p = this._pos.get(id);
+    if (!p) return;
+    this._scale = 1.7;
+    this._ox = this._W / 2 - p.x * this._scale;
+    this._oy = this._H / 2 - p.y * this._scale;
+    this._focusId = id;
+    this._focusUntil = Date.now() + 1800;
   }
 
   _tick() {
@@ -199,15 +270,21 @@ export class InklingMindPanel {
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
     ctx.setLineDash([]);
+    const now = Date.now();
     for (const n of this._nodes) {
       const p = pos.get(n.id); if (!p) continue;
       const rad = 5 + (n.importance || 0) * 14;
+      // Focus pulse when a list item was clicked.
+      if (n.id === this._focusId && now < (this._focusUntil || 0)) {
+        ctx.beginPath(); ctx.arc(p.x, p.y, rad + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = "#9ecbff"; ctx.lineWidth = 2; ctx.stroke();
+      }
       ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
-      ctx.fillStyle = STATE_COLOR[n.state] || STATE_COLOR.open; ctx.fill();
+      ctx.fillStyle = nodeColor(n); ctx.fill();
       ctx.lineWidth = 1.2; ctx.strokeStyle = "rgba(0,0,0,.4)"; ctx.stroke();
-      if ((n.importance || 0) > 0.34 || rad > 11) {
+      if (n.type === "goal" || (n.importance || 0) > 0.34 || rad > 11) {
         ctx.fillStyle = "#e6edf3"; ctx.font = "11px system-ui"; ctx.textAlign = "center";
-        ctx.fillText(n.label, p.x, p.y - rad - 3);
+        ctx.fillText(shortLabel(n.label), p.x, p.y - rad - 3);
       }
     }
     ctx.restore();
@@ -219,6 +296,7 @@ export class InklingMindPanel {
     this._onClose = opts.onClose || null;
     this._scale = 1; this._ox = 0; this._oy = 0; // reset zoom/pan each open
     this._sizeCanvas();
+    try { await syncSources(); } catch { /* ignore */ } // pull calendar notes + goals in
     await this._render();
     if (!this._running) { this._running = true; this._tick(); }
   }
