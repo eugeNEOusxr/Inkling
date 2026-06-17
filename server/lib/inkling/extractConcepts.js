@@ -43,8 +43,8 @@ export async function extractConceptsLLM(text) {
       // Key present but the API rejected us — surface the status so we can tell
       // a bad key (401) from a model-access issue (403/404) without leaking it.
       let detail = "";
-      try { const e = await res.json(); detail = e?.error?.type || e?.error?.message || ""; } catch { /* ignore */ }
-      return { concepts: [], relations: [], source: "error", status: res.status, detail: String(detail).slice(0, 120), model: MODEL };
+      try { const e = await res.json(); detail = e?.error?.message || e?.error?.type || ""; } catch { /* ignore */ }
+      return { concepts: [], relations: [], source: "error", status: res.status, detail: String(detail).slice(0, 200), model: MODEL };
     }
     const data = await res.json();
     const raw = (data?.content || []).filter((b) => b?.type === "text").map((b) => b.text).join("");
