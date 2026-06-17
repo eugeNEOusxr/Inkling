@@ -40,17 +40,18 @@ export async function extractConceptsLLM(text) {
       })
     });
     if (!res.ok) {
-      // Key present but the API rejected us — surface the status so we can tell
-      // a bad key (401) from a model-access issue (403/404) without leaking it.
+      // Log the upstream reason server-side; don't echo raw API messages publicly.
       let detail = "";
       try { const e = await res.json(); detail = e?.error?.message || e?.error?.type || ""; } catch { /* ignore */ }
-      return { concepts: [], relations: [], source: "error", status: res.status, detail: String(detail).slice(0, 200), model: MODEL };
+      console.warn(`[inkling/extract] ${res.status} ${MODEL}: ${detail}`);
+      return { concepts: [], relations: [], source: "error", status: res.status };
     }
     const data = await res.json();
     const raw = (data?.content || []).filter((b) => b?.type === "text").map((b) => b.text).join("");
     return normalize(parseJson(raw));
   } catch (err) {
-    return { concepts: [], relations: [], source: "error", detail: String(err?.message || err).slice(0, 120) };
+    console.warn("[inkling/extract] exception:", err?.message || err);
+    return { concepts: [], relations: [], source: "error" };
   }
 }
 
