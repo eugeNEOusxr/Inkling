@@ -265,3 +265,58 @@ tracked here.
 Processing tiers per stage: local heuristic first (ships now), on-device
 embedding/LLM and opt-in cloud added in stage 9. Everything before stage 9 must
 work with no network and no LLM key.
+
+---
+
+## 13. System split & model strategy (canonical decisions)
+
+These decisions are settled and govern the build.
+
+### 13.1 Two systems
+
+| System | Role | Code |
+|---|---|---|
+| **WordWeaver** | The cognitive **engine** — UI-agnostic. Builds and queries the knowledge graph: ingestion, extraction, clustering, confidence, abstraction, relationships, insights. Must function with no VR, no chat UI, no voice. Output: a structured, evolving graph of the user. | `src/inkling/mind/` (`cognition.js`, `graph.js`, `extract.js`, …) |
+| **Inkling** | The **interaction layer** — chat (text + voice), reflection prompts, curiosity-driven questions, and explaining the user's own graph back to them. Inkling does **not** store memory directly; it only queries and updates WordWeaver. | `src/calendar/ui/InklingPanel.js` + the rest of the app UI |
+
+The existing **WordWeaver 3D / Connections** views become the graph's *renderer*
+(roadmap stage 8) — the same name, now pointed at the cognitive graph. VR/3D is a
+visualization layer only; it never modifies engine logic.
+
+Interaction loop: user input → Inkling interprets intent → queries WordWeaver →
+WordWeaver returns relevant/related/open nodes + confidence → Inkling responds →
+optionally asks **one** high-relevance follow-up → graph updates. Inkling chooses a
+mode per turn: **Task** (direct, minimal questioning), **Exploration** (clarify,
+expand concepts), **Reflection** (surface patterns when concepts recur / projects
+intersect).
+
+### 13.2 Models — do NOT train; use existing APIs
+
+- **Runtime brain = the Claude API**, called by the deployed app (distinct from
+  Claude Code, which *builds* it). Add a Claude provider to `server/lib/llm`.
+- **Dialogue / reflection → Claude Opus 4.8** (`claude-opus-4-8`). **Cheap, high-
+  volume fact extraction → Claude Haiku 4.5** (`claude-haiku-4-5`). Pattern:
+  Haiku for the grunt work, Opus for the talking.
+- **Embeddings: there is NO Anthropic embeddings API** (Claude is messages-only).
+  Use a **local** embedding model (on-device, free, fits local-first) or a
+  third-party API (Voyage AI — Anthropic's recommended partner — or OpenAI).
+  **Defer embeddings** until local heuristic clustering (stages 3–5) proves
+  insufficient.
+
+### 13.3 Local-first, with Claude for reasoning only
+
+The graph + raw conversations live **on device** (IndexedDB) — cheap, private,
+offline. The Claude API is called only for the *reasoning* steps (extraction,
+abstraction, reflection), opt-in and batched, with local heuristics as the
+always-free fallback. A true server-side cognitive engine (DB + always-on compute)
+is deferred until cross-device sync demands it. This keeps the Render free tier
+viable and the user's data private.
+
+### 13.4 Validation-first (MVP, stage 2 — done)
+
+Before any AI integration, the cognitive model is validated with **synthetic data
+and zero AI cost** (`mind/synthetic.js` + `mind-lab.html`). Success = repeated
+conversations form meaningful clusters, central/recurring/emerging concepts are
+detected, and contradictions surface. If clusters are wrong, **adjust the schema,
+not the UI.** ✅ Passed: 39 nodes / 88 edges, correct central + emerging concepts,
+all conflicts detected.
