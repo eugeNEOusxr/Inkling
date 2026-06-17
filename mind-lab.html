@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Inkling Mind Lab — cognitive graph MVP</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --line: #30363d; --text: #e6edf3; --muted: #8b949e;
+    --open: #f5a623; --closed: #39d98a; --emergent: #a06bff; --contra: #ff5c6c; --accent: #58a6ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif; }
+  #app { display: flex; height: 100vh; }
+  #stage { position: relative; flex: 1; min-width: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #side { width: 360px; flex-shrink: 0; background: var(--panel); border-left: 1px solid var(--line);
+    display: flex; flex-direction: column; }
+  header { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 15px; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  button { background: #21262d; color: var(--text); border: 1px solid var(--line); border-radius: 7px;
+    padding: 7px 12px; font-size: 13px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #08111f; border-color: var(--accent); font-weight: 600; }
+  .stats { display: flex; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--line);
+    color: var(--muted); font-size: 12px; }
+  .stats b { color: var(--text); }
+  #commentary { flex: 1; overflow-y: auto; padding: 12px 16px; }
+  #commentary h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 4px 0 10px; }
+  .insight { background: #0d1117; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px;
+    margin-bottom: 8px; font-size: 13px; }
+  .legend { display: flex; gap: 14px; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+  #tip { position: absolute; pointer-events: none; background: #000d; border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 9px; font-size: 12px; display: none; max-width: 220px; }
+  .cluster-note { color: var(--muted); font-size: 12px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="c"></canvas>
+    <div id="tip"></div>
+  </div>
+  <div id="side">
+    <header>
+      <h1>🧠 Inkling Mind Lab</h1>
+      <p>Conversation → knowledge graph → insight. Synthetic data, zero AI cost.</p>
+    </header>
+    <div class="controls">
+      <button id="step" class="primary">▶ Step one conversation</button>
+      <button id="runall">⏩ Run all</button>
+      <button id="auto">⟳ Auto-play</button>
+      <button id="reset">↺ Reset</button>
+    </div>
+    <div class="stats">
+      <span>Conversations: <b id="st-conv">0</b>/<b id="st-conv-total">0</b></span>
+      <span>Nodes: <b id="st-nodes">0</b></span>
+      <span>Edges: <b id="st-edges">0</b></span>
+    </div>
+    <div id="commentary"><h2>Inkling’s read on your mind</h2><div class="insight">Press “Step one conversation” to begin.</div></div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--open)"></i>Open</span>
+      <span><i class="dot" style="background:var(--closed)"></i>Closed</span>
+      <span><i class="dot" style="background:var(--emergent)"></i>Emergent</span>
+      <span><i class="dot" style="background:var(--contra)"></i>Conflict</span>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { createMind, ingestTurn, insights } from "./src/inkling/mind/cognition.js";
+import { SYNTHETIC_CONVERSATIONS } from "./src/inkling/mind/synthetic.js";
+
+const DAY = 86400000;
+const base = Date.now() - SYNTHETIC_CONVERSATIONS.length * DAY;
+const CONVS = SYNTHETIC_CONVERSATIONS.map((conv, ci) => ({
+  session: conv.session,
+  turns: conv.turns.map((t, ti) => ({ ...t, sessionId: conv.session, ts: base + ci * DAY + ti * 60000 }))
+}));
+
+const COLORS = { open: getCSS("--open"), closed: getCSS("--closed"), emergent: getCSS("--emergent") };
+function getCSS(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const tip = document.getElementById("tip");
+let W = 0, H = 0, dpr = Math.min(2, window.devicePixelRatio || 1);
+
+let mind = createMind();
+let cursor = 0;
+let pos = new Map();      // id -> {x,y,vx,vy}
+let autoTimer = null;
+let mouse = { x: -1, y: -1 };
+
+function resize() {
+  const r = canvas.parentElement.getBoundingClientRect();
+  W = r.width; H = r.height;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+function ensurePositions() {
+  for (const n of mind.nodes.values()) {
+    if (!pos.has(n.id)) pos.set(n.id, { x: W / 2 + (Math.random() - 0.5) * 80, y: H / 2 + (Math.random() - 0.5) * 80, vx: 0, vy: 0 });
+  }
+}
+
+function simulate() {
+  const nodes = [...mind.nodes.values()];
+  const edges = [...mind.edges.values()];
+  // repulsion
+  for (let i = 0; i < nodes.length; i++) {
+    const pi = pos.get(nodes[i].id);
+    for (let j = i + 1; j < nodes.length; j++) {
+      const pj = pos.get(nodes[j].id);
+      let dx = pi.x - pj.x, dy = pi.y - pj.y;
+      let d2 = dx * dx + dy * dy || 0.01;
+      const force = 2400 / d2;
+      const d = Math.sqrt(d2);
+      const fx = (dx / d) * force, fy = (dy / d) * force;
+      pi.vx += fx; pi.vy += fy; pj.vx -= fx; pj.vy -= fy;
+    }
+  }
+  // springs
+  for (const e of edges) {
+    const a = pos.get(e.from), b = pos.get(e.to);
+    if (!a || !b) continue;
+    let dx = b.x - a.x, dy = b.y - a.y;
+    const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
+    const rest = e.rel === "CONTRADICTS" ? 170 : 70;
+    const k = 0.0009 * (e.rel === "CONTRADICTS" ? 0.4 : 1 + e.weight * 0.25);
+    const f = (d - rest) * k;
+    const fx = (dx / d) * f, fy = (dy / d) * f;
+    a.vx += fx; a.vy += fy; b.vx -= fx; b.vy -= fy;
+  }
+  // centering + integrate
+  for (const n of nodes) {
+    const p = pos.get(n.id);
+    p.vx += (W / 2 - p.x) * 0.0016;
+    p.vy += (H / 2 - p.y) * 0.0016;
+    p.vx *= 0.86; p.vy *= 0.86;
+    p.x += p.vx; p.y += p.vy;
+  }
+}
+
+function radius(n) { return 6 + n.importance * 20; }
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  // edges
+  for (const e of mind.edges.values()) {
+    const a = pos.get(e.from), b = pos.get(e.to);
+    if (!a || !b) continue;
+    if (e.rel === "CONTRADICTS") {
+      ctx.strokeStyle = getCSS("--contra"); ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+    } else {
+      ctx.strokeStyle = `rgba(139,148,158,${Math.min(0.7, 0.15 + e.weight * 0.12)})`;
+      ctx.lineWidth = Math.min(4, 0.6 + e.weight * 0.5); ctx.setLineDash([]);
+    }
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  // nodes
+  let hover = null;
+  for (const n of mind.nodes.values()) {
+    const p = pos.get(n.id), rad = radius(n);
+    if (mouse.x >= 0 && (mouse.x - p.x) ** 2 + (mouse.y - p.y) ** 2 < (rad + 4) ** 2) hover = { n, p };
+    ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS[n.state] || COLORS.open; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = "rgba(0,0,0,.4)"; ctx.stroke();
+    if (n.importance > 0.28 || rad > 11) {
+      ctx.fillStyle = "#e6edf3"; ctx.font = `${Math.min(15, 10 + rad / 4)}px system-ui`;
+      ctx.textAlign = "center"; ctx.fillText(n.label, p.x, p.y - rad - 4);
+    }
+  }
+  if (hover) {
+    const { n } = hover;
+    tip.style.display = "block";
+    tip.style.left = Math.min(W - 230, hover.p.x + 14) + "px";
+    tip.style.top = (hover.p.y + 14) + "px";
+    tip.innerHTML = `<b>${n.label}</b> <span style="color:var(--muted)">(${n.type})</span><br>` +
+      `state: ${n.state} · confidence: ${n.confidence.toFixed(2)}<br>` +
+      `seen ${n.props.frequency}× across ${n.props.sessions.length} session(s)`;
+  } else tip.style.display = "none";
+}
+
+function loop() { simulate(); draw(); requestAnimationFrame(loop); }
+loop();
+
+canvas.addEventListener("mousemove", (e) => {
+  const r = canvas.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top;
+});
+canvas.addEventListener("mouseleave", () => { mouse.x = -1; mouse.y = -1; });
+
+function refreshStats() {
+  document.getElementById("st-conv").textContent = cursor;
+  document.getElementById("st-conv-total").textContent = CONVS.length;
+  document.getElementById("st-nodes").textContent = mind.nodes.size;
+  document.getElementById("st-edges").textContent = mind.edges.size;
+}
+
+function refreshInsights() {
+  const out = insights(mind);
+  const el = document.getElementById("commentary");
+  el.innerHTML = "<h2>Inkling’s read on your mind</h2>" +
+    out.lines.map((l) => `<div class="insight">${l}</div>`).join("") +
+    `<div class="cluster-note">${mind.nodes.size} concepts, ${mind.edges.size} connections from ${cursor} conversation(s).</div>`;
+}
+
+function stepConversation() {
+  if (cursor >= CONVS.length) return;
+  for (const t of CONVS[cursor].turns) ingestTurn(mind, t);
+  cursor++;
+  ensurePositions();
+  refreshStats(); refreshInsights();
+}
+
+document.getElementById("step").onclick = stepConversation;
+document.getElementById("runall").onclick = () => { while (cursor < CONVS.length) stepConversation(); };
+document.getElementById("reset").onclick = () => {
+  stopAuto(); mind = createMind(); cursor = 0; pos = new Map();
+  refreshStats();
+  document.getElementById("commentary").innerHTML = '<h2>Inkling’s read on your mind</h2><div class="insight">Press “Step one conversation” to begin.</div>';
+};
+function stopAuto() { if (autoTimer) { clearInterval(autoTimer); autoTimer = null; document.getElementById("auto").textContent = "⟳ Auto-play"; } }
+document.getElementById("auto").onclick = () => {
+  if (autoTimer) return stopAuto();
+  document.getElementById("auto").textContent = "⏸ Pause";
+  autoTimer = setInterval(() => { if (cursor >= CONVS.length) return stopAuto(); stepConversation(); }, 1100);
+};
+
+refreshStats();
+window.__mindLab = { get mind() { return mind; }, insights: () => insights(mind), step: stepConversation };
+</script>
+</body>
+</html>
