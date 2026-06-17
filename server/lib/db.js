@@ -19,7 +19,19 @@ async function getPool() {
     connectionString: process.env.DATABASE_URL,
     // Neon (and most hosted PG) require TLS; don't fail on the cert chain.
     ssl: { rejectUnauthorized: false },
-    max: 5
+    max: 5,
+    // Close our own idle connections before Neon's auto-suspend can drop them
+    // out from under us, which shrinks the window for the error below.
+    idleTimeoutMillis: 10_000
+  });
+  // CRITICAL: a pg Pool emits 'error' when an IDLE client dies — e.g. when Neon's
+  // free tier auto-suspends and drops the connection. With NO listener, Node
+  // treats that as an unhandled 'error' event and CRASHES the whole process;
+  // Render then restarts it, resetting any in-flight request so the client sees
+  // "Failed to fetch". Handling it here keeps the server alive — the next query
+  // just opens a fresh connection (which also wakes Neon).
+  _pool.on("error", (err) => {
+    console.error("[db] idle pool client error (handled, non-fatal):", err?.message || err);
   });
   return _pool;
 }
