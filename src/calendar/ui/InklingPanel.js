@@ -928,9 +928,11 @@ export class InklingPanel {
     const view = document.createElement("button");
     view.type = "button"; view.textContent = "🧠 View";
     view.style.cssText = "background:rgba(88,166,255,0.22);color:#cfe5ff;border:0;border-radius:999px;padding:3px 11px;font:700 11px system-ui;cursor:pointer";
-    // Minimize the chat first so the Mind panel (which sits below the chat) is
-    // actually visible — otherwise tapping View looks like it does nothing.
-    view.addEventListener("click", () => { this.minimize(); this.showMind(); });
+    // Minimize the chat first (the Mind panel sits below it), then land directly
+    // on the concepts from THIS message, ringed — not a generic graph view.
+    let focusLabels = [];
+    try { focusLabels = extractConcepts(srcText).map((c) => c.label); } catch { /* ignore */ }
+    view.addEventListener("click", () => { this.minimize(); this.showMind({ focus: focusLabels }); });
     chip.appendChild(view);
 
     if (role === "user") {
@@ -978,7 +980,7 @@ export class InklingPanel {
     const view = document.createElement("button");
     view.type = "button"; view.textContent = "🧠 View";
     view.style.cssText = "background:rgba(160,107,255,0.24);color:#e9deff;border:0;border-radius:999px;padding:3px 11px;font:700 11px system-ui;cursor:pointer";
-    view.addEventListener("click", () => { this.minimize(); this.showMind(); });
+    view.addEventListener("click", () => { this.minimize(); this.showMind({ focus: labels }); });
     chip.appendChild(view);
     this.messagesEl.appendChild(chip);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;

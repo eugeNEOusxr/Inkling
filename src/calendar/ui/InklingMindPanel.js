@@ -27,6 +27,7 @@ export class InklingMindPanel {
     // View transform for zoom/pan.
     this._scale = 1; this._ox = 0; this._oy = 0;
     this._pointers = new Map(); this._pinchBase = null;
+    this._focusIds = new Set(); this._focusUntil = 0; this._focusLabels = null;
   }
 
   _build() {
@@ -212,15 +213,36 @@ export class InklingMindPanel {
     return comps.sort((a, b) => b.length - a.length);
   }
 
-  /** Center + zoom the graph on a node and pulse it (from the list). */
+  /** Center + zoom the graph on a single node and pulse it (from the list). */
   _focusNode(id) {
     const p = this._pos.get(id);
     if (!p) return;
     this._scale = 1.7;
     this._ox = this._W / 2 - p.x * this._scale;
     this._oy = this._H / 2 - p.y * this._scale;
-    this._focusId = id;
+    this._focusIds = new Set([id]);
     this._focusUntil = Date.now() + 1800;
+  }
+
+  /**
+   * Land on the concepts from a specific message: fit + ring them all. Resolves
+   * by label (case-insensitive) so it works for both local and Haiku concepts.
+   */
+  _focusNodes(labels) {
+    const want = new Set((labels || []).map((l) => String(l).toLowerCase()));
+    const nodes = this._nodes.filter((n) => want.has(n.label.toLowerCase()));
+    const pts = nodes.map((n) => this._pos.get(n.id)).filter(Boolean);
+    if (!pts.length) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of pts) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); }
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const bw = Math.max(60, maxX - minX), bh = Math.max(60, maxY - minY);
+    const s = Math.max(0.8, Math.min(2.0, Math.min(this._W / (bw + 150), this._H / (bh + 150))));
+    this._scale = s;
+    this._ox = this._W / 2 - cx * s;
+    this._oy = this._H / 2 - cy * s;
+    this._focusIds = new Set(nodes.map((n) => n.id));
+    this._focusUntil = Date.now() + 3500;
   }
 
   _tick() {
@@ -274,10 +296,10 @@ export class InklingMindPanel {
     for (const n of this._nodes) {
       const p = pos.get(n.id); if (!p) continue;
       const rad = 5 + (n.importance || 0) * 14;
-      // Focus pulse when a list item was clicked.
-      if (n.id === this._focusId && now < (this._focusUntil || 0)) {
+      // Focus ring(s): a list click, or the concepts from a message you pressed View on.
+      if (this._focusIds?.has(n.id) && now < (this._focusUntil || 0)) {
         ctx.beginPath(); ctx.arc(p.x, p.y, rad + 6, 0, Math.PI * 2);
-        ctx.strokeStyle = "#9ecbff"; ctx.lineWidth = 2; ctx.stroke();
+        ctx.strokeStyle = "#9ecbff"; ctx.lineWidth = 2.5; ctx.stroke();
       }
       ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
       ctx.fillStyle = nodeColor(n); ctx.fill();
@@ -295,10 +317,20 @@ export class InklingMindPanel {
     this._panel.style.display = "flex";
     this._onClose = opts.onClose || null;
     this._scale = 1; this._ox = 0; this._oy = 0; // reset zoom/pan each open
+    this._focusIds = new Set(); this._focusUntil = 0;
+    this._focusLabels = Array.isArray(opts.focus) ? opts.focus.filter(Boolean) : null;
     this._sizeCanvas();
     try { await syncSources(); } catch { /* ignore */ } // pull calendar notes + goals in
     await this._render();
     if (!this._running) { this._running = true; this._tick(); }
+    // Let the force layout settle a beat, then land on the message's concepts.
+    if (this._focusLabels?.length) {
+      setTimeout(() => { if (this.isOpen()) this._focusNodes(this._focusLabels); }, 950);
+    }
+  }
+
+  isOpen() {
+    return !!this._panel && this._panel.style.display !== "none" && this._panel.style.display !== "";
   }
 
   hide(opts = {}) {
