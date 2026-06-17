@@ -1298,7 +1298,60 @@ export class WordWeaverScene {
     return wrap;
   }
 
+  /** ‹ January › month stepper, shown only in the 3D month view. */
+  _ensureMonthStepper() {
+    if (this._monthStepper) return this._monthStepper;
+    const wrap = document.createElement("div");
+    wrap.className = "ww-month-stepper";
+    Object.assign(wrap.style, {
+      position: "absolute", left: "50%", top: "64px", transform: "translateX(-50%)",
+      zIndex: "40", display: "none", alignItems: "center", gap: "6px",
+      padding: "5px 8px", borderRadius: "12px", background: "rgba(8,14,28,0.9)",
+      border: "1px solid rgba(120,200,255,0.45)", boxShadow: "0 4px 14px rgba(0,0,0,0.4)"
+    });
+    const mk = (txt, fn) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = txt;
+      Object.assign(b.style, {
+        background: "transparent", border: "0", color: "#e0e7ff", cursor: "pointer",
+        font: "800 20px system-ui, sans-serif", lineHeight: "1", padding: "2px 10px"
+      });
+      b.addEventListener("click", (e) => { e.stopPropagation(); fn(); });
+      return b;
+    };
+    const label = document.createElement("span");
+    Object.assign(label.style, {
+      color: "#e0e7ff", minWidth: "104px", textAlign: "center",
+      font: "800 14px system-ui, sans-serif"
+    });
+    wrap.append(mk("‹", () => this._stepMonth(-1)), label, mk("›", () => this._stepMonth(1)));
+    (this.container || document.body).appendChild(wrap);
+    this._monthStepper = wrap;
+    this._monthStepperLabel = label;
+    return wrap;
+  }
+
+  /** Step the 3D month view by ±1, wrapping Dec↔Jan. */
+  _stepMonth(delta) {
+    const idx = (((this._navMonthIndex ?? new Date().getMonth()) + delta) % 12 + 12) % 12;
+    this.enterMonthView(idx);
+  }
+
+  _updateMonthStepper() {
+    this._ensureMonthStepper();
+    const w = this._monthStepper;
+    if (!w) return;
+    const is3d = getCalendarMode() === "3d" && isWordWeaverTabActive();
+    const show = is3d && this._navLevel === "month";
+    w.style.display = show ? "flex" : "none";
+    if (show && this._monthStepperLabel) {
+      this._monthStepperLabel.textContent =
+        new Date(2020, this._navMonthIndex ?? 0, 1).toLocaleString("default", { month: "long" });
+    }
+  }
+
   _updateViewButtons() {
+    this._updateMonthStepper();
     const wrap = this._viewBtns;
     if (!wrap) return;
     const is3d = getCalendarMode() === "3d" && isWordWeaverTabActive();

@@ -61,7 +61,29 @@ const LEXICON = [
   { label: "Free Time", type: "event", match: ["free time", "weekend", "downtime", "break"] },
   { label: "Productivity", type: "concept", match: ["productive", "productivity", "get things done", "momentum"] },
   { label: "Coffee", type: "event", match: ["coffee", "caffeine", "espresso"] },
-  { label: "Burnout", type: "reflection", match: ["burnout", "burned out", "overwhelmed", "exhausted"] }
+  { label: "Burnout", type: "reflection", match: ["burnout", "burned out", "overwhelmed", "exhausted"] },
+
+  // — Studies / academics (started classes) —
+  { label: "Precalculus", type: "subject", match: ["precalculus", "pre-calculus", "pre calc", "precalc"] },
+  { label: "Physics", type: "subject", match: ["physics"] },
+  { label: "Chemistry", type: "subject", match: ["chemistry", "chem class", "chem"] },
+  { label: "Biology", type: "subject", match: ["biology", "bio class"] },
+  { label: "Functions", type: "concept", match: ["function", "functions", "domain and range"] },
+  { label: "Trigonometry", type: "concept", match: ["trigonometry", "trig", "sine", "cosine", "tangent"] },
+  { label: "Logarithms", type: "concept", match: ["logarithm", "logarithms", "log function"] },
+  { label: "Vectors", type: "concept", match: ["vector", "vectors"] },
+  { label: "Force", type: "concept", match: ["force", "forces", "newton's law", "newtons law", "newton's laws"] },
+  { label: "Energy", type: "concept", match: ["energy", "kinetic", "potential energy"] },
+  { label: "Motion", type: "concept", match: ["motion", "velocity", "acceleration"] },
+  { label: "Gravity", type: "concept", match: ["gravity", "gravitational"] },
+  { label: "Atoms", type: "concept", match: ["atom", "atoms", "atomic", "electron", "proton", "neutron"] },
+  { label: "Molecules", type: "concept", match: ["molecule", "molecules", "compound", "compounds"] },
+  { label: "Chemical Reactions", type: "concept", match: ["chemical reaction", "reactions", "reaction"] },
+  { label: "Periodic Table", type: "concept", match: ["periodic table", "element", "elements"] },
+  { label: "Cells", type: "concept", match: ["cell", "cells", "cellular"] },
+  { label: "DNA", type: "concept", match: ["dna", "genetic", "genetics", "gene", "genes"] },
+  { label: "Evolution", type: "concept", match: ["evolution", "natural selection"] },
+  { label: "Photosynthesis", type: "concept", match: ["photosynthesis"] }
 ];
 
 function hasPhrase(haystack, phrase) {

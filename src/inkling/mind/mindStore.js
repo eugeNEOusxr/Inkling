@@ -7,7 +7,7 @@
  * arrive. This is WordWeaver wired into the running app: every real chat turn
  * grows the on-device knowledge graph. No network, no LLM key.
  */
-import { createMind, ingestTurn, insights, snapshot } from "./cognition.js";
+import { createMind, ingestTurn, insights, snapshot, linkConcepts } from "./cognition.js";
 import { recentTurns } from "./conversations.js";
 import { putMany } from "./db.js";
 
@@ -54,6 +54,14 @@ export async function ingestText(t) {
   ingestTurn(_mind, { sessionId: t.sessionId, speaker: t.speaker, text: t.content, ts: t.ts });
   await persist();
   return _mind;
+}
+
+/** Manually connect two concepts (Inkling's "connect X and Y") + persist. */
+export async function connectConcepts(aLabel, bLabel) {
+  await ensureReady();
+  const r = linkConcepts(_mind, aLabel, bLabel);
+  await persist();
+  return r;
 }
 
 /** Current insights (central / recurring / emerging / suggestions / contradictions). */

@@ -93,6 +93,16 @@ export function ingestTurn(mind, turn) {
   return ids;
 }
 
+/** Manually link two concepts — used when the user says "connect X and Y". */
+export function linkConcepts(mind, aLabel, bLabel, rel = "RELATED_TO") {
+  const ts = Date.now();
+  const a = upsertNode(mind, { label: aLabel, type: "concept" }, "manual", ts);
+  const b = upsertNode(mind, { label: bLabel, type: "concept" }, "manual", ts);
+  const edge = upsertEdge(mind, a.id, b.id, rel);
+  recomputeImportance(mind);
+  return { a, b, edge };
+}
+
 /** Degree centrality (edge-weighted) blended with frequency, normalized 0..1. */
 export function recomputeImportance(mind) {
   const degree = new Map();

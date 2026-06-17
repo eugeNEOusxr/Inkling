@@ -16,7 +16,7 @@ import { Connections2D } from "./Connections2D.js";
 import { InklingMindPanel } from "./InklingMindPanel.js";
 import { createEvent } from "../../wordweaver/timelineModel.js";
 import { VoiceDictation, isVoiceInputSupported } from "./voiceInput.js";
-import { appendTurn, ingestText } from "../../inkling/mind/index.js";
+import { appendTurn, ingestText, mindInsights, connectConcepts } from "../../inkling/mind/index.js";
 
 const CHECKIN_HTML =
   "✦ Hey — been a little while. <b>What are you up to right now?</b><br>" +
@@ -225,9 +225,9 @@ export class InklingPanel {
   expand() {
     this._minimized = false;
     this.el?.classList.remove("hidden", "inkling-panel--minimized");
-    // Sit above the Schedule day overlay (z 11000) so the panel is usable when
-    // opened from the floating avatar while on Schedule.
-    this.el?.style.setProperty("z-index", "11060", "important");
+    // Sit above the Schedule day overlay (z 11000) AND the Mind panel (z 11086)
+    // so the chat floats over the mind map when you open it to ask about it.
+    this.el?.style.setProperty("z-index", "11090", "important");
     document.getElementById("inkling-fab")?.classList.add("hidden");
     document.body.classList.add("inkling-open", "inkling-stage-open", "inkling-tab-inkling");
     this.app?._showStageBackdrop?.(true);
@@ -443,6 +443,53 @@ export class InklingPanel {
   showMind(opts = {}) {
     if (!this._mindPanel) this._mindPanel = new InklingMindPanel();
     this._mindPanel.show(opts);
+  }
+
+  /**
+   * Mind-graph conversation: "connect X and Y" creates a link; questions about
+   * what I notice / patterns / my mind map get answered from the live graph.
+   * @returns {Promise<boolean>} handled
+   */
+  async _tryMindIntent(text) {
+    const trimmed = text.trim();
+    const link = trimmed.match(/^(?:connect|link|relate)\s+(.+?)\s+(?:and|to|with|&)\s+(.+?)[.?!]*$/i);
+    if (link) {
+      const a = link[1].trim().replace(/^(the|my)\s+/i, "");
+      const b = link[2].trim().replace(/^(the|my)\s+/i, "");
+      try { await connectConcepts(a, b); } catch { /* ignore */ }
+      this._appendBubble("inkling",
+        escapeHtml(`Done — I linked “${a}” and “${b}” in your Mind. Open 🧠 Mind to see the connection.`),
+        "inkling-msg--proactive");
+      return true;
+    }
+    const asksAboutMind =
+      /\b(mind ?map)\b/i.test(text) ||
+      /\bwhat (do |have )?you('ve)? ?(notice|noticed|see|seen|learn|learned|know|found)\b.*\bme\b/i.test(text) ||
+      /\bwhat (patterns?|connections?|themes?)\b/i.test(text) ||
+      /\b(my )?(patterns?|connections?|themes?)\b.*\b(see|notice|find|spot)\b/i.test(text) ||
+      /^(my )?(mind|connections?|patterns?)\??$/i.test(trimmed);
+    if (asksAboutMind) {
+      await this._postMindReflection();
+      return true;
+    }
+    return false;
+  }
+
+  /** Explain that I build the graph as we talk, then show the current read. */
+  async _postMindReflection() {
+    this._appendBubble("inkling",
+      escapeHtml("As we talk I'm quietly building your Mind — I turn the concepts you mention into nodes and draw connections between the ones that come up together. Here's what I'm seeing so far:"),
+      "inkling-msg--proactive");
+    try {
+      const ins = await mindInsights();
+      const body = ins.lines?.length
+        ? ins.lines.map((l) => escapeHtml(l)).join("<br>")
+        : "Not much yet — keep talking and the map will fill in.";
+      this._appendBubble("inkling", body, "inkling-msg--proactive");
+    } catch { /* ignore */ }
+    this._appendBubble("inkling",
+      escapeHtml('Tap 🧠 Mind in the bottom bar for the full map. Want me to link two ideas? Just say “connect X and Y”.'),
+      "inkling-msg--proactive");
   }
 
   /** Open the 2D connections node map. */
@@ -897,6 +944,9 @@ export class InklingPanel {
     if (!text) return;
     this.inputEl.value = "";
     this._appendBubble("user", escapeHtml(text));
+
+    // Mind graph: let the user ask what I'm noticing, or link two concepts.
+    if (await this._tryMindIntent(text)) return;
 
     // Explicit reminder → always register in Alerts with a clear confirmation.
     if (!this._awaitingCheckInReply && this._tryReminder(text)) return;
