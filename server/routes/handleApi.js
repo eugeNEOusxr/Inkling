@@ -28,6 +28,7 @@ import {
 } from "../lib/wordweaver/generateRemarks.js";
 import { generateInklingChat } from "../lib/inkling/generateInklingChat.js";
 import { extractConceptsLLM } from "../lib/inkling/extractConcepts.js";
+import { allowAiUse } from "../lib/inkling/usageCap.js";
 import { handlePushRoute } from "./pushRoutes.js";
 import crypto from "node:crypto";
 
@@ -249,6 +250,12 @@ export async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/inkling/chat") {
     const limited = rateLimit(rlKey, { limit: 40, windowMs: 60_000 });
     if (!limited.ok) return json(res, 429, { error: "Too many requests. Slow down a moment." });
+    // Paid AI is for signed-in users only — guests get the free local router.
+    const aiEmail = verifyToken(getBearer(req));
+    if (!aiEmail) return json(res, 200, { reply: null, action: "none", proposal: null, query: null, source: "guest" });
+    if (!allowAiUse(aiEmail, "chat")) {
+      return json(res, 200, { reply: "You've reached today's AI chat limit — I'll keep using the quick built-in mode. It resets tomorrow.", action: "none", proposal: null, query: null, source: "capped" });
+    }
     const body = await readBody(req);
     if (!body) return json(res, 400, { error: "Invalid JSON" });
     try {
@@ -272,6 +279,10 @@ export async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/inkling/extract") {
     const limited = rateLimit(rlKey, { limit: 30, windowMs: 60_000 });
     if (!limited.ok) return json(res, 429, { error: "Too many requests." });
+    // Signed-in only + daily cap; guests/over-cap fall back to the local lexicon.
+    const aiEmail = verifyToken(getBearer(req));
+    if (!aiEmail) return json(res, 200, { concepts: [], relations: [], source: "guest" });
+    if (!allowAiUse(aiEmail, "extract")) return json(res, 200, { concepts: [], relations: [], source: "capped" });
     const body = await readBody(req);
     if (!body) return json(res, 400, { error: "Invalid JSON" });
     try {
