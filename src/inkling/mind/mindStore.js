@@ -7,7 +7,7 @@
  * arrive. This is WordWeaver wired into the running app: every real chat turn
  * grows the on-device knowledge graph. No network, no LLM key.
  */
-import { createMind, ingestTurn, insights, snapshot, linkConcepts, addGoalNode } from "./cognition.js";
+import { createMind, ingestTurn, insights, snapshot, linkConcepts, addGoalNode, mergeConcepts } from "./cognition.js";
 import { recentTurns } from "./conversations.js";
 import { putMany } from "./db.js";
 
@@ -80,6 +80,27 @@ export async function ingestCalendar(limit = 200) {
   }
   await persist();
   return { count: recent.length, added: [...added] };
+}
+
+/**
+ * Stage 2b — enrich a turn via the server's Claude Haiku extractor so the Mind
+ * maps concepts the local lexicon misses. No-ops (returns empty) when the
+ * backend is absent or has no API key, so local capture always still works.
+ * @returns {Promise<{addedNodes:string[], addedEdges:[string,string][]}>}
+ */
+export async function enrichFromServer(text) {
+  await ensureReady();
+  const clean = (text || "").trim();
+  if (clean.length < 6) return { addedNodes: [], addedEdges: [] };
+  let data = null;
+  try {
+    const { apiFetch } = await import("../../auth/cloudSync.js");
+    data = await apiFetch("/api/inkling/extract", { method: "POST", body: JSON.stringify({ text: clean }) });
+  } catch { return { addedNodes: [], addedEdges: [] }; }
+  if (!data?.concepts?.length) return { addedNodes: [], addedEdges: [] };
+  const delta = mergeConcepts(_mind, data.concepts, data.relations || [], "ai");
+  if (delta.addedNodes.length || delta.addedEdges.length) await persist();
+  return delta;
 }
 
 /** Weave your goals into the graph as distinct goal nodes. */

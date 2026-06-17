@@ -16,7 +16,7 @@ import { Connections2D } from "./Connections2D.js";
 import { InklingMindPanel } from "./InklingMindPanel.js";
 import { createEvent } from "../../wordweaver/timelineModel.js";
 import { VoiceDictation, isVoiceInputSupported } from "./voiceInput.js";
-import { appendTurn, ingestText, mindInsights, connectConcepts, extractConcepts, ingestCalendar } from "../../inkling/mind/index.js";
+import { appendTurn, ingestText, mindInsights, connectConcepts, extractConcepts, ingestCalendar, enrichFromServer } from "../../inkling/mind/index.js";
 
 const CHECKIN_HTML =
   "✦ Hey — been a little while. <b>What are you up to right now?</b><br>" +
@@ -734,7 +734,16 @@ export class InklingPanel {
       const content = div.textContent || "";
       appendTurn({ speaker: role, content, source: "text" })
         .then((rec) => (rec ? ingestText({ sessionId: rec.sessionId, speaker: role, content, ts: rec.ts }) : null))
-        .then((delta) => { if (delta) this._showMindChip(delta, role, content); })
+        .then((delta) => {
+          if (delta) this._showMindChip(delta, role, content);
+          // Stage 2b: ask the server's Haiku extractor to catch concepts the local
+          // lexicon missed (your own messages only, to keep it cheap). No-op without a key.
+          if (role === "user" && content.trim().length > 10) {
+            enrichFromServer(content)
+              .then((ex) => { if (ex && (ex.addedNodes.length || ex.addedEdges.length)) this._appendAiMindChip(ex); })
+              .catch(() => {});
+          }
+        })
         .catch(() => {});
     }
     return div;
@@ -947,6 +956,30 @@ export class InklingPanel {
       chip.appendChild(note);
     }
 
+    this.messagesEl.appendChild(chip);
+    this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
+  }
+
+  /** Extra chip when Haiku finds concepts the local lexicon missed. */
+  _appendAiMindChip(ex) {
+    if (!this.messagesEl) return;
+    const labels = ex.addedNodes || [];
+    if (!labels.length) return;
+    const cap = (arr, n) => arr.length > n ? `${arr.slice(0, n).join(", ")} +${arr.length - n} more` : arr.join(", ");
+    const chip = document.createElement("div");
+    chip.className = "inkling-mind-chip";
+    chip.style.cssText =
+      "display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:-6px 0 12px;padding:6px 10px;" +
+      "border-radius:14px;background:rgba(160,107,255,0.10);border:1px solid rgba(160,107,255,0.32);" +
+      "font:600 11px system-ui;color:#c9b6ff;max-width:100%";
+    const span = document.createElement("span");
+    span.textContent = `✦ Inkling also mapped: ${cap(labels, 4)}`;
+    chip.appendChild(span);
+    const view = document.createElement("button");
+    view.type = "button"; view.textContent = "🧠 View";
+    view.style.cssText = "background:rgba(160,107,255,0.24);color:#e9deff;border:0;border-radius:999px;padding:3px 11px;font:700 11px system-ui;cursor:pointer";
+    view.addEventListener("click", () => { this.minimize(); this.showMind(); });
+    chip.appendChild(view);
     this.messagesEl.appendChild(chip);
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight;
   }

@@ -27,6 +27,7 @@ import {
   setCachedRemarks
 } from "../lib/wordweaver/generateRemarks.js";
 import { generateInklingChat } from "../lib/inkling/generateInklingChat.js";
+import { extractConceptsLLM } from "../lib/inkling/extractConcepts.js";
 import { handlePushRoute } from "./pushRoutes.js";
 import crypto from "node:crypto";
 
@@ -262,6 +263,22 @@ export async function handleApi(req, res, url) {
     } catch (err) {
       console.warn("[inkling/chat] route error:", err?.message || err);
       return json(res, 200, { reply: "Inkling's AI is unavailable right now.", action: "none", source: "error" });
+    }
+  }
+
+  // Mind graph: LLM concept extraction (public, like chat). Returns empty when
+  // the server has no ANTHROPIC_API_KEY — the client falls back to local lexicon.
+  if (req.method === "POST" && url.pathname === "/api/inkling/extract") {
+    const limited = rateLimit(rlKey, { limit: 30, windowMs: 60_000 });
+    if (!limited.ok) return json(res, 429, { error: "Too many requests." });
+    const body = await readBody(req);
+    if (!body) return json(res, 400, { error: "Invalid JSON" });
+    try {
+      const result = await extractConceptsLLM(String(body.text || ""));
+      return json(res, 200, result || { concepts: [], relations: [], source: "none" });
+    } catch (err) {
+      console.warn("[inkling/extract] route error:", err?.message || err);
+      return json(res, 200, { concepts: [], relations: [], source: "error" });
     }
   }
 

@@ -136,6 +136,37 @@ export function addGoalNode(mind, label, opts = {}) {
   return n;
 }
 
+/**
+ * Merge LLM-extracted concepts + relations (Stage 2b / Haiku) into the graph.
+ * @returns {{addedNodes:string[], addedEdges:[string,string][]}}
+ */
+export function mergeConcepts(mind, concepts = [], relations = [], sessionId = "ai") {
+  const ts = Date.now();
+  const addedNodes = [];
+  const idByLabel = new Map();
+  for (const c of concepts) {
+    const label = String(c?.label || "").trim();
+    if (!label) continue;
+    const existed = mind.nodes.has(conceptId(label));
+    const n = upsertNode(mind, { label, type: c?.type || "concept" }, sessionId, ts);
+    idByLabel.set(label.toLowerCase(), n.id);
+    if (!existed) addedNodes.push(n.label);
+  }
+  const addedEdges = [];
+  for (const r of relations) {
+    if (!Array.isArray(r) || r.length !== 2) continue;
+    const a = idByLabel.get(String(r[0]).toLowerCase());
+    const b = idByLabel.get(String(r[1]).toLowerCase());
+    if (!a || !b || a === b) continue;
+    const [x, y] = [a, b].sort();
+    const isNew = !mind.edges.has(`e_${x}_RELATED_TO_${y}`);
+    upsertEdge(mind, a, b, "RELATED_TO");
+    if (isNew) addedEdges.push([r[0], r[1]]);
+  }
+  recomputeImportance(mind);
+  return { addedNodes, addedEdges };
+}
+
 /** Manually link two concepts — used when the user says "connect X and Y". */
 export function linkConcepts(mind, aLabel, bLabel, rel = "RELATED_TO") {
   const ts = Date.now();
