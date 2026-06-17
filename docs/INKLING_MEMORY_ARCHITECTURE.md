@@ -1,5 +1,9 @@
 # Inkling — Product Architecture: Conversational Memory Protocol v1
 
+> ⚠️ **Superseded by `INKLING_ABSTRACTION_ENGINE.md` (v2)** — Inkling was reframed
+> from a *memory system* to an *abstraction engine* (memory is now an intermediate
+> artifact; the goal is discovering meaning). Kept for history; v2 is canonical.
+
 > Inkling is not a note-taking app. It is an **external memory system** that learns
 > through natural conversation and gradually builds a living knowledge graph of a
 > person's life — projects, goals, ideas, skills, relationships.
