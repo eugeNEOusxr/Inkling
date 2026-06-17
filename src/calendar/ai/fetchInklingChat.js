@@ -44,7 +44,8 @@ export async function fetchInklingChat(payload) {
         history: payload.history ?? [],
         referenceDate: payload.referenceDate,
         scheduleSummary: payload.scheduleSummary ?? "",
-        userName: payload.userName ?? ""
+        userName: payload.userName ?? "",
+        mindSummary: payload.mindSummary ?? ""
       })
     });
     // Guard against the no-API-key mock provider leaking its WordWeaver-remarks

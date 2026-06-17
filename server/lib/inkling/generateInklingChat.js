@@ -29,9 +29,15 @@ ${COMMAND_LANGUAGE_BLOCK}
 
 Personality: concise but not terse, friendly, no corporate jargon. You may use light markdown in reply (**bold**, lists) when it helps.
 
+THE MIND (knowledge graph): You quietly maintain a personal graph of the concepts the user discusses and how they connect. When provided, the user's current Mind (concepts + existing links) appears in context. Use it:
+- Reference concepts and connections they've already built ("you've been tying X to Y…").
+- When they ask to "make connections" — or when you genuinely notice one — explain how ideas relate, then PROPOSE one or two new connections, each with a one-line why and a concrete example. Connect across domains when it's apt (e.g. a math idea and a 3D-graphics idea).
+- Be a thinking partner, not a lecturer: short, specific, curious. End with at most one inviting question.
+- To actually record connections in the Mind, add a "links" array to the JSON footer: "links":[["Concept A","Concept B"], ...] using concept labels (existing or new). Only include links you're confident about.
+
 After your conversational reply, the app needs a machine-readable footer. End EVERY response with a JSON block on its own line (no code fence required but allowed):
 
-{"action":"none"|"query_schedule"|"query_free_time"|"propose","proposal":null|{...},"query":null|{...}}
+{"action":"none"|"query_schedule"|"query_free_time"|"propose","proposal":null|{...},"query":null|{...},"links":[]|[["Concept A","Concept B"]]}
 
 Rules for action:
 - "none" — general chat, advice, clarifying questions, or you're not adding to the calendar
@@ -101,7 +107,10 @@ function buildChatMessages(payload, ref) {
     payload.userName ? `User display name: ${payload.userName}` : "",
     payload.scheduleSummary
       ? `Upcoming calendar items (sample):\n${payload.scheduleSummary}`
-      : "No calendar items in the current view."
+      : "No calendar items in the current view.",
+    payload.mindSummary
+      ? `The user's Mind (concepts + existing links):\n${payload.mindSummary}`
+      : ""
   ]
     .filter(Boolean)
     .join("\n");
@@ -159,8 +168,17 @@ function normalizeInklingResponse(parsed, ref) {
     reply: reply || "I'm here — what would you like to talk about or add to your calendar?",
     action,
     proposal: null,
-    query: null
+    query: null,
+    links: []
   };
+
+  // Connections Inkling wants recorded in the Mind: [["A","B"], ...]
+  if (Array.isArray(meta.links)) {
+    out.links = meta.links
+      .filter((l) => Array.isArray(l) && l.length === 2 && l[0] && l[1])
+      .map((l) => [String(l[0]).trim().slice(0, 60), String(l[1]).trim().slice(0, 60)])
+      .slice(0, 8);
+  }
 
   if (action === "propose" && meta.proposal) {
     const p = meta.proposal;

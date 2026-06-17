@@ -257,7 +257,8 @@ export async function handleApi(req, res, url) {
         history: Array.isArray(body.history) ? body.history : [],
         referenceDate: body.referenceDate,
         scheduleSummary: body.scheduleSummary,
-        userName: body.userName
+        userName: body.userName,
+        mindSummary: typeof body.mindSummary === "string" ? body.mindSummary.slice(0, 2000) : ""
       });
       return json(res, 200, result);
     } catch (err) {
