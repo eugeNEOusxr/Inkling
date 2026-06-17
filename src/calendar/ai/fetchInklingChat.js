@@ -48,10 +48,11 @@ export async function fetchInklingChat(payload) {
         mindSummary: payload.mindSummary ?? ""
       })
     });
-    // Guard against the no-API-key mock provider leaking its WordWeaver-remarks
-    // JSON ({"remarks":[...],"source":"mock"}) as the chat reply. When that
-    // happens, ignore the server and let the local intent-router answer instead.
-    if ((body?.reply != null || body?.action) && !looksLikeMockLeak(body)) {
+    // Guest (not signed in) → paid AI is gated; use the free local router instead
+    // of the empty server reply so guests still get a real answer.
+    if (body?.source === "guest") {
+      // fall through to runLocalInklingChat below
+    } else if ((body?.reply != null || body?.action) && !looksLikeMockLeak(body)) {
       return body;
     }
   } catch (err) {
