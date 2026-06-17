@@ -326,7 +326,6 @@ export class InklingPanel {
     this._orbItems = [
       mk("💬", "Chat with Inkling", () => this.openWithContext()),
       mk("🎤", "Voice message", () => this.openWithVoice()),
-      mk("🧠", "Mind", () => this.showMind()),
       mk("🔗", "Connections", () => this.showConnections()),
       mk("＋", "New event", () => this._orbNewEvent()),
       mk("🎨", "Text style", () => openTextStylePicker()),

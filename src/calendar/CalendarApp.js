@@ -924,7 +924,7 @@ export class CalendarApp {
     this.bottomNav?.show();
 
     const startTab = new URLSearchParams(window.location.search).get("tab");
-    const allowedTabs = new Set(["calendar", "writer", "wordweaver", "inkling", "alerts", "alarm", "connections", "goals"]);
+    const allowedTabs = new Set(["calendar", "writer", "wordweaver", "inkling", "alerts", "alarm", "mind", "connections", "goals"]);
     if (allowedTabs.has(startTab)) {
       // Deep-linked (e.g. the ?tab=wordweaver share link) → go straight there.
       queueMicrotask(() => void this._handleBottomNavTab(startTab, { toggle: false }));
@@ -1020,6 +1020,7 @@ export class CalendarApp {
     this.inklingPanel?.alerts?.hide({ silent: true });
     this.inklingPanel?._connMap?.hide?.({ silent: true });
     this.inklingPanel?._goals?.hide?.({ silent: true });
+    this.inklingPanel?._mindPanel?.hide?.({ silent: true });
     closeAlertsDropdown();
     this.windowManager?.closeAllPanels();
     document.dispatchEvent(new CustomEvent("inkling:close-all-panels"));
@@ -1133,6 +1134,7 @@ export class CalendarApp {
     this.inklingPanel.minimize();
     this.inklingPanel?._connMap?.hide?.({ silent: true });
     this.inklingPanel?._goals?.hide?.({ silent: true });
+    this.inklingPanel?._mindPanel?.hide?.({ silent: true });
     this.wordWeaverEmbed?.exitImmersive();
     this.wordWeaverEmbed?.hide();
     this._weaverGalaxy?.hide();
@@ -1183,11 +1185,12 @@ export class CalendarApp {
         this._showStageBackdrop(true);
         await this.openAlarmClock();
         break;
-      case "connections":
+      case "mind":
+      case "connections": // back-compat alias — "Connect" tab is now "Mind"
         document.body.classList.add("inkling-stage-open");
         this._showStageBackdrop(true);
-        // Full-screen 2D connections web; ✕ tears the nav stage back down.
-        this.inklingPanel?.showConnectionsMap({ onClose: () => this._closeBottomStage() });
+        // The live knowledge graph + Inkling's read; ✕ tears the nav stage down.
+        this.inklingPanel?.showMind({ onClose: () => this._closeBottomStage() });
         break;
       case "goals":
         document.body.classList.add("inkling-stage-open");
