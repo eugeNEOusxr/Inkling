@@ -58,10 +58,46 @@ export async function generateQuizSetLLM({ topic, section, terms } = {}) {
     const data = await res.json();
     const raw = (data?.content || []).filter((b) => b?.type === "text").map((b) => b.text).join("");
     const out = normalize(raw, t, section);
+    if (out && out.questions && out.questions.length) {
+      out.questions = await verifyAnswers(out.questions, t, key);
+      out.verified = true;
+    }
     return out || { source: "none" };
   } catch (err) {
     console.warn("[inkling/quiz-set] exception:", err?.message || err);
     return { source: "error" };
+  }
+}
+
+// Second-pass self-check: independently re-solve each question and correct any
+// wrong answer key. Conservative — only trusts the review if it returns the same
+// number of valid questions; otherwise keeps the originals. Never blocks output.
+const VERIFY_SYS =
+  "You are a meticulous answer-key checker. You receive quiz questions (JSON) with proposed answers. " +
+  "Independently SOLVE each question and return the corrected set as ONLY a JSON object {\"questions\":[…]}. " +
+  "Keep the SAME order, count, types, prompts, and mc options. For each, set the correct \"correct\" (0-based " +
+  "index for mc) or \"answer\" (for multiinput), changing it ONLY when the proposed answer is actually wrong. " +
+  "Keep multiinput answers in their original form (number, algebraic expression, single word/term, or interval). " +
+  "Be especially careful with math. No commentary.";
+async function verifyAnswers(questions, topic, key) {
+  try {
+    const res = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: MODEL, max_tokens: 2600, system: VERIFY_SYS,
+        messages: [{ role: "user", content: `Topic: ${topic}\n${JSON.stringify({ questions })}` }]
+      })
+    });
+    if (!res.ok) return questions;
+    const data = await res.json();
+    const raw = (data?.content || []).filter((b) => b?.type === "text").map((b) => b.text).join("");
+    const obj = parseJson(raw);
+    const fixed = (Array.isArray(obj?.questions) ? obj.questions : []).map(normalizeQuestion).filter(Boolean);
+    return fixed.length === questions.length ? fixed : questions;
+  } catch (err) {
+    console.warn("[inkling/quiz-set] verify failed:", err?.message || err);
+    return questions;
   }
 }
 

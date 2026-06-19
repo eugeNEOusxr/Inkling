@@ -31,6 +31,7 @@ import { extractConceptsLLM } from "../lib/inkling/extractConcepts.js";
 import { generateStudyMapLLM } from "../lib/inkling/studyMap.js";
 import { generateFlashcardsLLM } from "../lib/inkling/flashcards.js";
 import { generateQuizSetLLM } from "../lib/inkling/quizSet.js";
+import { explainLLM, gradeLLM } from "../lib/inkling/tutor.js";
 import { allowAiUse } from "../lib/inkling/usageCap.js";
 import { handlePushRoute } from "./pushRoutes.js";
 import crypto from "node:crypto";
@@ -356,6 +357,50 @@ export async function handleApi(req, res, url) {
       return json(res, 200, result || { source: "none" });
     } catch (err) {
       console.warn("[inkling/quiz-set] route error:", err?.message || err);
+      return json(res, 200, { source: "error" });
+    }
+  }
+
+  // Tutor: worked step-by-step explanation for a quiz question (+ follow-ups).
+  if (req.method === "POST" && url.pathname === "/api/inkling/explain") {
+    const limited = rateLimit(rlKey, { limit: 30, windowMs: 60_000 });
+    if (!limited.ok) return json(res, 429, { error: "Too many requests." });
+    const aiEmail = verifyToken(getBearer(req));
+    if (!aiEmail) return json(res, 200, { source: "guest" });
+    if (!allowAiUse(aiEmail, "chat")) return json(res, 200, { source: "capped" });
+    const body = await readBody(req);
+    if (!body) return json(res, 400, { error: "Invalid JSON" });
+    try {
+      const result = await explainLLM({
+        question: String(body.question || ""),
+        answer: body.answer != null ? String(body.answer) : "",
+        history: Array.isArray(body.history) ? body.history : null
+      });
+      return json(res, 200, result || { source: "none" });
+    } catch (err) {
+      console.warn("[inkling/explain] route error:", err?.message || err);
+      return json(res, 200, { source: "error" });
+    }
+  }
+
+  // LLM-assisted grading for short free-text answers (synonyms / phrasing).
+  if (req.method === "POST" && url.pathname === "/api/inkling/grade") {
+    const limited = rateLimit(rlKey, { limit: 40, windowMs: 60_000 });
+    if (!limited.ok) return json(res, 429, { error: "Too many requests." });
+    const aiEmail = verifyToken(getBearer(req));
+    if (!aiEmail) return json(res, 200, { source: "guest" });
+    if (!allowAiUse(aiEmail, "chat")) return json(res, 200, { source: "capped" });
+    const body = await readBody(req);
+    if (!body) return json(res, 400, { error: "Invalid JSON" });
+    try {
+      const result = await gradeLLM({
+        question: String(body.question || ""),
+        expected: body.expected != null ? String(body.expected) : "",
+        given: String(body.given || "")
+      });
+      return json(res, 200, result || { source: "none" });
+    } catch (err) {
+      console.warn("[inkling/grade] route error:", err?.message || err);
       return json(res, 200, { source: "error" });
     }
   }
