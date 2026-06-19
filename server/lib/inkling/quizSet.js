@@ -12,23 +12,25 @@ const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = process.env.QUIZ_MODEL || process.env.FLASHCARD_MODEL || "claude-haiku-4-5";
 
 const SYSTEM =
-  "You write GRADED practice quizzes that build real mastery. Given a topic, a section, and key terms, " +
-  "produce a focused quiz. Respond with ONLY a JSON object — no prose, no code fences. Shape: " +
+  "You write GRADED practice quizzes on ANY subject — math, biology, chemistry, physics, history, " +
+  "language, etc. Respond with ONLY a JSON object — no prose, no code fences. Shape: " +
   '{"questions":[ {"type":"mc","prompt":"<question>","options":["<a>","<b>","<c>","<d>"],"correct":<0-based index of the correct option>}, ' +
-  '{"type":"multiinput","prompt":"<question>","blanks":[{"label":"<short label e.g. f(2) =>","answer":<see rules>,"answerText":"<pretty form, optional>"}]} ]}. ' +
+  '{"type":"multiinput","prompt":"<question>","blanks":[{"label":"<short label>","answer":<see rules>}]} ]}. ' +
   "Rules:\n" +
-  "- 8–12 questions. Use a MIX of \"mc\" (multiple choice) and \"multiinput\" (typed answer). Favor concrete, " +
-  "solve-it problems with specific numbers; VARY the numbers/cases so the learner practices the METHOD.\n" +
-  "- mc: 3–4 plausible options, exactly ONE correct; \"correct\" is the 0-based index into options. " +
-  "Put the right answer at a RANDOM position (not always first).\n" +
-  "- multiinput \"answer\" must be auto-gradeable, choose the form that fits:\n" +
-  "    • a NUMBER (e.g. 5, -2, 1.5, or a fraction string like \"2/3\") for a computed value;\n" +
-  "    • an ALGEBRAIC EXPRESSION string (e.g. \"6x+12\", \"x^2-6x+10\", \"(x-3)^2\") for simplify/expand/factor/find-the-rule — " +
-  "any algebraically-equivalent form the student types is accepted, so give the simplest correct expression;\n" +
-  "    • an INTERVAL string for domain/range/solution sets, e.g. \"(-infinity, 3]\", \"[0, infinity)\", \"(-infinity,-3) U (3, infinity)\".\n" +
-  "  Use ONE blank for a single answer; use multiple blanks only for genuinely multi-part questions (label each).\n" +
-  "- Plain text math ONLY — NO markdown, NO LaTeX. Write x^2, sqrt(x), <=, >=, pi, and 'infinity' (or the word) for ∞.\n" +
-  "- Cover the listed terms; prefer application over restatement. Make every question unambiguous and self-contained.";
+  "- 8–12 questions. EVERY question MUST be type \"mc\" or \"multiinput\" — no other types. At LEAST half must be \"mc\".\n" +
+  "- Favor concrete, test-it questions; vary them so the learner practices real understanding, not one memorized fact.\n" +
+  "- mc: 3–4 plausible options, exactly ONE correct; \"correct\" is the 0-based index into options " +
+  "(put the right answer at a RANDOM position, not always first).\n" +
+  "- multiinput \"answer\" must be SHORT and unambiguous so it can be auto-graded by exact/equivalent match. " +
+  "Pick the form that fits the subject:\n" +
+  "    • a single WORD or short TERM for a factual answer (e.g. \"mitochondria\", \"photosynthesis\", \"1492\", \"oxygen\");\n" +
+  "    • a NUMBER (e.g. 5, -2, 1.5, or a fraction like \"2/3\") for a computed value;\n" +
+  "    • an ALGEBRAIC EXPRESSION (e.g. \"6x+12\", \"x^2-6x+10\") for math simplify/expand (any equivalent form is accepted);\n" +
+  "    • an INTERVAL (e.g. \"(-infinity, 3]\", \"[0, infinity)\") for math domain/range/solution sets.\n" +
+  "  Use ONE blank for a single answer (keep word/term answers to ~1–3 words). Prefer mc for facts that have " +
+  "long or open-ended answers, so multiinput stays short and exactly matchable.\n" +
+  "- Plain text ONLY — NO markdown, NO LaTeX. For math write x^2, sqrt(x), <=, pi, infinity.\n" +
+  "- Make every question self-contained and unambiguous.";
 
 export async function generateQuizSetLLM({ topic, section, terms } = {}) {
   const key = process.env.ANTHROPIC_API_KEY;
