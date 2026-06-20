@@ -352,7 +352,8 @@ export async function handleApi(req, res, url) {
       const result = await generateQuizSetLLM({
         topic: String(body.topic || ""),
         section: body.section ? String(body.section) : "",
-        terms: Array.isArray(body.terms) ? body.terms : []
+        terms: Array.isArray(body.terms) ? body.terms : [],
+        difficulty: ["easy", "medium", "hard"].includes(body.difficulty) ? body.difficulty : ""
       });
       return json(res, 200, result || { source: "none" });
     } catch (err) {

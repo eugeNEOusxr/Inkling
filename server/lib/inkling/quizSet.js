@@ -32,7 +32,13 @@ const SYSTEM =
   "- Plain text ONLY — NO markdown, NO LaTeX. For math write x^2, sqrt(x), <=, pi, infinity.\n" +
   "- Make every question self-contained and unambiguous.";
 
-export async function generateQuizSetLLM({ topic, section, terms } = {}) {
+const DIFFICULTY = {
+  easy: "EASY tier — single-step, foundational recall/application; keep it gentle and confidence-building.",
+  medium: "MEDIUM tier — standard, grade-level multi-step problems.",
+  hard: "HARD tier — challenging, multi-concept, exam/competition level; push the learner."
+};
+
+export async function generateQuizSetLLM({ topic, section, terms, difficulty } = {}) {
   const key = process.env.ANTHROPIC_API_KEY;
   const t = String(topic || "").trim();
   if (t.length < 2) return null;
@@ -40,6 +46,7 @@ export async function generateQuizSetLLM({ topic, section, terms } = {}) {
   const ask =
     `Topic: ${t.slice(0, 120)}\n` +
     (section ? `Section: ${String(section).slice(0, 120)}\n` : "") +
+    (DIFFICULTY[difficulty] ? `Difficulty: ${DIFFICULTY[difficulty]}\n` : "") +
     (Array.isArray(terms) && terms.length
       ? `Key terms: ${terms.slice(0, 20).map((x) => String(x).slice(0, 60)).join(", ")}`
       : "");
