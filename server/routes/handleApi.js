@@ -375,7 +375,8 @@ export async function handleApi(req, res, url) {
       const result = await explainLLM({
         question: String(body.question || ""),
         answer: body.answer != null ? String(body.answer) : "",
-        history: Array.isArray(body.history) ? body.history : null
+        history: Array.isArray(body.history) ? body.history : null,
+        mode: ["nudge", "step"].includes(body.mode) ? body.mode : ""
       });
       return json(res, 200, result || { source: "none" });
     } catch (err) {

@@ -20,13 +20,24 @@ const EXPLAIN_SYS =
   "— no markdown headers, no LaTeX; write math plainly (x^2, sqrt(x), <=, pi). Keep it tight (under ~150 words) " +
   "unless the student asks for more. If they ask a follow-up, answer it directly and stay on topic.";
 
+// Progressive-hint modes: keep the student working — never hand over the answer early.
+const MODE_SYS = {
+  nudge:
+    " HINT MODE: The student wants only a SMALL NUDGE to get unstuck. Give ONE or two sentences pointing at the " +
+    "key idea, formula, or first thing to notice. Do NOT reveal the final answer and do NOT work through the steps.",
+  step:
+    " HINT MODE: Give ONLY the FIRST concrete step (and briefly why), then STOP. Do not complete the solution and " +
+    "do not state the final answer — leave the rest for the student."
+};
+
 /**
- * @param {{ question?: string, answer?: string, history?: {role:string,content:string}[] }} opts
+ * @param {{ question?: string, answer?: string, history?: {role:string,content:string}[], mode?: string }} opts
  */
-export async function explainLLM({ question, answer, history } = {}) {
+export async function explainLLM({ question, answer, history, mode } = {}) {
   const key = process.env.ANTHROPIC_API_KEY;
   const q = String(question || "").trim();
   if (!key) return null;
+  const system = EXPLAIN_SYS + (MODE_SYS[mode] || "");
 
   const messages = [];
   if (Array.isArray(history) && history.length) {
@@ -50,7 +61,7 @@ export async function explainLLM({ question, answer, history } = {}) {
     const res = await fetch(ANTHROPIC_URL, {
       method: "POST",
       headers: headers(key),
-      body: JSON.stringify({ model: MODEL, max_tokens: 700, system: EXPLAIN_SYS, messages })
+      body: JSON.stringify({ model: MODEL, max_tokens: 700, system, messages })
     });
     if (!res.ok) { console.warn(`[inkling/explain] ${res.status}`); return { source: "error" }; }
     const reply = textOf(await res.json());
