@@ -9,11 +9,14 @@
  */
 const counts = new Map(); // email -> { day, chat, extract, studymap, flashcards }
 
+// FREE-tier daily allowance — "enough to taste it." Paid users get these raised
+// (via env, once billing is wired) or bypass entirely. Kept small so free usage
+// can't run up the owner's AI bill.
 const CAPS = {
-  chat: Number(process.env.AI_DAILY_CHAT_CAP || 40),
-  extract: Number(process.env.AI_DAILY_EXTRACT_CAP || 120),
-  studymap: Number(process.env.AI_DAILY_STUDYMAP_CAP || 15),
-  flashcards: Number(process.env.AI_DAILY_FLASHCARD_CAP || 30)
+  chat: Number(process.env.AI_DAILY_CHAT_CAP || 6),
+  extract: Number(process.env.AI_DAILY_EXTRACT_CAP || 15),
+  studymap: Number(process.env.AI_DAILY_STUDYMAP_CAP || 3),
+  flashcards: Number(process.env.AI_DAILY_FLASHCARD_CAP || 4)
 };
 
 // Hard ceiling on total paid AI calls across ALL users per day. Set conservatively
