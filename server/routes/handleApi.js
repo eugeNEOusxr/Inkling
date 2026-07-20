@@ -31,6 +31,7 @@ import { extractConceptsLLM } from "../lib/inkling/extractConcepts.js";
 import { generateStudyMapLLM } from "../lib/inkling/studyMap.js";
 import { generateFlashcardsLLM } from "../lib/inkling/flashcards.js";
 import { generateQuizSetLLM } from "../lib/inkling/quizSet.js";
+import { processImport } from "../lib/inkling/importConversation.js";
 import { explainLLM, gradeLLM } from "../lib/inkling/tutor.js";
 import { allowAiUse } from "../lib/inkling/usageCap.js";
 import { handlePushRoute } from "./pushRoutes.js";
@@ -359,6 +360,29 @@ export async function handleApi(req, res, url) {
     } catch (err) {
       console.warn("[inkling/quiz-set] route error:", err?.message || err);
       return json(res, 200, { source: "error" });
+    }
+  }
+
+  // Browser-extension import: receive a captured AI conversation and process it
+  // into a summary + concepts/relations + a studyable quiz deck. Signed-in +
+  // capped (shares the flashcards AI bucket). Always 200 with a result so the
+  // extension never wedges its retry queue on a processing hiccup.
+  if (req.method === "POST" && url.pathname === "/api/extension/import") {
+    const limited = rateLimit(rlKey, { limit: 12, windowMs: 60_000 });
+    if (!limited.ok) return json(res, 429, { error: "Too many requests." });
+    const aiEmail = verifyToken(getBearer(req));
+    if (!aiEmail) return json(res, 401, { error: "Sign in to Inkling to import." });
+    if (!allowAiUse(aiEmail, "flashcards")) {
+      return json(res, 200, { ok: true, status: "skipped", source: "capped", note: "Daily AI limit reached — try again tomorrow." });
+    }
+    const body = await readBody(req);
+    if (!body || !body.conversation) return json(res, 400, { error: "Missing conversation." });
+    try {
+      const result = await processImport(body.conversation);
+      return json(res, 200, result);
+    } catch (err) {
+      console.warn("[extension/import] route error:", err?.message || err);
+      return json(res, 200, { ok: true, status: "partial", source: "error", note: "Saved, but processing failed." });
     }
   }
 
